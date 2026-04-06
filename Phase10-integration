@@ -1,0 +1,180 @@
+// ─────────────────────────────────────────────────────────────────────
+// PHASE 10: Notification Scraping — Integration Guide
+// ─────────────────────────────────────────────────────────────────────
+
+// ── 1. File placement ─────────────────────────────────────────────────
+//
+// supabase/migrations/
+//   scraping_setup.sql                  ← scraping_setup.sql
+//
+// supabase/functions/scheduled-scraper/
+//   index.ts                            ← scheduled-scraper-edge-function.ts
+//
+// types/
+//   scraping.ts                         ← scraping.ts
+//
+// lib/scraping/
+//   extractor.ts                        ← extractor.ts
+//   runner.ts                           ← runner.ts
+//   alerts.ts                           ← alerts.ts
+//
+// lib/db/
+//   scraping.ts                         ← scraping-db.ts
+//
+// actions/
+//   scraping.ts                         ← scraping-actions.ts
+//
+// app/admin/scraping/
+//   page.tsx                            ← admin-scraping-page.tsx
+//   queue/
+//     page.tsx                          ← admin-queue-page.tsx
+//
+// app/dashboard/notifications/
+//   page.tsx                            ← notifications-page.tsx
+//
+// components/dashboard/
+//   NotificationBell.tsx                ← NotificationBell.tsx
+
+
+// ── 2. Database migration ──────────────────────────────────────────────
+//
+// Run scraping_setup.sql in Supabase SQL Editor.
+// It creates 4 tables and seeds 9 known sources.
+
+
+// ── 3. Edge Function deploy ───────────────────────────────────────────
+//
+// Install Supabase CLI if not already:
+//   npm install -g supabase
+//
+// Deploy the edge function:
+//   supabase functions deploy scheduled-scraper --project-ref YOUR_PROJECT_REF
+//
+// Schedule it (every 6 hours):
+//   supabase cron create scraper-cron "0 */6 * * *" \
+//     --function scheduled-scraper \
+//     --project-ref YOUR_PROJECT_REF
+//
+// The function uses these env vars (already in your Supabase project):
+//   SUPABASE_URL
+//   SUPABASE_SERVICE_ROLE_KEY
+//   ANTHROPIC_API_KEY  ← add this in Supabase Dashboard → Edge Functions → Secrets
+
+
+// ── 4. Add NotificationBell to DashboardShell ─────────────────────────
+//
+// In components/dashboard/DashboardShell.tsx, add to the nav:
+//
+//   import { NotificationBell } from "@/components/dashboard/NotificationBell"
+//   import { getUserAlerts, getUnreadAlertCount } from "@/lib/scraping/alerts"
+//
+//   // In the server component that renders the shell:
+//   const [alerts, unreadCount] = await Promise.all([
+//     getUserAlerts(userId, false, 15),
+//     getUnreadAlertCount(userId),
+//   ])
+//
+//   // In JSX nav bar:
+//   <NotificationBell initialAlerts={alerts} unreadCount={unreadCount} />
+
+
+// ── 5. Add scraping nav to admin panel ────────────────────────────────
+//
+// In app/admin/layout.tsx or the admin sidebar, add:
+//   <Link href="/admin/scraping">🕷️ Scraping</Link>
+//   <Link href="/admin/scraping/queue">📋 Review Queue</Link>
+
+
+// ── 6. Manual scraping from admin (no Edge Function required) ─────────
+//
+// The "Run now" button in /admin/scraping/page.tsx calls triggerScrapeRun()
+// which runs runScrapingPass() directly inside Next.js server actions.
+// This works for ad-hoc runs during development/testing without deploying
+// the Edge Function. Note: on Vercel, server functions have a 60s timeout,
+// so scraping many sources may need to be done source-by-source via
+// the source checkbox UI.
+
+
+// ── 7. How the pipeline works end-to-end ─────────────────────────────
+//
+//  ┌─────────────────────────────────────────────────┐
+//  │  Scheduled Edge Function (every 6 hours)        │
+//  │  OR Manual admin trigger                        │
+//  └──────────────────┬──────────────────────────────┘
+//                     │ for each active scrape_source
+//                     ▼
+//  ┌─────────────────────────────────────────────────┐
+//  │  fetchPageText(url)                             │
+//  │  → strips HTML, first 12,000 chars              │
+//  └──────────────────┬──────────────────────────────┘
+//                     ▼
+//  ┌─────────────────────────────────────────────────┐
+//  │  extractRecruitmentData(text, url, source)      │
+//  │  → Claude parses into ExtractedRecruitment JSON │
+//  │  → returns confidence score 0.0–1.0             │
+//  └──────────────────┬──────────────────────────────┘
+//                     ▼
+//  ┌─────────────────────────────────────────────────┐
+//  │  Deduplication check                            │
+//  │  → similarity key: org + year + title words     │
+//  │  → check against recruitments + queue tables    │
+//  └──────────────────┬──────────────────────────────┘
+//          ┌──────────┴───────────┐
+//    duplicate                 new item
+//          │                       │
+//          ▼                       ▼
+//  scrape_queue              scrape_queue
+//  status=duplicate          status=pending (conf < 0.92)
+//                            OR status=approved (conf ≥ 0.92
+//                               + trusted source) → auto-promote
+//                     ▼
+//  ┌─────────────────────────────────────────────────┐
+//  │  Admin reviews /admin/scraping/queue            │
+//  │  → Approve → promoteToRecruitments()            │
+//  │            → alertUsersForNewRecruitment()      │
+//  │  → Reject  → status=rejected                   │
+//  │  → Duplicate → status=duplicate                 │
+//  └─────────────────────────────────────────────────┘
+//                     ▼
+//  ┌─────────────────────────────────────────────────┐
+//  │  notification_alerts rows created               │
+//  │  for all eligibility_results where is_eligible  │
+//  │  → Users see bell badge in DashboardShell       │
+//  │  → /dashboard/notifications full view           │
+//  └─────────────────────────────────────────────────┘
+
+
+// ── 8. Auto-approval thresholds ──────────────────────────────────────
+//
+// confidence >= 0.92 + source in trusted list → auto-approve + promote
+// confidence  < 0.92 OR untrusted source     → goes to human review queue
+//
+// Trusted sources: UPSC, SSC, IBPS, RBI, SEBI, NABARD
+// You can tune this in lib/scraping/runner.ts → isHighTrustSource()
+
+
+// ── 9. Deadline alerts cron ───────────────────────────────────────────
+//
+// Create a second edge function for deadline alerts (runs daily at 8am IST):
+//
+//   supabase/functions/deadline-alerts/index.ts:
+//
+//   import { sendDeadlineAlerts } from "../../lib/scraping/alerts.ts"
+//   Deno.serve(async () => {
+//     const result = await sendDeadlineAlerts()
+//     return new Response(JSON.stringify(result))
+//   })
+//
+//   supabase cron create deadline-alerts-cron "30 2 * * *" \
+//     --function deadline-alerts \
+//     --project-ref YOUR_PROJECT_REF
+//   (2:30 UTC = 8:00 IST)
+
+
+// ── 10. Package dependencies ──────────────────────────────────────────
+//
+// Already in your stack:
+//   @anthropic-ai/sdk       ← used by extractor.ts
+//   date-fns                ← added in Phase 9
+//
+// No new packages needed.

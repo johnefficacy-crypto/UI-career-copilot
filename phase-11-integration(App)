@@ -1,0 +1,181 @@
+# career-copilot-mobile/.env
+# Copy to .env.local for local dev — never commit real values
+
+EXPO_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
+EXPO_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key_here
+
+# ─────────────────────────────────────────────────────────────────────
+# PHASE 11: Mobile App — Integration Guide
+# ─────────────────────────────────────────────────────────────────────
+
+# ── 1. Folder structure ───────────────────────────────────────────────
+#
+# Create a sibling folder next to your Next.js project:
+#
+#   career-copilot/           ← existing Next.js web app
+#   career-copilot-mobile/    ← new Expo mobile app
+#     app/
+#       _layout.tsx                   ← root layout, fonts, auth routing, push notif
+#       (auth)/
+#         _layout.tsx                 ← auth stack (create as simple Stack layout)
+#         login.tsx                   ← login screen
+#         signup.tsx                  ← (create, mirrors login but calls signUp)
+#       (tabs)/
+#         _layout.tsx                 ← tab bar navigator
+#         index.tsx                   ← dashboard home
+#         planner.tsx                 ← study planner
+#         forum.tsx                   ← community forum
+#         notifications.tsx           ← notification alerts
+#         profile.tsx                 ← profile & settings
+#       onboarding.tsx                ← (create: redirect to web for onboarding)
+#     constants/
+#       theme.ts                      ← design tokens
+#     lib/
+#       supabase.ts                   ← Supabase client with AsyncStorage
+#       notifications.ts              ← push notif registration + scheduling
+#     store/
+#       auth.ts                       ← Zustand auth state
+#     assets/
+#       images/
+#         icon.png                    ← 1024×1024 app icon (dark bg, gold wordmark)
+#         splash.png                  ← splash screen
+#         adaptive-icon.png           ← Android adaptive icon foreground
+#         notification-icon.png       ← Android notification icon (white on transparent)
+#     package.json
+#     app.json
+#     eas.json
+#     tsconfig.json
+#     .env
+
+# ── 2. Initial setup ──────────────────────────────────────────────────
+#
+#   cd career-copilot-mobile
+#   npm install -g eas-cli expo-cli
+#   npm install                        # or: pnpm install
+#   npx expo install                   # fixes any peer dep mismatches
+#
+#   # Install Google Fonts packages for Playfair + DM Sans + DM Mono
+#   npx expo install @expo-google-fonts/playfair-display \
+#                    @expo-google-fonts/dm-sans \
+#                    @expo-google-fonts/dm-mono
+#
+#   # Copy .env and fill in your Supabase URL + anon key
+#   cp .env .env.local
+
+# ── 3. Database: add push_token column ───────────────────────────────
+#
+# Run this in Supabase SQL Editor:
+#
+#   ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS push_token text;
+#
+# This stores each device's Expo push token so the server can send
+# targeted push notifications via Expo's Push API.
+
+# ── 4. Run locally ───────────────────────────────────────────────────
+#
+#   npx expo start
+#   # Press 'i' for iOS simulator, 'a' for Android emulator
+#   # Scan QR with Expo Go app on physical device for push notif testing
+
+# ── 5. EAS setup and first build ────────────────────────────────────
+#
+#   eas login                          # your Expo account
+#   eas build:configure                # creates eas.json if not present
+#
+#   # Replace YOUR_EAS_PROJECT_ID in app.json with the project ID shown after:
+#   eas project:init
+#
+#   # Development build (installs on device, supports push notifs)
+#   eas build --profile development --platform ios
+#   eas build --profile development --platform android
+#
+#   # Production build
+#   eas build --profile production --platform all
+
+# ── 6. Push notification server-side (optional enhancement) ──────────
+#
+# To send server-triggered push notifications (e.g., when a new matching
+# exam is found), add this to your Next.js actions or edge functions:
+#
+#   import Expo from "expo-server-sdk"   # pnpm add expo-server-sdk (web project)
+#
+#   async function sendPushToUser(userId: string, title: string, body: string) {
+#     const supabase = await createClient()
+#     const { data: profile } = await supabase
+#       .from("profiles")
+#       .select("push_token")
+#       .eq("id", userId)
+#       .single()
+#
+#     if (!profile?.push_token) return
+#
+#     const expo = new Expo()
+#     const messages = [{
+#       to:    profile.push_token,
+#       sound: "default",
+#       title,
+#       body,
+#       data: { type: "new_match" },
+#     }]
+#
+#     const chunks = expo.chunkPushNotifications(messages)
+#     for (const chunk of chunks) {
+#       await expo.sendPushNotificationsAsync(chunk)
+#     }
+#   }
+#
+# Call this inside alertUsersForNewRecruitment() in lib/scraping/alerts.ts
+# after creating notification_alerts rows.
+
+# ── 7. Onboarding on mobile ───────────────────────────────────────────
+#
+# Full onboarding (multi-step profile setup) is web-only.
+# The mobile app redirects unonboarded users to the web URL:
+#
+#   import { Linking } from "react-native"
+#   Linking.openURL("https://careercopilot.in/onboarding")
+#
+# This is the simplest path for v1. A native onboarding flow can be
+# added in a future phase once the web onboarding is stable.
+
+# ── 8. Signing up on mobile ───────────────────────────────────────────
+#
+# Create app/(auth)/signup.tsx mirroring login.tsx but calling signUp().
+# After signUp, redirect to onboarding (web) since profile setup is
+# too complex for the mobile MVP. The user returns to the app after
+# completing onboarding on web — deep link: careercopilot://dashboard
+
+# ── 9. Sharing auth state between web and mobile ─────────────────────
+#
+# Both apps connect to the same Supabase project.
+# Auth sessions are NOT shared (web uses HTTP-only cookies, mobile uses
+# AsyncStorage). Users sign in separately on each platform — this is
+# the correct and secure approach.
+
+# ── 10. App Store / Play Store submission ────────────────────────────
+#
+#   eas submit --platform ios      # submits to App Store Connect
+#   eas submit --platform android  # submits to Google Play Console
+#
+# Checklist before submission:
+#   ✓ App icons provided (1024×1024 for iOS, adaptive for Android)
+#   ✓ Splash screen assets in assets/images/
+#   ✓ Push notification entitlements configured in app.json
+#   ✓ google-services.json added for Android (from Firebase console)
+#   ✓ Replace YOUR_EAS_PROJECT_ID in app.json
+#   ✓ Set real bundleIdentifier and package in app.json
+#   ✓ Privacy policy URL live at careercopilot.in/privacy
+
+# ── 11. Feature parity summary ───────────────────────────────────────
+#
+# ✅ Dashboard         — Exam targets, active plan widget, recent alerts
+# ✅ Study planner     — Week cards, expand/collapse, status updates, log session
+# ✅ Forum             — Browse, search, filter by category, upvote, compose, reply
+# ✅ Notifications     — All alerts, auto mark-as-read, urgency colours
+# ✅ Profile           — User info, notification toggles, plan badge, sign out
+# ✅ Push notifications — Deadline reminders (7d, 3d, 1d), daily streak nudge
+# ✅ Auth              — Sign in, sign out, session persistence via AsyncStorage
+# ✅ Deep linking      — Notification tap routes to correct tab
+# ⬜ AI Career Chat    — Phase 8 (web only for now; streaming complex on mobile)
+# ⬜ Marketplace       — Phase 6 (payment flows complex on mobile, web redirect)
+# ⬜ Admin panel       — Web only (admin tasks require full desktop interface)
