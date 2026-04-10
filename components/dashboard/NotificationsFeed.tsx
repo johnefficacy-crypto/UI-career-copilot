@@ -255,36 +255,43 @@ function NotificationRow({
 // ─── Main feed ────────────────────────────────────────────────────────────────
 
 interface Props {
-  alerts:      NotificationAlert[]
+  alerts?: NotificationAlert[]
   unreadCount: number
-  planId:      string
-  userId:      string
+  planId: string
+  userId: string
 }
 
-export function NotificationsFeed({ alerts: initialAlerts, unreadCount, planId, userId }: Props) {
-  const [isPending, startTransition]   = useTransition()
-  const [localAlerts, setLocalAlerts]  = useState<NotificationAlert[]>(initialAlerts)
-  const [filter, setFilter]            = useState<"all" | "unread">("all")
+export function NotificationsFeed({
+  alerts: initialAlerts = [],
+  unreadCount,
+  planId,
+  userId,
+}: Props) {
+  const [isPending, startTransition] = useTransition()
+  const [localAlerts, setLocalAlerts] = useState<NotificationAlert[]>(initialAlerts)
+  const [filter, setFilter] = useState<"all" | "unread">("all")
 
-  const isFree     = planId === "free"
+  // useEffect(() => {
+  //   setLocalAlerts(initialAlerts)
+  // }, [initialAlerts])
+
+  const isFree = planId === "free"
   const maxVisible = isFree ? 5 : localAlerts.length
 
   // ── Supabase Realtime — live unread updates ──
   useEffect(() => {
-    const client  = createClient()
+    const client = createClient()
     const channel = client
       .channel(`notif-feed-${userId}`)
       .on(
         "postgres_changes",
         {
-          event:  "INSERT",
+          event: "INSERT",
           schema: "public",
-          table:  "notification_alerts",
+          table: "notification_alerts",
           filter: `user_id=eq.${userId}`,
         },
         (payload) => {
-          // Optimistically prepend new notifications
-          // Full data will arrive via revalidation; this just shows the badge
           setLocalAlerts((prev) => {
             const newAlert = payload.new as NotificationAlert
             if (prev.some((a) => a.id === newAlert.id)) return prev
@@ -294,15 +301,17 @@ export function NotificationsFeed({ alerts: initialAlerts, unreadCount, planId, 
       )
       .subscribe()
 
-    return () => { void client.removeChannel(channel) }
+    return () => {
+      void client.removeChannel(channel)
+    }
   }, [userId])
 
-  // ── Handlers ──
   const handleRead = useCallback((id: string) => {
     setLocalAlerts((prev) =>
-      prev.map((a) => a.id === id
-        ? { ...a, is_read: true, read_at: new Date().toISOString() }
-        : a
+      prev.map((a) =>
+        a.id === id
+          ? { ...a, is_read: true, read_at: new Date().toISOString() }
+          : a
       )
     )
     startTransition(() => void markNotificationRead(id))
@@ -323,6 +332,7 @@ export function NotificationsFeed({ alerts: initialAlerts, unreadCount, planId, 
         void trackRecruitmentAction(recruitmentId)
       }
     })
+
     setLocalAlerts((prev) =>
       prev.map((a) =>
         a.recruitment_id === recruitmentId
@@ -332,9 +342,9 @@ export function NotificationsFeed({ alerts: initialAlerts, unreadCount, planId, 
     )
   }, [])
 
-  const visible        = localAlerts.slice(0, maxVisible)
-  const displayed      = filter === "unread" ? visible.filter((a) => !a.is_read) : visible
-  const currentUnread  = localAlerts.filter((a) => !a.is_read).length
+  const visible = localAlerts.slice(0, maxVisible)
+  const displayed = filter === "unread" ? visible.filter((a) => !a.is_read) : visible
+  const currentUnread = localAlerts.filter((a) => !a.is_read).length
 
   return (
     <div
@@ -352,8 +362,8 @@ export function NotificationsFeed({ alerts: initialAlerts, unreadCount, planId, 
               className="text-xs px-1.5 py-px rounded-full font-medium"
               style={{
                 background: "var(--gold-faint)",
-                border:     "1px solid var(--gold-border)",
-                color:      "var(--gold)",
+                border: "1px solid var(--gold-border)",
+                color: "var(--gold)",
               }}
             >
               {currentUnread}
@@ -362,7 +372,6 @@ export function NotificationsFeed({ alerts: initialAlerts, unreadCount, planId, 
         </div>
 
         <div className="flex items-center gap-3">
-          {/* Filter toggle */}
           <div className="flex items-center gap-1">
             {(["all", "unread"] as const).map((f) => (
               <button
@@ -371,9 +380,9 @@ export function NotificationsFeed({ alerts: initialAlerts, unreadCount, planId, 
                 onClick={() => setFilter(f)}
                 className="text-xs px-2 py-0.5 rounded-lg transition-colors capitalize"
                 style={{
-                  background:  filter === f ? "var(--bg-surface-md)" : "transparent",
-                  color:       filter === f ? "rgba(255,255,255,0.70)" : "var(--text-ghost)",
-                  border:      "1px solid",
+                  background: filter === f ? "var(--bg-surface-md)" : "transparent",
+                  color: filter === f ? "rgba(255,255,255,0.70)" : "var(--text-ghost)",
+                  border: "1px solid",
                   borderColor: filter === f ? "var(--border-md)" : "transparent",
                 }}
               >
@@ -404,7 +413,6 @@ export function NotificationsFeed({ alerts: initialAlerts, unreadCount, planId, 
         </div>
       </div>
 
-      {/* List */}
       {displayed.length === 0 ? (
         <div className="text-center py-8">
           <p className="text-2xl mb-2 opacity-30">🔔</p>
@@ -427,13 +435,12 @@ export function NotificationsFeed({ alerts: initialAlerts, unreadCount, planId, 
         </div>
       )}
 
-      {/* Free plan gate */}
       {isFree && localAlerts.length > 5 && (
         <div
           className="mt-4 rounded-xl px-4 py-3 text-center"
           style={{
             background: "rgba(232,213,163,0.04)",
-            border:     "1px solid rgba(232,213,163,0.12)",
+            border: "1px solid rgba(232,213,163,0.12)",
           }}
         >
           <p className="text-xs mb-2" style={{ color: "var(--text-muted)" }}>

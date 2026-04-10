@@ -43,6 +43,11 @@ const FEATURES = [
 
 const TESTIMONIALS = [
   {
+    name: "Sankar Ganesan",
+    role: "SSC CGL",
+    quote: "Career-Copilot solved this exact problem and told me exactly which exams I am eligible for right now, based on my specific age, category, education, attempts, and domicile — automatically, without me having to read 30 PDFs"
+  },
+  {
     name:  "Priya Sharma",
     role:  "RBI Grade B 2024",
     quote: "I was tracking 6 exams manually on a spreadsheet. Career Copilot collapsed it into one feed. The eligibility check alone saved me 3 pointless applications.",
