@@ -4,7 +4,11 @@
 // into structured ExtractedRecruitment objects.
 
 import Anthropic from "@anthropic-ai/sdk"
-import { ExtractedRecruitment } from "@/types/notifications"
+import type { ExtractedRecruitment } from "@/types/scraping"
+import { toJsonSafe } from "@/types/scraping"
+
+export type { ExtractedRecruitment }
+export { toJsonSafe }
 
 const client = new Anthropic()
 
@@ -83,16 +87,17 @@ ${truncated}`
 
     // Strip any accidental markdown fences
     const clean = text.replace(/^```json\n?/, "").replace(/\n?```$/, "").trim()
-    const parsed = JSON.parse(clean)
+    const parsed = JSON.parse(clean) as Record<string, unknown>
 
     const confidence = typeof parsed.confidence === "number"
       ? Math.min(1, Math.max(0, parsed.confidence))
       : 0.5
 
     // Remove confidence from the data object before returning
-    const { confidence: _c, ...data } = parsed
+    const { confidence: _c, ...rest } = parsed
+    void _c
 
-    return { data: data as ExtractedRecruitment, confidence }
+    return { data: rest as ExtractedRecruitment, confidence }
 
   } catch (err) {
     console.error("[extractor] Failed to parse Claude response:", err)
@@ -101,9 +106,6 @@ ${truncated}`
 }
 
 // ── Fetch raw text from a URL ─────────────────────────────────────────────────
-// In production this runs inside a Supabase Edge Function with full network access.
-// In Next.js server actions it's limited by the same-origin policy, but admin-triggered
-// scrapes can proxy through an edge function.
 
 export async function fetchPageText(url: string): Promise<string | null> {
   try {
@@ -118,8 +120,6 @@ export async function fetchPageText(url: string): Promise<string | null> {
 
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const html = await res.text()
-
-    // Strip HTML tags to get readable text
     return stripHtml(html)
   } catch (err) {
     console.error(`[fetcher] Failed to fetch ${url}:`, err)
@@ -142,10 +142,8 @@ function stripHtml(html: string): string {
 }
 
 // ── Duplicate detection ───────────────────────────────────────────────────────
-// Checks if the extracted recruitment looks like one we already have
 
 export function computeSimilarityKey(data: ExtractedRecruitment): string {
-  // Normalize org name + year + approximate title for dedup
   const org = data.organization_name.toLowerCase().replace(/[^a-z0-9]/g, "")
   const year = String(data.year)
   const titleWords = data.title.toLowerCase().split(/\s+/).slice(0, 4).join("")

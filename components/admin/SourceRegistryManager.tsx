@@ -17,8 +17,8 @@
  *  - Verified all server action imports are correct.
  */
 
-import { useState, useTransition, useMemo } from "react"
-import Link from "next/link"
+ import { useState, useTransition, useMemo, useRef, useEffect } from "react"
+ import Link from "next/link"
 import {
   SOURCE_CATEGORIES,
   SOURCE_TYPES,
@@ -676,17 +676,36 @@ export function SourceRegistryManager({
     setDrawerOpen(true)
   }
 
-  // Auto-open the "Add Source" drawer when prefill data is present (came from inspector)
-  // We use a ref to ensure this only fires once on mount, avoiding re-open on re-render
-  const prefillOpenedRef = useState(false)
-  if (prefill && !drawerOpen && !prefillOpenedRef[0]) {
-    prefillOpenedRef[1](true)
-    // Schedule drawer open after initial render
-    Promise.resolve().then(() => {
+  // // Auto-open the "Add Source" drawer when prefill data is present (came from inspector)
+  // // We use a ref to ensure this only fires once on mount, avoiding re-open on re-render
+  // const prefillOpenedRef = useState(false)
+  // if (prefill && !drawerOpen && !prefillOpenedRef[0]) {
+  //   prefillOpenedRef[1](true)
+  //   // Schedule drawer open after initial render
+  //   Promise.resolve().then(() => {
+  //     setEditSource(null)
+  //     setDrawerOpen(true)
+  //   })
+  // }
+//   PROBLEM: Line ~682-690 uses Promise.resolve().then() to open the drawer when
+// prefill data arrives. This fires as a microtask before the component has
+// mounted, triggering React's "Can't perform a state update on a component that
+// hasn't mounted yet" warning.
+ 
+// Also: `useState(false)` is used as a mutable ref — calling `prefillOpenedRef[1](true)`
+// schedules a re-render, which can cause the same block to fire again.
+
+  // Auto-open the "Add Source" drawer when prefill data arrives from the inspector.
+  // useRef + useEffect: safe pattern — state updates after mount, never during render.
+  const prefillAppliedRef = useRef(false)
+  useEffect(() => {
+    if (prefill && !prefillAppliedRef.current) {
+      prefillAppliedRef.current = true
       setEditSource(null)
       setDrawerOpen(true)
-    })
-  }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   function closeDrawer() {
     setDrawerOpen(false)

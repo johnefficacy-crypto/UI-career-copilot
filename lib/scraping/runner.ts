@@ -1,17 +1,51 @@
 // lib/scraping/runner.ts
-// Career Copilot — Phase 10
-// Orchestrates scraping runs: fetch → extract → dedup → queue
+// Career Copilot — Legacy Phase 10 runner
+// NOTE: The primary scraper is now the Deno Edge Function at
+//       supabase/functions/scheduled-scraper/index.ts which reads from
+//       source_registry. This file is kept for admin-triggered manual scrapes
+//       from Next.js server actions only. It still reads from scrape_sources
+//       (legacy) — do NOT add new features here; extend the Edge Function.
 
 import { createClient } from "@/utils/supabase/server"
 import { fetchPageText, extractRecruitmentData, computeSimilarityKey } from "./extractor"
-import { ScrapeSource } from "@/types/notifications"
+import type { ExtractedRecruitment } from "@/types/scraping"
+import { toJsonSafe } from "@/types/scraping"
+import type { Database } from "@/types/supabase"
+
+// ── Derived types ─────────────────────────────────────────────────────────────
+
+type ScrapeSourceRow = Database["public"]["Tables"]["scrape_sources"]["Row"]
+
+// Normalise nullable DB fields to the shape the rest of this file expects.
+// is_healthy is boolean | null in the DB; we coerce null → false here.
+type ScrapeSource = Omit<ScrapeSourceRow, "is_healthy" | "consecutive_fails" | "trust_score"> & {
+  is_healthy:        boolean
+  consecutive_fails: number
+  trust_score:       number
+}
+
+function normaliseSource(row: ScrapeSourceRow): ScrapeSource {
+  return {
+    ...row,
+    is_healthy:        row.is_healthy        ?? false,
+    consecutive_fails: row.consecutive_fails ?? 0,
+    trust_score:       row.trust_score       ?? 0.7,
+  }
+}
+
+// ── Json-safe recruitment key ─────────────────────────────────────────────────
+
+function buildRecruitmentKey(orgName: string, year: number | null, name: string): string {
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "")
+  return `${norm(orgName)}-${year ?? 0}-${norm(name).slice(0, 30)}`
+}
 
 // ── Run a full scrape pass for all active sources ─────────────────────────────
 
 export async function runScrapingPass(
   triggeredBy: "scheduled" | "manual" | "admin" = "scheduled",
   triggeredByUserId?: string,
-  sourceIds?: string[]           // optional: scrape specific sources only
+  sourceIds?: string[]
 ): Promise<string> {
   const supabase = await createClient()
 
@@ -19,17 +53,21 @@ export async function runScrapingPass(
   const { data: run, error: runErr } = await supabase
     .from("scrape_runs")
     .insert({
-      status: "running",
+      status:       "running",
       triggered_by: triggeredBy,
-      triggered_by_user: triggeredByUserId ?? null,
     })
     .select("id")
     .single()
 
-  if (runErr || !run) throw new Error("Failed to create scrape run")
+  if (runErr || !run) throw new Error("runScrapingPass: Failed to create scrape run")
   const runId = run.id
 
   // Fetch active sources
+  // Use select("*") so TypeScript infers the complete ScrapeSourceRow type.
+  // A partial column list would exclude `created_at` (and others) from the
+  // inferred type, making it incompatible with ScrapeSourceRow and
+  // causing the "Types of parameters incompatible" error in .map(normaliseSource).
+  // This is legacy code — select("*") is acceptable here.
   let sourceQuery = supabase
     .from("scrape_sources")
     .select("*")
@@ -40,11 +78,11 @@ export async function runScrapingPass(
     sourceQuery = sourceQuery.in("id", sourceIds)
   }
 
-  const { data: sources } = await sourceQuery
-  const activeSources: ScrapeSource[] = sources ?? []
+  const { data: rawSources } = await sourceQuery
+  const activeSources: ScrapeSource[] = (rawSources ?? []).map(normaliseSource)
 
-  let totalFound = 0
-  let totalNew = 0
+  let totalFound    = 0
+  let totalNew      = 0
   let totalDuplicate = 0
   const errorLog: { source: string; error: string; at: string }[] = []
 
@@ -53,9 +91,11 @@ export async function runScrapingPass(
     .from("recruitments")
     .select("id, name, year, organizations(name)")
   const existingKeys = new Set<string>()
-  const existingMap = new Map<string, string>() // key → recruitment_id
+  const existingMap  = new Map<string, string>()
   for (const r of existingRecruitments ?? []) {
-    const key = buildRecruitmentKey((r.organizations as any)?.name ?? "", r.year, r.name)
+    // organizations is a joined object — cast from Supabase's Json union type
+    const orgRow = r.organizations as { name: string } | null
+    const key = buildRecruitmentKey(orgRow?.name ?? "", r.year, r.name)
     existingKeys.add(key)
     existingMap.set(key, r.id)
   }
@@ -67,85 +107,100 @@ export async function runScrapingPass(
     .not("status", "in", '("rejected","duplicate")')
   const queuedKeys = new Set<string>()
   for (const item of queuedItems ?? []) {
+    // extracted_data is jsonb — narrow via type guard before using as ExtractedRecruitment
     const d = item.extracted_data
-    if (d?.organization_name && d?.year && d?.title) {
-      queuedKeys.add(computeSimilarityKey(d))
+    if (
+      d !== null &&
+      typeof d === "object" &&
+      !Array.isArray(d) &&
+      typeof (d as Record<string, unknown>).organization_name === "string"
+    ) {
+      queuedKeys.add(computeSimilarityKey(d as unknown as ExtractedRecruitment))
     }
   }
 
   // Process each source
   for (const source of activeSources) {
     const targetUrl = source.base_url + (source.notification_path ?? "")
+
     try {
-      // Fetch raw text
       const rawText = await fetchPageText(targetUrl)
       if (!rawText) {
-        errorLog.push({ source: source.name, error: "Failed to fetch page", at: new Date().toISOString() })
+        errorLog.push({ source: source.name, error: "Empty response", at: new Date().toISOString() })
         continue
       }
 
-      // Extract structured data with Claude
       const result = await extractRecruitmentData(rawText, targetUrl, source.name)
       if (!result) {
-        errorLog.push({ source: source.name, error: "Extraction failed", at: new Date().toISOString() })
+        errorLog.push({ source: source.name, error: "Extraction returned null", at: new Date().toISOString() })
         continue
       }
 
       const { data, confidence } = result
       totalFound++
 
-      // Deduplication check
+      // Dedup check
       const simKey = computeSimilarityKey(data)
-      const isDuplicateOfExisting = existingKeys.has(simKey)
-      const isDuplicateOfQueued   = queuedKeys.has(simKey)
+      const isDuplicate = existingKeys.has(simKey) || queuedKeys.has(simKey)
+      const duplicateOf  = existingMap.get(simKey) ?? null
 
-      if (isDuplicateOfExisting || isDuplicateOfQueued) {
+      if (isDuplicate) {
         totalDuplicate++
-        // Still log it but mark as duplicate
+        // Still insert with duplicate status so admins can see it
         await supabase.from("scrape_queue").insert({
-          source_url:      targetUrl,
-          source_name:     source.name,
-          extracted_data:  data,
+          source_url:       targetUrl,
+          source_name:      source.name,
+          // Cast to Json-safe shape — posts: unknown[] is not assignable to Json[]
+          extracted_data:   toJsonSafe(data) as unknown as Database["public"]["Tables"]["scrape_queue"]["Insert"]["extracted_data"],
           confidence_score: confidence,
-          status:          "duplicate",
-          scrape_run_id:   runId,
-          duplicate_of:    isDuplicateOfExisting ? existingMap.get(simKey) ?? null : null,
+          status:           "duplicate",
+          scrape_run_id:    runId,
+          duplicate_of:     duplicateOf,
         })
-      } else {
-        // New item — add to review queue
-        totalNew++
-        queuedKeys.add(simKey) // prevent same-run duplicate
-
-        // Auto-approve high-confidence items from known trustworthy sources
-        const autoApprove = confidence >= 0.92 && isHighTrustSource(source.name)
-
-        await supabase.from("scrape_queue").insert({
-          source_url:      targetUrl,
-          source_name:     source.name,
-          extracted_data:  data,
-          confidence_score: confidence,
-          status:          autoApprove ? "approved" : "pending",
-          scrape_run_id:   runId,
-        })
-
-        // If auto-approved, immediately promote to recruitments table
-        if (autoApprove) {
-          await promoteToRecruitments(data, supabase)
-        }
+        continue
       }
 
-      // Update source last_scraped_at
+      // Insert as pending (confidence < 0.90) or approved (confidence ≥ 0.90)
+      const status = confidence >= 0.90 ? "approved" : "pending"
+      await supabase.from("scrape_queue").insert({
+        source_url:       targetUrl,
+        source_name:      source.name,
+        extracted_data:   toJsonSafe(data) as unknown as Database["public"]["Tables"]["scrape_queue"]["Insert"]["extracted_data"],
+        confidence_score: confidence,
+        status,
+        scrape_run_id:    runId,
+        duplicate_of:     null,
+      })
+
+      totalNew++
+      queuedKeys.add(simKey)
+
+      // Update source last_scraped_at + health
       await supabase
         .from("scrape_sources")
-        .update({ last_scraped_at: new Date().toISOString() })
+        .update({
+          last_scraped_at:   new Date().toISOString(),
+          last_success_at:   new Date().toISOString(),
+          consecutive_fails: 0,
+          is_healthy:        true,
+        })
         .eq("id", source.id)
 
-    } catch (err: any) {
+    } catch (err) {
       errorLog.push({
         source: source.name,
-        error: err?.message ?? String(err),
-        at: new Date().toISOString(),
+        error:  err instanceof Error ? err.message : String(err),
+        at:     new Date().toISOString(),
       })
+
+      // Increment consecutive_fails
+      await supabase
+        .from("scrape_sources")
+        .update({
+          consecutive_fails: (source.consecutive_fails ?? 0) + 1,
+          is_healthy:        false,
+        })
+        .eq("id", source.id)
     }
   }
 
@@ -155,13 +210,13 @@ export async function runScrapingPass(
     : "completed"
 
   await supabase.from("scrape_runs").update({
-    finished_at:     new Date().toISOString(),
-    status:          finalStatus,
-    sources_checked: activeSources.length,
-    items_found:     totalFound,
-    items_new:       totalNew,
-    items_duplicate: totalDuplicate,
-    error_log:       errorLog,
+    finished_at:      new Date().toISOString(),
+    status:           finalStatus,
+    sources_checked:  activeSources.length,
+    items_found:      totalFound,
+    items_new:        totalNew,
+    items_duplicate:  totalDuplicate,
+    error_log:        errorLog as unknown as Database["public"]["Tables"]["scrape_runs"]["Update"]["error_log"],
   }).eq("id", runId)
 
   return runId
@@ -170,7 +225,7 @@ export async function runScrapingPass(
 // ── Promote an approved scrape item into recruitments ─────────────────────────
 
 export async function promoteToRecruitments(
-  data: any,
+  data: ExtractedRecruitment,
   supabase: Awaited<ReturnType<typeof createClient>>
 ): Promise<string | null> {
   try {
@@ -190,13 +245,13 @@ export async function promoteToRecruitments(
     const { data: recruitment } = await supabase
       .from("recruitments")
       .insert({
-        organization_id:    org.id,
-        name:               data.title,
-        year:               data.year,
-        notification_date:  data.notification_date ?? null,
-        apply_start_date:   data.apply_start_date ?? null,
-        apply_end_date:     data.apply_end_date ?? null,
-        status:             deriveStatus(data.apply_start_date, data.apply_end_date),
+        organization_id:   org.id,
+        name:              data.title,
+        year:              data.year,
+        notification_date: data.notification_date ?? null,
+        apply_start_date:  data.apply_start_date  ?? null,
+        apply_end_date:    data.apply_end_date     ?? null,
+        status:            deriveStatus(data.apply_start_date, data.apply_end_date),
       })
       .select("id")
       .single()
@@ -210,8 +265,8 @@ export async function promoteToRecruitments(
         .insert({
           recruitment_id: recruitment.id,
           post_name:      post.post_name,
-          group_type:     post.group_type ?? null,
-          pay_level:      post.pay_level ?? null,
+          group_type:     post.group_type  ?? null,
+          pay_level:      post.pay_level   ?? null,
           job_type:       "direct",
         })
         .select("id")
@@ -219,31 +274,22 @@ export async function promoteToRecruitments(
 
       if (!postRow) continue
 
-      // Age criteria
       if (post.min_age || post.max_age) {
         await supabase.from("age_criteria").insert({
           post_id:     postRow.id,
-          min_age:     post.min_age ?? null,
-          max_age:     post.max_age ?? null,
+          min_age:     post.min_age  ?? null,
+          max_age:     post.max_age  ?? null,
           cutoff_date: data.apply_end_date ?? null,
         })
       }
 
-      // Education criteria
       if (post.education_required) {
         await supabase.from("education_criteria").insert({
-          post_id:                postRow.id,
+          post_id:                 postRow.id,
           min_qualification_level: mapEducationLevel(post.education_required),
-          allowed_disciplines:     post.disciplines ? { disciplines: post.disciplines } : null,
-        })
-      }
-
-      // Vacancies
-      if (post.vacancies) {
-        await supabase.from("vacancies").insert({
-          post_id:       postRow.id,
-          category:      "UR",
-          vacancy_count: post.vacancies,
+          allowed_disciplines:     post.disciplines
+            ? (post.disciplines as unknown as Database["public"]["Tables"]["education_criteria"]["Insert"]["allowed_disciplines"])
+            : null,
         })
       }
     }
@@ -257,36 +303,23 @@ export async function promoteToRecruitments(
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function buildRecruitmentKey(orgName: string, year: number, title: string): string {
-  const org = orgName.toLowerCase().replace(/[^a-z0-9]/g, "")
-  const titleWords = title.toLowerCase().split(/\s+/).slice(0, 4).join("")
-  return `${org}-${year}-${titleWords}`
-}
-
-function isHighTrustSource(sourceName: string): boolean {
-  const trusted = ["UPSC", "SSC", "IBPS", "RBI", "SEBI", "NABARD"]
-  return trusted.some(t => sourceName.toUpperCase().includes(t))
-}
-
-function deriveStatus(startDate: string | null, endDate: string | null): string {
+function deriveStatus(start: string | null, end: string | null): string {
   const now = new Date()
-  if (!startDate && !endDate) return "upcoming"
-  const start = startDate ? new Date(startDate) : null
-  const end   = endDate   ? new Date(endDate)   : null
-  if (end && end < now)   return "closed"
-  if (start && start > now) return "upcoming"
-  return "open"
+  const e   = end   ? new Date(end)   : null
+  const s   = start ? new Date(start) : null
+  if (e && e < now) return "closed"
+  if (s && s > now) return "upcoming"
+  if (s && s <= now) return "open"
+  return "upcoming"
 }
 
 function mapEducationLevel(raw: string): string {
   const lower = raw.toLowerCase()
-  if (lower.includes("phd") || lower.includes("doctoral")) return "phd"
-  if (lower.includes("post") && lower.includes("grad")) return "postgraduate"
-  if (lower.includes("ca") || lower.includes("chartered")) return "professional"
-  if (lower.includes("master") || lower.includes("mba") || lower.includes("m.sc")) return "postgraduate"
-  if (lower.includes("bachelor") || lower.includes("b.sc") || lower.includes("b.e") || lower.includes("b.tech") || lower.includes("graduation")) return "graduation"
+  if (lower.includes("phd") || lower.includes("doctorate")) return "phd"
+  if (lower.includes("postgraduate") || lower.includes("post graduate") || lower.includes("master")) return "postgraduate"
+  if (lower.includes("graduate") || lower.includes("bachelor") || lower.includes("degree")) return "graduate"
   if (lower.includes("diploma")) return "diploma"
-  if (lower.includes("12") || lower.includes("hsc") || lower.includes("inter")) return "12th"
-  if (lower.includes("10") || lower.includes("ssc") || lower.includes("matric")) return "10th"
-  return "graduation"
+  if (lower.includes("12") || lower.includes("xii") || lower.includes("senior secondary") || lower.includes("intermediate")) return "class_12"
+  if (lower.includes("10") || lower.includes("x") || lower.includes("matriculation") || lower.includes("secondary")) return "class_10"
+  return "graduate"
 }
