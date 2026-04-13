@@ -2,9 +2,9 @@
  * app/admin/sources/page.tsx
  * Career Copilot — Source Registry Management Page
  *
- * Uses dbGetAllSources() from the data layer — no inline Supabase queries.
- * When DB schema changes, update lib/db/source-registry.ts and TypeScript
- * will show exactly which parts of this file need updating.
+ * CHANGE: Inspector is now a side panel (SourceInspectorPanel) embedded here,
+ * not a separate /admin/sources/inspect page. The panel is triggered by a
+ * button in the SourceRegistryManager header.
  */
 
 import { redirect }         from "next/navigation"
@@ -56,8 +56,7 @@ export default async function AdminSourcesPage({
   if (!profile?.is_admin) redirect("/dashboard")
 
   const params  = await searchParams
-  // Use data layer — no raw Supabase query in page files
-  const sources = await dbGetAllSources()
+  const sources = await dbGetAllSources().catch(() => [])
   const prefill = parsePrefill(params)
 
   return (

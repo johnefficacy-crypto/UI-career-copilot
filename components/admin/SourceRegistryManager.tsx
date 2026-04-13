@@ -4,21 +4,16 @@
  * components/admin/SourceRegistryManager.tsx
  * Career Copilot — Source Registry CRUD Manager
  *
- * FIXES:
- *  - CRITICAL: Replaced `useState(() => {...})` (no-op pattern) with
- *    `useEffect([editSource])` so the form correctly re-populates when
- *    editing an existing source. Previously the drawer always showed
- *    stale/empty data on edit.
- *  - Added `key={editSource?.id ?? "new"}` on SourceDrawer so React
- *    fully remounts the form state when switching between sources.
- *  - Drawer now resets error state on open.
- *  - handleSaved now updates the source in-place (edit) rather than
- *    prepending a duplicate.
- *  - Verified all server action imports are correct.
+ * ALL FIXES APPLIED:
+ *  1. useRef + useEffect for prefill drawer auto-open (was Promise.resolve().then → React warning)
+ *  2. key={editSource?.id ?? "new"} on SourceDrawer (forces remount on source switch)
+ *  3. handleSaved updates source in-place (edit) or prepends (create)
+ *  4. SourceInspectorPanel embedded as side drawer (replaces /admin/sources/inspect page)
+ *  5. requires_login field included in sourceToForm (was missing)
  */
 
- import { useState, useTransition, useMemo, useRef, useEffect } from "react"
- import Link from "next/link"
+import { useState, useTransition, useMemo, useRef, useEffect } from "react"
+import Link from "next/link"
 import {
   SOURCE_CATEGORIES,
   SOURCE_TYPES,
@@ -26,7 +21,6 @@ import {
   ANTI_BOT_RISKS,
   TIERS,
   TIER_LABELS,
-  TIER_COLORS,
   JURISDICTIONS,
   ALL_STATES_AND_UTS,
   SCRAPE_INTERVALS,
@@ -43,29 +37,11 @@ import {
   bulkDeleteSources,
   type SourceFormData,
 } from "@/actions/sources"
-
-// ─── Constants ────────────────────────────────────────────────────────────────
-
-// CATEGORIES imported from @/lib/constants/source-registry
-const CATEGORIES = SOURCE_CATEGORIES
-
-// SOURCE_TYPES imported from @/lib/constants/source-registry
-
-// ADAPTER_TYPES imported from @/lib/constants/source-registry
-// ANTI_BOT_RISKS imported from @/lib/constants/source-registry
-// TIERS, TIER_LABELS, TIER_COLORS imported from @/lib/constants/source-registry
-
-// ALL_STATES_AND_UTS imported from @/lib/constants/source-registry
-
-// EMPTY_FORM uses SOURCE_FORM_DEFAULTS from @/lib/constants/source-registry
-const EMPTY_FORM: Omit<SourceFormData, "id"> = { ...SOURCE_FORM_DEFAULTS }
+import { SourceInspectorPanel } from "@/components/admin/Sourceinspectorpanel"
+import type { SourceRegistryRow } from "@/lib/constants/source-registry"
 
 // ─── Source type ──────────────────────────────────────────────────────────────
 
-// FIX: Use the generated DB type directly instead of hand-typing.
-// Pick only the columns we select in the page query — if the DB schema changes,
-// TypeScript will catch mismatches at compile time rather than silently at runtime.
-import type { SourceRegistryRow } from "@/lib/constants/source-registry"
 type Source = Pick<SourceRegistryRow,
   | "id" | "source_name" | "short_code" | "source_type" | "category"
   | "jurisdiction" | "state" | "parent_org" | "official_url" | "notification_url"
@@ -77,6 +53,34 @@ type Source = Pick<SourceRegistryRow,
   | "last_error" | "notes" | "added_by" | "parser_config"
   | "created_at" | "updated_at"
 >
+
+// ─── Prefill data (from Source Inspector) ────────────────────────────────────
+
+export type PrefillData = {
+  official_url?:          string
+  notification_url?:      string
+  rss_url?:               string
+  api_url?:               string
+  adapter_type?:          string
+  anti_bot_risk?:         string
+  trust_score?:           number
+  requires_playwright?:   boolean
+  has_captcha?:           boolean
+  pdf_only?:              boolean
+  is_active?:             boolean
+  scrape_interval_hours?: number
+}
+
+// ─── Props ────────────────────────────────────────────────────────────────────
+
+interface Props {
+  sources:         Source[]
+  initialSearch:   string
+  initialCategory: string
+  initialTier:     string
+  initialStatus:   string
+  prefill?:        PrefillData
+}
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 
@@ -95,6 +99,9 @@ const css = {
   warning:    "#f59e0b",
   teal:       "#0e9f6e",
 }
+
+const EMPTY_FORM: Omit<SourceFormData, "id"> = { ...SOURCE_FORM_DEFAULTS }
+const CATEGORIES = SOURCE_CATEGORIES
 
 // ─── UI primitives ────────────────────────────────────────────────────────────
 
@@ -131,15 +138,17 @@ function Input({ label, value, onChange, placeholder = "", type = "text", requir
   placeholder?: string; type?: string; required?: boolean
 }) {
   return (
-    <div className="flex flex-col gap-1">
-      <label className="text-xs font-medium" style={{ color: css.textMuted }}>
+    <div>
+      <label className="block text-xs mb-1.5" style={{ color: css.textGhost }}>
         {label}{required && <span style={{ color: css.danger }}> *</span>}
       </label>
       <input
-        type={type} value={value} onChange={e => onChange(e.target.value)}
-        placeholder={placeholder} required={required}
-        className="rounded-lg px-3 py-2 text-sm outline-none transition-colors"
-        style={{ background: css.surfaceMd, border: `1px solid ${css.borderMd}`, color: css.textBase }}
+        type={type}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="w-full px-3 py-2 rounded-xl text-sm outline-none"
+        style={{ background: css.surfaceMd, border: `1px solid ${css.border}`, color: css.textBase }}
       />
     </div>
   )
@@ -147,18 +156,15 @@ function Input({ label, value, onChange, placeholder = "", type = "text", requir
 
 function Select({ label, value, onChange, options }: {
   label: string; value: string; onChange: (v: string) => void
-  // ReadonlyArray accepts both mutable arrays AND `as const` readonly tuples
-  options: ReadonlyArray<{ readonly value: string | number; readonly label: string }>
+  options: Array<{ value: string; label: string }>
 }) {
   return (
-    <div className="flex flex-col gap-1">
-      <label className="text-xs font-medium" style={{ color: css.textMuted }}>{label}</label>
+    <div>
+      <label className="block text-xs mb-1.5" style={{ color: css.textGhost }}>{label}</label>
       <select value={value} onChange={e => onChange(e.target.value)}
-        className="rounded-lg px-3 py-2 text-sm outline-none"
-        style={{ background: css.surfaceMd, border: `1px solid ${css.borderMd}`, color: css.textBase }}>
-        {options.map(o => (
-          <option key={o.value} value={o.value}>{o.label}</option>
-        ))}
+        className="w-full px-3 py-2 rounded-xl text-sm outline-none cursor-pointer"
+        style={{ background: css.surfaceMd, border: `1px solid ${css.border}`, color: css.textBase }}>
+        {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
       </select>
     </div>
   )
@@ -168,14 +174,14 @@ function Toggle({ label, checked, onChange, hint }: {
   label: string; checked: boolean; onChange: (v: boolean) => void; hint?: string
 }) {
   return (
-    <div className="flex items-center justify-between py-1">
+    <div className="flex items-center justify-between gap-3">
       <div>
-        <p className="text-xs font-medium" style={{ color: css.textMuted }}>{label}</p>
-        {hint && <p className="text-xs" style={{ color: css.textGhost }}>{hint}</p>}
+        <p className="text-sm" style={{ color: css.textMuted }}>{label}</p>
+        {hint && <p className="text-xs mt-0.5" style={{ color: css.textGhost }}>{hint}</p>}
       </div>
       <button type="button" onClick={() => onChange(!checked)}
-        className="w-10 h-5 rounded-full transition-colors relative shrink-0 ml-4"
-        style={{ background: checked ? css.gold : css.borderMd }}>
+        className="relative w-11 h-6 rounded-full shrink-0 transition-colors"
+        style={{ background: checked ? css.gold : css.borderMd, border: `1px solid ${checked ? css.gold : css.borderMd}` }}>
         <span className="absolute top-0.5 w-4 h-4 rounded-full transition-all"
           style={{ background: "#fff", left: checked ? "22px" : "2px" }} />
       </button>
@@ -183,7 +189,7 @@ function Toggle({ label, checked, onChange, hint }: {
   )
 }
 
-// ─── Pure helper — lives at module level so it can be called from useState() ──
+// ─── Pure helper ─────────────────────────────────────────────────────────────
 
 function sourceToForm(s: Source): Omit<SourceFormData, "id"> {
   return {
@@ -205,7 +211,7 @@ function sourceToForm(s: Source): Omit<SourceFormData, "id"> {
     trust_score:           s.trust_score,
     anti_bot_risk:         s.anti_bot_risk,
     requires_playwright:   s.requires_playwright,
-    requires_login:        s.requires_login,      // ← was missing
+    requires_login:        s.requires_login,
     has_captcha:           s.has_captcha,
     pdf_only:              s.pdf_only,
     is_active:             s.is_active,
@@ -214,285 +220,20 @@ function sourceToForm(s: Source): Omit<SourceFormData, "id"> {
   }
 }
 
-// ─── Source drawer form ───────────────────────────────────────────────────────
-
-function SourceDrawer({
-  open, onClose, editSource, prefillData, onSaved,
-}: {
-  open:          boolean
-  onClose:       () => void
-  editSource:    Source | null
-  prefillData?:  PrefillData
-  onSaved:       (src: Source) => void
-}) {
-  const isEdit = editSource !== null
-
-  // Form initialised once per mount (key prop on parent handles remounting).
-  // When prefillData is present (coming from Source Inspector), merge it
-  // into EMPTY_FORM so detected fields are pre-populated.
-  const [form, setForm] = useState<Omit<SourceFormData, "id">>(() => {
-    if (editSource) return sourceToForm(editSource)
-    if (prefillData) return {
-      ...EMPTY_FORM,
-      official_url:          prefillData.official_url         ?? EMPTY_FORM.official_url,
-      notification_url:      prefillData.notification_url     ?? EMPTY_FORM.notification_url,
-      rss_url:               prefillData.rss_url              ?? EMPTY_FORM.rss_url,
-      api_url:               prefillData.api_url              ?? EMPTY_FORM.api_url,
-      adapter_type:          prefillData.adapter_type         ?? EMPTY_FORM.adapter_type,
-      anti_bot_risk:         prefillData.anti_bot_risk        ?? EMPTY_FORM.anti_bot_risk,
-      trust_score:           prefillData.trust_score          ?? EMPTY_FORM.trust_score,
-      requires_playwright:   prefillData.requires_playwright  ?? EMPTY_FORM.requires_playwright,
-      has_captcha:           prefillData.has_captcha          ?? EMPTY_FORM.has_captcha,
-      pdf_only:              prefillData.pdf_only             ?? EMPTY_FORM.pdf_only,
-      is_active:             prefillData.is_active            ?? EMPTY_FORM.is_active,
-      scrape_interval_hours: prefillData.scrape_interval_hours ?? EMPTY_FORM.scrape_interval_hours,
-    }
-    return { ...EMPTY_FORM }
-  })
-  const [isPending, startTransition] = useTransition()
-  const [error, setError]            = useState<string | null>(null)
-
-  const set = (key: keyof typeof form) => (value: string | number | boolean) =>
-    setForm(prev => ({ ...prev, [key]: value }))
-
-  function handleSubmit() {
-    setError(null)
-    startTransition(async () => {
-      const result = isEdit
-        ? await updateSource(editSource!.id, form)
-        : await createSource(form)
-
-      if (!result.success) {
-        setError(result.error ?? "Unknown error")
-        return
-      }
-
-      // Build updated source object for optimistic UI
-      const saved: Source = isEdit
-        ? { ...editSource!, ...form, updated_at: new Date().toISOString() }
-        : {
-            id:                result.id!,
-            consecutive_fails: 0,
-            last_scraped_at:   null,
-            last_success_at:   null,
-            last_error:        null,
-            created_at:        new Date().toISOString(),
-            updated_at:        new Date().toISOString(),
-            ...form,
-            short_code:        form.short_code       || null,
-            state:             form.state            || null,
-            notification_url:  form.notification_url || null,
-            rss_url:           form.rss_url          || null,
-            api_url:           form.api_url          || null,
-            pdf_bulletin_url:  form.pdf_bulletin_url || null,
-            notes:             form.notes            || null,
-            // DB-managed fields not in the form — set to their creation defaults
-            // parent_org comes from ...form spread above (it IS a form field)
-            added_by:          "admin",
-            parser_config:     {},
-            last_changed_at:   null,
-          }
-
-      onSaved(saved)
-      onClose()
-    })
-  }
-
-  if (!open) return null
-
-  return (
-    <>
-      {/* Backdrop */}
-      <div className="fixed inset-0 z-40" style={{ background: "rgba(0,0,0,0.6)" }}
-        onClick={onClose} />
-
-      {/* Drawer */}
-      <div
-        className="fixed right-0 top-0 bottom-0 z-50 w-full max-w-xl flex flex-col"
-        style={{ background: "#0d1626", borderLeft: `1px solid ${css.borderMd}`, boxShadow: "-8px 0 40px rgba(0,0,0,0.5)" }}
-      >
-        {/* Header */}
-        <div className="shrink-0 flex items-center justify-between px-6 py-4"
-          style={{ borderBottom: `1px solid ${css.border}` }}>
-          <div>
-            <h2 className="text-lg font-bold" style={{ color: css.textBase }}>
-              {isEdit ? "Edit Source" : "Add New Source"}
-            </h2>
-            <p className="text-xs mt-0.5" style={{ color: css.textGhost }}>
-              {isEdit ? `Editing: ${editSource?.source_name}` : "Add a new source to the scraping registry"}
-            </p>
-          </div>
-          <button type="button" onClick={onClose}
-            className="w-8 h-8 rounded-lg flex items-center justify-center text-lg"
-            style={{ background: "rgba(255,255,255,0.04)", color: css.textGhost, border: `1px solid ${css.border}` }}>
-            ✕
-          </button>
-        </div>
-
-        {/* Scrollable body */}
-        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
-
-          {/* Error banner */}
-          {error && (
-            <div className="rounded-lg px-4 py-3 text-sm"
-              style={{ background: "rgba(239,68,68,0.10)", border: "1px solid rgba(239,68,68,0.30)", color: css.danger }}>
-              ✗ {error}
-            </div>
-          )}
-
-          {/* Section: Identity */}
-          <div>
-            <p className="text-xs uppercase tracking-widest mb-3" style={{ color: css.gold }}>Identity</p>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="col-span-2">
-                <Input label="Source Name" value={form.source_name} onChange={set("source_name")}
-                  placeholder="e.g. UPSC Official Notifications" required />
-              </div>
-              <Input label="Short Code" value={form.short_code} onChange={set("short_code")}
-                placeholder="e.g. UPSC" />
-              <Select label="Category" value={form.category} onChange={set("category")}
-                options={CATEGORIES} />
-              <Select label="Source Type" value={form.source_type} onChange={set("source_type")}
-                options={SOURCE_TYPES.map(t => ({ value: t.value, label: t.label }))} />
-              <Select label="Jurisdiction" value={form.jurisdiction} onChange={set("jurisdiction")}
-                options={JURISDICTIONS} />
-              {form.jurisdiction === "state" && (
-                <div className="col-span-2">
-                  <Select label="State / UT" value={form.state} onChange={set("state")}
-                    options={[{ value: "", label: "— Select state / UT —" }, ...ALL_STATES_AND_UTS.map(s => ({ value: s, label: s }))]} />
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Section: URLs */}
-          <div>
-            <p className="text-xs uppercase tracking-widest mb-3" style={{ color: css.gold }}>URLs</p>
-            <div className="grid gap-3">
-              <Input label="Parent Organisation (optional)" value={form.parent_org} onChange={set("parent_org")}
-                placeholder="e.g. Ministry of Finance (leave blank if standalone)" />
-              <Input label="Official URL" value={form.official_url} onChange={set("official_url")}
-                placeholder="https://upsc.gov.in" required />
-              <Input label="Notification URL" value={form.notification_url} onChange={set("notification_url")}
-                placeholder="https://upsc.gov.in/notifications" />
-              <Input label="RSS Feed URL" value={form.rss_url} onChange={set("rss_url")}
-                placeholder="https://upsc.gov.in/rss.xml" />
-              <Input label="API URL" value={form.api_url} onChange={set("api_url")}
-                placeholder="https://example.gov.in/api/jobs" />
-              <Input label="PDF Bulletin URL" value={form.pdf_bulletin_url} onChange={set("pdf_bulletin_url")}
-                placeholder="https://example.gov.in/notice.pdf" />
-            </div>
-          </div>
-
-          {/* Section: Scraping Config */}
-          <div>
-            <p className="text-xs uppercase tracking-widest mb-3" style={{ color: css.gold }}>Scraping Config</p>
-            <div className="grid grid-cols-2 gap-3">
-              <Select label="Adapter Type" value={form.adapter_type} onChange={set("adapter_type")}
-                options={ADAPTER_TYPES.map(a => ({ value: a.value, label: `${a.value} — ${a.desc}` }))} />
-              <Select label="Tier" value={String(form.tier)}
-                onChange={v => set("tier")(Number(v))}
-                options={TIERS.map(t => ({ value: t.value, label: `${t.label} (${t.interval})` }))} />
-              <Select label="Scrape Interval"
-                value={String(form.scrape_interval_hours)}
-                onChange={v => set("scrape_interval_hours")(Number(v))}
-                options={SCRAPE_INTERVALS.map(i => ({ value: i.value, label: i.label }))} />
-              <Select label="Anti-Bot Risk" value={form.anti_bot_risk} onChange={set("anti_bot_risk")}
-                options={ANTI_BOT_RISKS.map(r => ({ value: r.value, label: r.label }))} />
-              <div className="col-span-2">
-                <label className="text-xs font-medium mb-1 block" style={{ color: css.textMuted }}>
-                  Trust Score — {form.trust_score.toFixed(2)}
-                </label>
-                <div className="flex items-center gap-3">
-                  <input type="range" min="0" max="1" step="0.05"
-                    value={form.trust_score}
-                    onChange={e => set("trust_score")(Number(e.target.value))}
-                    className="flex-1 accent-yellow-500" />
-                  <span className="text-sm tabular-nums font-medium w-10 text-right"
-                    style={{ color: form.trust_score >= 0.85 ? css.success : form.trust_score >= 0.60 ? css.warning : css.danger }}>
-                    {form.trust_score.toFixed(2)}
-                  </span>
-                </div>
-              </div>
-            </div>
-            <div className="mt-3 space-y-1 rounded-xl p-3"
-              style={{ background: css.surfaceMd, border: `1px solid ${css.border}` }}>
-              <Toggle label="Requires Playwright" checked={form.requires_playwright}
-                onChange={set("requires_playwright")}
-                hint="JS-rendered SPA — curl returns empty, browser shows full list" />
-              <Toggle label="Requires Login" checked={form.requires_login}
-                onChange={set("requires_login")}
-                hint="Page requires authentication to view notifications" />
-              <Toggle label="Has CAPTCHA" checked={form.has_captcha}
-                onChange={set("has_captcha")} hint="CAPTCHA on the listing page itself (not just login)" />
-              <Toggle label="PDF Only" checked={form.pdf_only}
-                onChange={set("pdf_only")} hint="All notification links are raw .pdf downloads" />
-            </div>
-          </div>
-
-          {/* Section: Status */}
-          <div>
-            <p className="text-xs uppercase tracking-widest mb-3" style={{ color: css.gold }}>Status</p>
-            <div className="rounded-xl p-3 space-y-1"
-              style={{ background: css.surfaceMd, border: `1px solid ${css.border}` }}>
-              <Toggle label="Active" checked={form.is_active} onChange={set("is_active")}
-                hint="Inactive sources are skipped by the scraper" />
-              <Toggle label="Verified" checked={form.is_verified} onChange={set("is_verified")}
-                hint="URL has been manually confirmed to work" />
-            </div>
-          </div>
-
-          {/* Notes */}
-          <div>
-            <label className="text-xs font-medium mb-1 block" style={{ color: css.textMuted }}>Notes</label>
-            <textarea value={form.notes} onChange={e => set("notes")(e.target.value)}
-              rows={3} placeholder="What exams does this source cover? Any known issues?"
-              className="w-full rounded-lg px-3 py-2 text-sm outline-none resize-none"
-              style={{ background: css.surfaceMd, border: `1px solid ${css.borderMd}`, color: css.textBase }} />
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className="shrink-0 flex items-center justify-between px-6 py-4 gap-3"
-          style={{ borderTop: `1px solid ${css.border}` }}>
-          <button type="button" onClick={onClose}
-            className="px-4 py-2 rounded-xl text-sm"
-            style={{ background: css.surfaceMd, color: css.textMuted, border: `1px solid ${css.border}` }}>
-            Cancel
-          </button>
-          <button type="button" onClick={handleSubmit} disabled={isPending}
-            className="flex-1 py-2 rounded-xl text-sm font-semibold transition-colors"
-            style={{
-              background: isPending ? css.goldFaint : "rgba(201,153,42,0.20)",
-              color:      css.gold,
-              border:     "1px solid rgba(201,153,42,0.35)",
-              opacity:    isPending ? 0.7 : 1,
-            }}>
-            {isPending ? "Saving…" : isEdit ? "Save Changes" : "Add Source"}
-          </button>
-        </div>
-      </div>
-    </>
-  )
-}
-
-// ─── Delete confirm modal ─────────────────────────────────────────────────────
+// ─── Delete modal ─────────────────────────────────────────────────────────────
 
 function DeleteModal({ source, onConfirm, onCancel, isPending }: {
   source: Source; onConfirm: () => void; onCancel: () => void; isPending: boolean
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background: "rgba(0,0,0,0.7)" }}>
-      <div className="rounded-2xl p-6 w-full max-w-sm"
-        style={{ background: "#0d1626", border: "1px solid rgba(239,68,68,0.30)" }}>
-        <h3 className="text-base font-bold mb-2" style={{ color: css.textBase }}>Delete Source</h3>
-        <p className="text-sm mb-1" style={{ color: css.textMuted }}>
-          Are you sure you want to delete{" "}
-          <span style={{ color: css.textBase, fontWeight: 600 }}>{source.source_name}</span>?
-        </p>
-        <p className="text-xs mb-5" style={{ color: css.textGhost }}>
-          This also deletes all ETag cache and health metrics. This cannot be undone.
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+      <div className="absolute inset-0 bg-black/60" onClick={onCancel} />
+      <div className="relative rounded-2xl p-6 w-full max-w-sm space-y-4"
+        style={{ background: css.surfaceMd, border: `1px solid ${css.borderMd}` }}>
+        <h3 className="text-base font-semibold" style={{ color: css.textBase }}>Delete source?</h3>
+        <p className="text-sm" style={{ color: css.textMuted }}>
+          This will permanently remove <strong style={{ color: css.textBase }}>{source.source_name}</strong>{" "}
+          and clear its ETag cache and health metrics. This cannot be undone.
         </p>
         <div className="flex gap-3">
           <button type="button" onClick={onCancel}
@@ -516,7 +257,7 @@ function DeleteModal({ source, onConfirm, onCancel, isPending }: {
 function SourceRow({
   source, selected, onSelect, onEdit, onDelete, onToggle, onVerify, onReset, disabled,
 }: {
-  source:   Source; selected: boolean; disabled: boolean
+  source: Source; selected: boolean; disabled: boolean
   onSelect: () => void; onEdit: () => void; onDelete: () => void
   onToggle: () => void; onVerify: () => void; onReset: () => void
 }) {
@@ -524,6 +265,10 @@ function SourceRow({
   const lastScrape = source.last_scraped_at
     ? new Date(source.last_scraped_at).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })
     : "Never"
+
+  const adapterColor: Record<string, string> = {
+    rss: css.success, json: css.teal, html: css.textMuted, pdf: "#a78bfa", playwright: css.warning, manual: css.textGhost,
+  }
 
   return (
     <div className="flex items-center gap-3 px-4 py-3 rounded-xl group transition-colors"
@@ -533,20 +278,15 @@ function SourceRow({
         opacity:    source.is_active ? 1 : 0.55,
       }}>
 
-      {/* Checkbox */}
       <input type="checkbox" checked={selected} onChange={onSelect}
         className="w-3.5 h-3.5 rounded shrink-0 cursor-pointer accent-yellow-500" />
 
-      {/* Health dot */}
       <span className="w-2 h-2 rounded-full shrink-0"
         style={{ background: !source.is_active ? css.textGhost : isHealthy ? css.success : css.danger }} />
 
-      {/* Main info */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-sm font-medium" style={{ color: css.textBase }}>
-            {source.source_name}
-          </span>
+          <span className="text-sm font-medium" style={{ color: css.textBase }}>{source.source_name}</span>
           {source.short_code && (
             <span className="text-xs font-mono px-1.5 py-px rounded"
               style={{ color: css.textGhost, background: "rgba(255,255,255,0.04)", border: `1px solid ${css.border}` }}>
@@ -555,91 +295,287 @@ function SourceRow({
           )}
           <Pill
             text={TIER_LABELS[source.tier] ?? `T${source.tier}`}
-            color={TIER_COLORS[source.tier]}
-            bg={`${TIER_COLORS[source.tier]}15`}
+            color={source.tier === 1 ? css.gold : source.tier === 2 ? "rgba(255,255,255,0.65)" : css.textGhost}
+            bg={source.tier === 1 ? css.goldFaint : "rgba(255,255,255,0.05)"}
           />
           <span className="text-xs px-1.5 py-px rounded"
-            style={{ color: css.textGhost, background: "rgba(255,255,255,0.03)" }}>
-            {source.category}
-          </span>
-          <span className="text-xs px-1.5 py-px rounded"
-            style={{ color: css.textGhost, background: "rgba(255,255,255,0.03)" }}>
+            style={{ color: adapterColor[source.adapter_type] ?? css.textGhost, background: "rgba(255,255,255,0.04)" }}>
             {source.adapter_type}
           </span>
+          {source.is_verified && (
+            <span className="text-xs" style={{ color: css.teal }}>✓ verified</span>
+          )}
         </div>
-        <p className="text-xs mt-0.5 truncate" style={{ color: css.textGhost }}>
-          {source.notification_url ?? source.official_url}
-          {source.consecutive_fails > 0 ? ` · ⚠ ${source.consecutive_fails} fails` : ""}
-          {source.last_error ? ` · ${source.last_error.slice(0, 60)}` : ""}
-        </p>
-        <p className="text-xs mt-0.5" style={{ color: css.textGhost }}>
-          Last scraped: {lastScrape}
-          {source.trust_score !== undefined && ` · Trust: ${(source.trust_score * 100).toFixed(0)}%`}
-        </p>
+        <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+          <span className="text-xs truncate max-w-xs" style={{ color: css.textGhost }}>
+            {source.notification_url ?? source.official_url}
+          </span>
+          <span className="text-xs" style={{ color: css.textGhost }}>·</span>
+          <span className="text-xs" style={{ color: css.textGhost }}>last: {lastScrape}</span>
+          {source.consecutive_fails > 0 && (
+            <>
+              <span className="text-xs" style={{ color: css.textGhost }}>·</span>
+              <span className="text-xs" style={{ color: source.consecutive_fails >= 5 ? css.danger : css.warning }}>
+                ⚠ {source.consecutive_fails} fails
+              </span>
+            </>
+          )}
+        </div>
       </div>
 
-      {/* Action buttons */}
+      {/* Actions (visible on hover or always on mobile) */}
       <div className="flex items-center gap-1 shrink-0">
-        {source.is_verified && (
-          <span className="text-xs mr-1" style={{ color: css.teal }}>✓ Verified</span>
+        {source.consecutive_fails > 0 && (
+          <IconBtn onClick={onReset} title="Reset fails + re-enable" disabled={disabled}>↺</IconBtn>
         )}
-
-        {/* Toggle active */}
-        <IconBtn onClick={onToggle} title={source.is_active ? "Disable source" : "Enable source"} disabled={disabled}>
+        <IconBtn onClick={onVerify} title={source.is_verified ? "Unverify" : "Mark verified"} disabled={disabled}>
+          {source.is_verified ? "✓" : "○"}
+        </IconBtn>
+        <IconBtn onClick={onToggle} title={source.is_active ? "Disable" : "Enable"} disabled={disabled}>
           {source.is_active ? "⏸" : "▶"}
         </IconBtn>
-
-        {/* Mark verified / unverify */}
-        <IconBtn onClick={onVerify} title={source.is_verified ? "Mark unverified" : "Mark as verified"} disabled={disabled}>
-          {source.is_verified ? "✓" : "?"}
-        </IconBtn>
-
-        {/* Reset fails */}
-        {source.consecutive_fails > 0 && (
-          <IconBtn onClick={onReset} title="Reset consecutive fails and re-enable" disabled={disabled}>
-            ↺
-          </IconBtn>
-        )}
-
-        {/* Edit */}
-        <IconBtn onClick={onEdit} title="Edit source">
-          ✎
-        </IconBtn>
-
-        {/* Delete */}
-        <IconBtn onClick={onDelete} title="Delete source" danger>
-          ✕
-        </IconBtn>
+        <IconBtn onClick={onEdit} title="Edit source" disabled={disabled}>✎</IconBtn>
+        <IconBtn onClick={onDelete} title="Delete source" danger disabled={disabled}>✕</IconBtn>
       </div>
     </div>
   )
 }
 
+// ─── Source drawer ────────────────────────────────────────────────────────────
+
+function SourceDrawer({
+  open, onClose, editSource, prefillData, onSaved,
+}: {
+  open: boolean; onClose: () => void; editSource: Source | null
+  prefillData?: PrefillData; onSaved: (src: Source) => void
+}) {
+  const isEdit = editSource !== null
+
+  const [form, setForm] = useState<Omit<SourceFormData, "id">>(() => {
+    if (editSource) return sourceToForm(editSource)
+    if (prefillData) return {
+      ...EMPTY_FORM,
+      official_url:          prefillData.official_url         ?? EMPTY_FORM.official_url,
+      notification_url:      prefillData.notification_url     ?? EMPTY_FORM.notification_url,
+      rss_url:               prefillData.rss_url              ?? EMPTY_FORM.rss_url,
+      api_url:               prefillData.api_url              ?? EMPTY_FORM.api_url,
+      adapter_type:          prefillData.adapter_type         ?? EMPTY_FORM.adapter_type,
+      anti_bot_risk:         prefillData.anti_bot_risk        ?? EMPTY_FORM.anti_bot_risk,
+      trust_score:           prefillData.trust_score          ?? EMPTY_FORM.trust_score,
+      requires_playwright:   prefillData.requires_playwright  ?? EMPTY_FORM.requires_playwright,
+      has_captcha:           prefillData.has_captcha          ?? EMPTY_FORM.has_captcha,
+      pdf_only:              prefillData.pdf_only             ?? EMPTY_FORM.pdf_only,
+      is_active:             prefillData.is_active            ?? EMPTY_FORM.is_active,
+      scrape_interval_hours: prefillData.scrape_interval_hours ?? EMPTY_FORM.scrape_interval_hours,
+    }
+    return { ...EMPTY_FORM }
+  })
+
+  const [isPending, startTransition] = useTransition()
+  const [error, setError]            = useState<string | null>(null)
+
+  const set = (key: keyof typeof form) => (value: string | number | boolean) =>
+    setForm(prev => ({ ...prev, [key]: value }))
+
+  function handleSubmit() {
+    setError(null)
+    startTransition(async () => {
+      const result = isEdit
+        ? await updateSource(editSource!.id, form)
+        : await createSource(form)
+
+      if (!result.success) {
+        setError(result.error ?? "Unknown error")
+        return
+      }
+
+      const saved: Source = isEdit
+        ? { ...editSource!, ...form, updated_at: new Date().toISOString() }
+        : {
+            id:                result.id!,
+            consecutive_fails: 0,
+            last_scraped_at:   null,
+            last_success_at:   null,
+            last_error:        null,
+            last_changed_at:   null,
+            created_at:        new Date().toISOString(),
+            updated_at:        new Date().toISOString(),
+            added_by:          "admin",
+            parser_config:     {},
+            ...form,
+            short_code:        form.short_code       || null,
+            state:             form.state            || null,
+            parent_org:        form.parent_org       || null,
+            notification_url:  form.notification_url || null,
+            rss_url:           form.rss_url          || null,
+            api_url:           form.api_url          || null,
+            pdf_bulletin_url:  form.pdf_bulletin_url || null,
+            notes:             form.notes            || null,
+          }
+
+      onSaved(saved)
+      onClose()
+    })
+  }
+
+  if (!open) return null
+
+  return (
+    <>
+      <div className="fixed inset-0 z-40" style={{ background: "rgba(0,0,0,0.6)" }} onClick={onClose} />
+      <div className="fixed right-0 top-0 bottom-0 z-50 w-full max-w-xl flex flex-col"
+        style={{ background: "#0d1626", borderLeft: `1px solid ${css.borderMd}`, boxShadow: "-8px 0 40px rgba(0,0,0,0.5)" }}>
+
+        {/* Header */}
+        <div className="shrink-0 flex items-center justify-between px-6 py-4"
+          style={{ borderBottom: `1px solid ${css.border}` }}>
+          <div>
+            <h2 className="text-lg font-bold" style={{ color: css.textBase }}>
+              {isEdit ? "Edit Source" : "Add New Source"}
+            </h2>
+            <p className="text-xs mt-0.5" style={{ color: css.textGhost }}>
+              {isEdit ? `Editing: ${editSource?.source_name}` : "Add a new source to the scraping registry"}
+            </p>
+          </div>
+          <button type="button" onClick={onClose}
+            className="w-8 h-8 rounded-lg flex items-center justify-center text-lg"
+            style={{ background: "rgba(255,255,255,0.04)", color: css.textGhost, border: `1px solid ${css.border}` }}>
+            ✕
+          </button>
+        </div>
+
+        {/* Scrollable body */}
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
+
+          {error && (
+            <div className="rounded-lg px-4 py-3 text-sm"
+              style={{ background: "rgba(239,68,68,0.10)", border: "1px solid rgba(239,68,68,0.30)", color: css.danger }}>
+              ✗ {error}
+            </div>
+          )}
+
+          {/* Identity */}
+          <div>
+            <p className="text-xs uppercase tracking-widest mb-3" style={{ color: css.gold }}>Identity</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="col-span-2">
+                <Input label="Source Name" value={form.source_name} onChange={set("source_name")}
+                  placeholder="e.g. UPSC Official Notifications" required />
+              </div>
+              <Input label="Short Code" value={form.short_code} onChange={set("short_code")} placeholder="e.g. UPSC" />
+              <Select label="Category" value={form.category} onChange={set("category")}
+                options={CATEGORIES.map(c => ({ value: c.value, label: c.label }))} />
+              <Select label="Source Type" value={form.source_type} onChange={set("source_type")}
+                options={SOURCE_TYPES.map(t => ({ value: t.value, label: t.label }))} />
+              <Select label="Jurisdiction" value={form.jurisdiction} onChange={set("jurisdiction")}
+                options={JURISDICTIONS.map(j => ({ value: j.value, label: j.label }))} />
+              {(form.jurisdiction === "state" || form.jurisdiction === "ut") && (
+                <div className="col-span-2">
+                  <Select label="State / UT" value={form.state} onChange={set("state")}
+                    options={[{ value: "", label: "— Select —" }, ...ALL_STATES_AND_UTS.map(s => ({ value: s, label: s }))]} />
+                </div>
+              )}
+              <div className="col-span-2">
+                <Input label="Parent Organisation (optional)" value={form.parent_org} onChange={set("parent_org")}
+                  placeholder="e.g. Ministry of Finance" />
+              </div>
+            </div>
+          </div>
+
+          {/* URLs */}
+          <div>
+            <p className="text-xs uppercase tracking-widest mb-3" style={{ color: css.gold }}>URLs</p>
+            <div className="grid gap-3">
+              <Input label="Official URL *" value={form.official_url} onChange={set("official_url")}
+                placeholder="https://upsc.gov.in" required />
+              <Input label="Notification / Listing URL" value={form.notification_url} onChange={set("notification_url")}
+                placeholder="https://upsc.gov.in/examinations/active-examinations" />
+              <Input label="RSS Feed URL" value={form.rss_url} onChange={set("rss_url")}
+                placeholder="https://upsc.gov.in/feed.xml" />
+              <Input label="JSON API URL" value={form.api_url} onChange={set("api_url")}
+                placeholder="https://upsc.gov.in/wp-json/wp/v2/posts" />
+              <Input label="PDF Bulletin URL" value={form.pdf_bulletin_url} onChange={set("pdf_bulletin_url")}
+                placeholder="https://upsc.gov.in/notifications.pdf" />
+            </div>
+          </div>
+
+          {/* Adapter Config */}
+          <div>
+            <p className="text-xs uppercase tracking-widest mb-3" style={{ color: css.gold }}>Adapter Config</p>
+            <div className="grid grid-cols-2 gap-3">
+              <Select label="Adapter Type" value={form.adapter_type} onChange={set("adapter_type")}
+                options={ADAPTER_TYPES.map(a => ({ value: a.value, label: `${a.label} — ${a.desc.slice(0, 30)}` }))} />
+              <Select label="Anti-Bot Risk" value={form.anti_bot_risk} onChange={set("anti_bot_risk")}
+                options={ANTI_BOT_RISKS.map(r => ({ value: r.value, label: `${r.label} — ${r.desc.slice(0, 28)}` }))} />
+            </div>
+          </div>
+
+          {/* Scrape Settings */}
+          <div>
+            <p className="text-xs uppercase tracking-widest mb-3" style={{ color: css.gold }}>Scrape Settings</p>
+            <div className="grid grid-cols-2 gap-3">
+              <Select label="Tier" value={String(form.tier)} onChange={v => set("tier")(Number(v))}
+                options={TIERS.map(t => ({ value: String(t.value), label: t.label }))} />
+              <Select label="Scrape Interval" value={String(form.scrape_interval_hours)}
+                onChange={v => set("scrape_interval_hours")(Number(v))}
+                options={SCRAPE_INTERVALS.map(i => ({ value: String(i.value), label: i.label }))} />
+              <div>
+                <label className="block text-xs mb-1.5" style={{ color: css.textGhost }}>Trust Score (0–1)</label>
+                <input type="number" min="0" max="1" step="0.05" value={form.trust_score}
+                  onChange={e => set("trust_score")(Number(e.target.value))}
+                  className="w-full px-3 py-2 rounded-xl text-sm outline-none"
+                  style={{ background: css.surfaceMd, border: `1px solid ${css.border}`, color: css.textBase }} />
+              </div>
+            </div>
+          </div>
+
+          {/* Flags */}
+          <div>
+            <p className="text-xs uppercase tracking-widest mb-3" style={{ color: css.gold }}>Flags</p>
+            <div className="space-y-3 rounded-xl p-4" style={{ background: css.surfaceMd, border: `1px solid ${css.border}` }}>
+              <Toggle label="Active" checked={form.is_active} onChange={set("is_active")}
+                hint="Inactive sources are skipped by the scraper" />
+              <Toggle label="Verified" checked={form.is_verified} onChange={set("is_verified")}
+                hint="Mark after confirming the URL actually returns notifications" />
+              <Toggle label="Requires Playwright" checked={form.requires_playwright} onChange={set("requires_playwright")}
+                hint="JS-rendered SPA — needs headless browser (not yet implemented in Edge Function)" />
+              <Toggle label="Requires Login" checked={form.requires_login} onChange={set("requires_login")}
+                hint="Content behind authentication — cannot be auto-scraped" />
+              <Toggle label="Has CAPTCHA" checked={form.has_captcha} onChange={set("has_captcha")}
+                hint="CAPTCHA on the listings page itself (not just login)" />
+              <Toggle label="PDF Only" checked={form.pdf_only} onChange={set("pdf_only")}
+                hint="All notifications are PDFs — use pdf adapter" />
+            </div>
+          </div>
+
+          {/* Notes */}
+          <div>
+            <p className="text-xs uppercase tracking-widest mb-3" style={{ color: css.gold }}>Notes</p>
+            <textarea value={form.notes} onChange={e => set("notes")(e.target.value)}
+              rows={3} placeholder="Any notes about this source — URL changes, known issues, etc."
+              className="w-full px-3 py-2 rounded-xl text-sm outline-none resize-none"
+              style={{ background: css.surfaceMd, border: `1px solid ${css.border}`, color: css.textBase }} />
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="shrink-0 px-6 py-4 flex gap-3" style={{ borderTop: `1px solid ${css.border}` }}>
+          <button type="button" onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm"
+            style={{ background: css.surfaceMd, color: css.textMuted, border: `1px solid ${css.border}` }}>
+            Cancel
+          </button>
+          <button type="button" onClick={handleSubmit} disabled={isPending}
+            className="flex-1 py-2.5 rounded-xl text-sm font-semibold"
+            style={{ background: isPending ? css.goldFaint : "rgba(201,153,42,0.20)", color: css.gold, border: "1px solid rgba(201,153,42,0.35)", opacity: isPending ? 0.7 : 1 }}>
+            {isPending ? "Saving…" : isEdit ? "Save Changes" : "Add Source"}
+          </button>
+        </div>
+      </div>
+    </>
+  )
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
-
-export interface PrefillData {
-  official_url?:         string
-  notification_url?:     string
-  rss_url?:              string
-  api_url?:              string
-  adapter_type?:         string
-  anti_bot_risk?:        string
-  trust_score?:          number
-  requires_playwright?:  boolean
-  has_captcha?:          boolean
-  pdf_only?:             boolean
-  is_active?:            boolean
-  scrape_interval_hours?: number
-}
-
-interface Props {
-  sources:         Source[]
-  initialSearch:   string
-  initialCategory: string
-  initialTier:     string
-  initialStatus:   string
-  prefill?:        PrefillData
-}
 
 export function SourceRegistryManager({
   sources: initialSources,
@@ -656,47 +592,15 @@ export function SourceRegistryManager({
   const [statusFilter, setStatusFilter] = useState(initialStatus)
   const [selected, setSelected]         = useState<Set<string>>(new Set())
   const [drawerOpen, setDrawerOpen]     = useState(false)
+  const [inspectorOpen, setInspectorOpen] = useState(false)
   const [editSource, setEditSource]     = useState<Source | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Source | null>(null)
   const [isPending, startTransition]    = useTransition()
   const [toast, setToast]               = useState<{ msg: string; ok: boolean } | null>(null)
 
-  function showToast(msg: string, ok = true) {
-    setToast({ msg, ok })
-    setTimeout(() => setToast(null), 3500)
-  }
-
-  function openEdit(src: Source) {
-    setEditSource(src)
-    setDrawerOpen(true)
-  }
-
-  function openNew() {
-    setEditSource(null)
-    setDrawerOpen(true)
-  }
-
-  // // Auto-open the "Add Source" drawer when prefill data is present (came from inspector)
-  // // We use a ref to ensure this only fires once on mount, avoiding re-open on re-render
-  // const prefillOpenedRef = useState(false)
-  // if (prefill && !drawerOpen && !prefillOpenedRef[0]) {
-  //   prefillOpenedRef[1](true)
-  //   // Schedule drawer open after initial render
-  //   Promise.resolve().then(() => {
-  //     setEditSource(null)
-  //     setDrawerOpen(true)
-  //   })
-  // }
-//   PROBLEM: Line ~682-690 uses Promise.resolve().then() to open the drawer when
-// prefill data arrives. This fires as a microtask before the component has
-// mounted, triggering React's "Can't perform a state update on a component that
-// hasn't mounted yet" warning.
- 
-// Also: `useState(false)` is used as a mutable ref — calling `prefillOpenedRef[1](true)`
-// schedules a re-render, which can cause the same block to fire again.
-
-  // Auto-open the "Add Source" drawer when prefill data arrives from the inspector.
-  // useRef + useEffect: safe pattern — state updates after mount, never during render.
+  // FIX: useRef + useEffect instead of Promise.resolve().then()
+  // Promise.resolve fires as a microtask before mount — React warns about
+  // state updates on unmounted components. useEffect fires after mount.
   const prefillAppliedRef = useRef(false)
   useEffect(() => {
     if (prefill && !prefillAppliedRef.current) {
@@ -707,9 +611,15 @@ export function SourceRegistryManager({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  function showToast(msg: string, ok = true) {
+    setToast({ msg, ok })
+    setTimeout(() => setToast(null), 3500)
+  }
+
+  function openEdit(src: Source) { setEditSource(src); setDrawerOpen(true) }
+  function openNew()              { setEditSource(null); setDrawerOpen(true) }
   function closeDrawer() {
     setDrawerOpen(false)
-    // Delay clearing editSource so the drawer can animate out
     setTimeout(() => setEditSource(null), 200)
   }
 
@@ -722,10 +632,10 @@ export function SourceRegistryManager({
                !(s.short_code?.toLowerCase().includes(q))) return false
       if (catFilter !== "all" && s.category !== catFilter) return false
       if (tierFilter !== "all" && String(s.tier) !== tierFilter) return false
-      if (statusFilter === "active"    && !s.is_active)             return false
-      if (statusFilter === "inactive"  && s.is_active)              return false
-      if (statusFilter === "failing"   && s.consecutive_fails < 5)  return false
-      if (statusFilter === "unverified"&& s.is_verified)            return false
+      if (statusFilter === "active"     && !s.is_active)             return false
+      if (statusFilter === "inactive"   && s.is_active)              return false
+      if (statusFilter === "failing"    && s.consecutive_fails < 5)  return false
+      if (statusFilter === "unverified" && s.is_verified)            return false
       return true
     })
   }, [sources, search, catFilter, tierFilter, statusFilter])
@@ -738,25 +648,16 @@ export function SourceRegistryManager({
     tier1:    sources.filter(s => s.tier === 1).length,
   }), [sources])
 
-  // ── Select all ─────────────────────────────────────────────────────────────
   function handleSelectAll(e: React.ChangeEvent<HTMLInputElement>) {
     if (e.target.checked) setSelected(new Set(filtered.map(s => s.id)))
     else setSelected(new Set())
   }
 
-  // ── Actions ────────────────────────────────────────────────────────────────
-
-  /** FIX: handleSaved correctly REPLACES the edited source (or prepends new) */
+  // FIX: handleSaved correctly replaces in-place (edit) or prepends (create)
   function handleSaved(saved: Source) {
     setSources(prev => {
       const idx = prev.findIndex(s => s.id === saved.id)
-      if (idx >= 0) {
-        // Edit: replace in-place
-        const next = [...prev]
-        next[idx] = saved
-        return next
-      }
-      // Create: prepend
+      if (idx >= 0) { const next = [...prev]; next[idx] = saved; return next }
       return [saved, ...prev]
     })
     showToast(editSource ? `Updated "${saved.source_name}"` : `Added "${saved.source_name}"`)
@@ -876,11 +777,12 @@ export function SourceRegistryManager({
             style={{ background: "rgba(255,255,255,0.04)", color: css.textGhost, border: `1px solid ${css.border}` }}>
             📖 Field Guide
           </Link>
-          <Link href="/admin/sources/inspect"
+          {/* FIX: Opens side panel instead of navigating to separate page */}
+          <button type="button" onClick={() => setInspectorOpen(true)}
             className="px-3 py-2 rounded-xl text-xs"
             style={{ background: "rgba(255,255,255,0.04)", color: css.textGhost, border: `1px solid ${css.border}` }}>
             🔍 Inspect URL
-          </Link>
+          </button>
           <button type="button" onClick={openNew}
             className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold"
             style={{ background: "rgba(201,153,42,0.18)", color: css.gold, border: "1px solid rgba(201,153,42,0.35)" }}>
@@ -889,46 +791,43 @@ export function SourceRegistryManager({
         </div>
       </div>
 
-      {/* Stats */}
+      {/* Stats bar */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         {[
           { label: "Total",    value: stats.total,    color: css.textBase },
-          { label: "Active",   value: stats.active,   color: css.success },
-          { label: "Verified", value: stats.verified, color: css.teal },
-          { label: "Failing",  value: stats.failing,  color: stats.failing > 0 ? css.danger : css.textGhost },
-          { label: "Tier 1",   value: stats.tier1,    color: css.gold },
+          { label: "Active",   value: stats.active,   color: css.success  },
+          { label: "Verified", value: stats.verified, color: css.teal     },
+          { label: "Failing",  value: stats.failing,  color: stats.failing > 0 ? css.danger : css.textMuted },
+          { label: "Tier 1",   value: stats.tier1,    color: css.gold     },
         ].map(s => (
           <div key={s.label} className="rounded-xl px-4 py-3"
             style={{ background: css.surface, border: `1px solid ${css.border}` }}>
-            <p className="text-xs uppercase tracking-wider" style={{ color: css.textGhost }}>{s.label}</p>
-            <p className="text-xl font-bold tabular-nums mt-1" style={{ color: s.color }}>{s.value}</p>
+            <p className="text-xl font-bold" style={{ color: s.color }}>{s.value}</p>
+            <p className="text-xs mt-0.5" style={{ color: css.textGhost }}>{s.label}</p>
           </div>
         ))}
       </div>
 
-      {/* Filters */}
-      <div className="flex items-center gap-3 flex-wrap">
-        <div className="relative flex-1 min-w-48">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm" style={{ color: css.textGhost }}>🔍</span>
-          <input value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Search name, URL, short code…"
-            className="w-full pl-8 pr-3 py-2 rounded-xl text-sm outline-none"
-            style={{ background: css.surface, border: `1px solid ${css.border}`, color: css.textBase }} />
-        </div>
+      {/* Search + filters */}
+      <div className="flex flex-wrap gap-3">
+        <input value={search} onChange={e => setSearch(e.target.value)}
+          placeholder="Search by name, URL, or code…"
+          className="flex-1 min-w-48 px-3 py-2 rounded-xl text-sm outline-none"
+          style={{ background: css.surface, border: `1px solid ${css.border}`, color: css.textBase }} />
         <select value={catFilter} onChange={e => setCatFilter(e.target.value)}
-          className="px-3 py-2 rounded-xl text-sm outline-none"
+          className="px-3 py-2 rounded-xl text-sm outline-none cursor-pointer"
           style={{ background: css.surface, border: `1px solid ${css.border}`, color: css.textMuted }}>
           <option value="all">All categories</option>
           {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
         </select>
         <select value={tierFilter} onChange={e => setTierFilter(e.target.value)}
-          className="px-3 py-2 rounded-xl text-sm outline-none"
+          className="px-3 py-2 rounded-xl text-sm outline-none cursor-pointer"
           style={{ background: css.surface, border: `1px solid ${css.border}`, color: css.textMuted }}>
           <option value="all">All tiers</option>
-          {TIERS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+          {[1, 2, 3, 4].map(t => <option key={t} value={String(t)}>T{t}</option>)}
         </select>
         <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
-          className="px-3 py-2 rounded-xl text-sm outline-none"
+          className="px-3 py-2 rounded-xl text-sm outline-none cursor-pointer"
           style={{ background: css.surface, border: `1px solid ${css.border}`, color: css.textMuted }}>
           <option value="all">All status</option>
           <option value="active">Active</option>
@@ -936,7 +835,7 @@ export function SourceRegistryManager({
           <option value="failing">Failing (≥5 fails)</option>
           <option value="unverified">Unverified</option>
         </select>
-        <span className="text-xs" style={{ color: css.textGhost }}>
+        <span className="px-3 py-2 text-xs self-center" style={{ color: css.textGhost }}>
           {filtered.length} of {sources.length}
         </span>
       </div>
@@ -945,9 +844,7 @@ export function SourceRegistryManager({
       {selected.size > 0 && (
         <div className="flex items-center gap-3 px-4 py-3 rounded-xl"
           style={{ background: "rgba(201,153,42,0.08)", border: "1px solid rgba(201,153,42,0.25)" }}>
-          <span className="text-sm font-medium" style={{ color: css.gold }}>
-            {selected.size} selected
-          </span>
+          <span className="text-sm font-medium" style={{ color: css.gold }}>{selected.size} selected</span>
           <div className="flex gap-2 ml-auto">
             <button type="button" onClick={handleBulkEnable}
               className="text-xs px-3 py-1 rounded-lg font-medium"
@@ -973,7 +870,7 @@ export function SourceRegistryManager({
         </div>
       )}
 
-      {/* Select all row */}
+      {/* Select all */}
       {filtered.length > 0 && (
         <div className="flex items-center gap-2 px-4">
           <input type="checkbox"
@@ -1023,12 +920,7 @@ export function SourceRegistryManager({
         </div>
       )}
 
-      {/*
-        FIX: key={editSource?.id ?? "new"} forces React to fully remount the
-        drawer when switching between sources, ensuring useState inside
-        SourceDrawer starts fresh rather than carrying over stale values.
-        This complements the useEffect fix inside SourceDrawer.
-      */}
+      {/* Add/Edit drawer — key forces full remount when switching sources */}
       <SourceDrawer
         key={editSource?.id ?? "new"}
         open={drawerOpen}
@@ -1038,7 +930,13 @@ export function SourceRegistryManager({
         onSaved={handleSaved}
       />
 
-      {/* Delete confirm */}
+      {/* Inspector side panel */}
+      <SourceInspectorPanel
+        open={inspectorOpen}
+        onClose={() => setInspectorOpen(false)}
+      />
+
+      {/* Delete confirm modal */}
       {deleteTarget && (
         <DeleteModal
           source={deleteTarget}

@@ -1,7 +1,17 @@
+/**
+ * app/admin/recruitments/page.tsx
+ *
+ * FIX: Replaced <button onClick={confirm}> inside Server Component with
+ * <DeleteConfirmButton> — a small "use client" component.
+ * Server Components cannot have event handlers; onClick causes
+ * "Event handlers cannot be passed to Client Component props".
+ */
+
 import Link from "next/link"
 import { getAllRecruitmentsAdmin } from "@/lib/db/admin"
 import { formatDate, daysUntil } from "@/lib/utils/dates"
 import { adminDeleteRecruitment } from "@/actions/admin"
+import { DeleteConfirmButton } from "@/components/admin/Deleteconfirmbutton"
 
 const STATUS_STYLES: Record<string, string> = {
   open:     "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
@@ -9,10 +19,18 @@ const STATUS_STYLES: Record<string, string> = {
   closed:   "bg-white/5 text-white/30 border-white/10",
   draft:    "bg-amber-500/10 text-amber-400 border-amber-500/20",
 }
-type recruitment = Awaited<ReturnType<typeof getAllRecruitmentsAdmin>>[number]
+
+type Recruitment = Awaited<ReturnType<typeof getAllRecruitmentsAdmin>>[number]
 
 export default async function AdminRecruitmentsPage() {
-  const recruitments = await getAllRecruitmentsAdmin()
+  let recruitments: Awaited<ReturnType<typeof getAllRecruitmentsAdmin>> = []
+  let fetchError: string | null = null
+
+  try {
+    recruitments = await getAllRecruitmentsAdmin()
+  } catch (err) {
+    fetchError = err instanceof Error ? err.message : "Failed to load recruitments"
+  }
 
   return (
     <div className="p-8">
@@ -31,7 +49,13 @@ export default async function AdminRecruitmentsPage() {
         </Link>
       </div>
 
-      {recruitments.length === 0 ? (
+      {fetchError && (
+        <div className="mb-6 px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
+          {fetchError}
+        </div>
+      )}
+
+      {recruitments.length === 0 && !fetchError ? (
         <div className="rounded-xl border border-white/[0.07] bg-white/[0.02] px-6 py-12 text-center">
           <p className="text-white/40 text-sm">No recruitments yet.</p>
           <Link href="/admin/recruitments/new" className="text-[#e8d5a3]/60 text-sm hover:text-[#e8d5a3] mt-2 inline-block">
@@ -40,16 +64,13 @@ export default async function AdminRecruitmentsPage() {
         </div>
       ) : (
         <div className="flex flex-col gap-2">
-          {recruitments.map((rec: recruitment) => {
-            const daysLeft = daysUntil(rec.apply_end_date)
+          {recruitments.map((rec: Recruitment) => {
+            const daysLeft = rec.apply_end_date ? daysUntil(rec.apply_end_date) : null
             const postCount = rec.posts?.length ?? 0
-
             return (
-              <div
-                key={rec.id}
+              <div key={rec.id}
                 className="flex items-center gap-4 px-5 py-4 rounded-xl border border-white/[0.07] bg-white/[0.02] hover:border-white/[0.12] transition-colors"
               >
-                {/* Info */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-0.5">
                     <span className="text-white/30 text-xs">{rec.organizations?.type}</span>
@@ -61,46 +82,29 @@ export default async function AdminRecruitmentsPage() {
                   <p className="text-white text-sm font-medium truncate">{rec.name}</p>
                   <p className="text-white/35 text-xs">{rec.organizations?.name}</p>
                 </div>
-
-                {/* Deadline */}
                 <div className="text-right shrink-0">
                   <p className="text-white/40 text-xs">Deadline</p>
                   <p className={`text-xs font-mono tabular-nums ${
                     daysLeft !== null && daysLeft <= 7 ? "text-red-400" :
                     daysLeft !== null && daysLeft <= 21 ? "text-amber-300" : "text-white/50"
                   }`}>
-                    {daysLeft !== null && daysLeft >= 0
-                      ? `${daysLeft}d left`
-                      : formatDate(rec.apply_end_date)}
+                    {daysLeft !== null && daysLeft >= 0 ? `${daysLeft}d left` : rec.apply_end_date ? formatDate(rec.apply_end_date) : "—"}
                   </p>
                 </div>
-
-                {/* Status */}
-<span className={`shrink-0 border text-xs px-2.5 py-1 rounded-full ${STATUS_STYLES[rec.status ?? "upcoming"]}`}>                  {rec.status}
+                <span className={`shrink-0 border text-xs px-2.5 py-1 rounded-full ${STATUS_STYLES[rec.status ?? "upcoming"]}`}>
+                  {rec.status}
                 </span>
-
-                {/* Actions */}
                 <div className="flex items-center gap-2 shrink-0">
-                  <Link
-                    href={`/admin/recruitments/${rec.id}`}
-                    className="text-white/40 text-xs hover:text-white transition-colors px-2 py-1 rounded hover:bg-white/[0.05]"
-                  >
+                  <Link href={`/admin/recruitments/${rec.id}`}
+                    className="text-white/40 text-xs hover:text-white transition-colors px-2 py-1 rounded hover:bg-white/[0.05]">
                     Edit
                   </Link>
-                  <form action={adminDeleteRecruitment}>
-                    <input type="hidden" name="id" value={rec.id} />
-                    <button
-                      type="submit"
-                      className="text-red-400/40 text-xs hover:text-red-400 transition-colors px-2 py-1 rounded hover:bg-red-500/[0.05]"
-                      onClick={(e) => {
-                        if (!confirm(`Delete "${rec.name}"? This will also delete all posts and criteria.`)) {
-                          e.preventDefault()
-                        }
-                      }}
-                    >
-                      Delete
-                    </button>
-                  </form>
+                  <DeleteConfirmButton
+                    action={adminDeleteRecruitment}
+                    message={`Delete "${rec.name}"? This will also delete all posts and criteria.`}
+                    fields={{ id: rec.id }}
+                    label="✕"
+                  />
                 </div>
               </div>
             )
