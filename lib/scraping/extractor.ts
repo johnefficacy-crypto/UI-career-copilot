@@ -4,7 +4,7 @@
 // into structured ExtractedRecruitment objects.
 
 import Anthropic from "@anthropic-ai/sdk"
-import { ExtractedRecruitment } from "@/types/delete-scraping"
+import { ExtractedRecruitment } from "@/types/notifications"
 
 const client = new Anthropic()
 

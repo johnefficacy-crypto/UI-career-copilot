@@ -4,7 +4,7 @@
 
 import { createClient } from "@/utils/supabase/server"
 import { fetchPageText, extractRecruitmentData, computeSimilarityKey } from "./extractor"
-import { ScrapeSource, ScrapeResult } from "@/types/delete-scraping"
+import { ScrapeSource } from "@/types/notifications"
 
 // ── Run a full scrape pass for all active sources ─────────────────────────────
 

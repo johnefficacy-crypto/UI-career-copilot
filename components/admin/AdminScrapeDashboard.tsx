@@ -29,7 +29,7 @@ import type {
   QueueReviewItem,
   SourceHealthSnapshot,
 } from "@/types/notifications"
-import type { SourceRegistryEntry } from "@/lib/db/notifications"
+import type { SourceRegistryEntry } from "@/lib/db/source-registry"
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 

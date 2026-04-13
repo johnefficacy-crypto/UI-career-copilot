@@ -68,13 +68,14 @@ const EMPTY_FORM: Omit<SourceFormData, "id"> = { ...SOURCE_FORM_DEFAULTS }
 import type { SourceRegistryRow } from "@/lib/constants/source-registry"
 type Source = Pick<SourceRegistryRow,
   | "id" | "source_name" | "short_code" | "source_type" | "category"
-  | "jurisdiction" | "state" | "official_url" | "notification_url"
+  | "jurisdiction" | "state" | "parent_org" | "official_url" | "notification_url"
   | "rss_url" | "api_url" | "pdf_bulletin_url" | "adapter_type"
   | "scrape_interval_hours" | "tier" | "trust_score" | "anti_bot_risk"
-  | "requires_playwright" | "requires_login"  // requires_login was MISSING before
+  | "requires_playwright" | "requires_login"
   | "has_captcha" | "pdf_only" | "is_active" | "is_verified"
-  | "consecutive_fails" | "last_scraped_at" | "last_success_at"
-  | "last_error" | "notes" | "created_at" | "updated_at"
+  | "consecutive_fails" | "last_scraped_at" | "last_success_at" | "last_changed_at"
+  | "last_error" | "notes" | "added_by" | "parser_config"
+  | "created_at" | "updated_at"
 >
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
@@ -146,7 +147,8 @@ function Input({ label, value, onChange, placeholder = "", type = "text", requir
 
 function Select({ label, value, onChange, options }: {
   label: string; value: string; onChange: (v: string) => void
-  options: { value: string | number; label: string }[]
+  // ReadonlyArray accepts both mutable arrays AND `as const` readonly tuples
+  options: ReadonlyArray<{ readonly value: string | number; readonly label: string }>
 }) {
   return (
     <div className="flex flex-col gap-1">
@@ -284,9 +286,8 @@ function SourceDrawer({
             api_url:           form.api_url          || null,
             pdf_bulletin_url:  form.pdf_bulletin_url || null,
             notes:             form.notes            || null,
-            // DB fields with defaults — included so optimistic Source object is complete
-            requires_login:    form.requires_login,
-            parent_org:        null,
+            // DB-managed fields not in the form — set to their creation defaults
+            // parent_org comes from ...form spread above (it IS a form field)
             added_by:          "admin",
             parser_config:     {},
             last_changed_at:   null,
@@ -905,7 +906,7 @@ export function SourceRegistryManager({
           className="px-3 py-2 rounded-xl text-sm outline-none"
           style={{ background: css.surface, border: `1px solid ${css.border}`, color: css.textMuted }}>
           <option value="all">All tiers</option>
-          {TIERS.map(t => <option key={t} value={t}>{TIER_LABELS[t]}</option>)}
+          {TIERS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
         </select>
         <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
           className="px-3 py-2 rounded-xl text-sm outline-none"
