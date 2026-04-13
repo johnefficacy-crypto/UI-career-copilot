@@ -37,7 +37,7 @@ import {
   bulkDeleteSources,
   type SourceFormData,
 } from "@/actions/sources"
-import { SourceInspectorPanel } from "@/components/admin/Sourceinspectorpanel"
+import { SourceInspectorPanel } from "@/components/admin/SourceInspectorPanel"
 import type { SourceRegistryRow } from "@/lib/constants/source-registry"
 
 // ─── Source type ──────────────────────────────────────────────────────────────
