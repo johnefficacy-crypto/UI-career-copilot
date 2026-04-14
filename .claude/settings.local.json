@@ -1,7 +1,33 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npm run:*)"
+      "Bash(npm run:*)",
+      "Bash(xargs ls:*)",
+      "Bash(find /d/GovtExamAgent/career-copilot/.claude/worktrees/ecstatic-allen -type f \\\\\\( -name \"*.tsx\" -o -name \"*.ts\" \\\\\\) -exec wc -l {} \\\\;)",
+      "Bash(wc -l /d/GovtExamAgent/career-copilot/.claude/worktrees/ecstatic-allen/supabase/migrations/*.sql)",
+      "Bash(grep -c \"^import\\\\|^export\" /d/GovtExamAgent/career-copilot/.claude/worktrees/ecstatic-allen/lib/db/*.ts)",
+      "Bash(sort -t: -k2 -rn)",
+      "Bash(grep -r \"as never\\\\|\\\\.catch.*\\(\\)$\\\\|\\\\.then.*\\(\\)$\\\\|\\\\.finally.*\\(\\)$\" /d/GovtExamAgent/career-copilot/.claude/worktrees/ecstatic-allen --include=\"*.ts\" --include=\"*.tsx\")",
+      "Bash(pandoc \"D:/Users/user/Downloads/phase3a_report.docx\" -t plain)",
+      "Bash(pandoc \"D:\\\\Users\\\\user\\\\Downloads\\\\career_copilot_report_phase3.docx\" -t plain)",
+      "Bash(python3 \"C:/Users/user/AppData/Roaming/Claude/local-agent-mode-sessions/skills-plugin/dd7e2235-0537-4bb2-9f4d-dbd9cc7c010b/5b195858-d7d4-4311-ac78-b03f64b7e7c7/skills/docx/scripts/office/unpack.py\" \"D:/Users/user/Downloads/phase3a_report.docx\" \"D:/Users/user/Downloads/phase3a_report_unpacked/\")",
+      "Bash(python3 \"C:\\\\Users\\\\user\\\\AppData\\\\Roaming\\\\Claude\\\\local-agent-mode-sessions\\\\skills-plugin\\\\dd7e2235-0537-4bb2-9f4d-dbd9cc7c010b\\\\5b195858-d7d4-4311-ac78-b03f64b7e7c7\\\\skills\\\\docx\\\\scripts\\\\office\\\\unpack.py\" \"D:\\\\Users\\\\user\\\\Downloads\\\\career_copilot_report_phase3.docx\" \"/tmp/docx_unpacked\")",
+      "Bash(py -3 --version)",
+      "Bash(py -3 -c ':*)",
+      "Bash(iconv -f UTF-16LE -t UTF-8 \"D:\\\\GovtExamAgent\\\\career-copilot\\\\.claude\\\\worktrees\\\\ecstatic-allen/types/supabase.ts\")",
+      "Bash(npx tsc:*)",
+      "Bash(python3 -c ':*)",
+      "Bash(python -c \"p=r'D:\\\\GovtExamAgent\\\\career-copilot\\\\.claude\\\\worktrees\\\\ecstatic-allen\\\\types\\\\supabase.ts'; f=open\\(p,'rb'\\); print\\(' '.join\\('%02X'%b for b in f.read\\(4\\)\\)\\); f.close\\(\\)\")",
+      "Bash(python -c ':*)",
+      "Bash(gh pr create --title 'Phase 3B: Complete the eligibility engine' --body ':*)",
+      "Bash(where gh:*)",
+      "Bash(where git:*)",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(dir \"D:\\\\GovtExamAgent\\\\career-copilot\" /b)",
+      "Bash(findstr /i env)",
+      "Bash(netstat -ano)",
+      "Bash(findstr \":3000\")",
+      "Bash(taskkill /F /PID 348)"
     ]
   }
 }
