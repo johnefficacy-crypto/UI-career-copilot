@@ -27,7 +27,8 @@
       "Bash(findstr /i env)",
       "Bash(netstat -ano)",
       "Bash(findstr \":3000\")",
-      "Bash(taskkill /F /PID 348)"
+      "Bash(taskkill /F /PID 348)",
+      "Bash(supabase functions:*)"
     ]
   }
 }
