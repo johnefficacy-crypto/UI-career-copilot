@@ -40,7 +40,7 @@ export default async function IdentityPage({
   // Load existing profile
   const { data: profile } = await supabase
     .from("profiles")
-    .select("dob, gender, category, pwbd_status, domicile_state, ex_serviceman, govt_employee, phone, target_type")
+    .select("dob, gender, category, pwbd_status, domicile_state, ex_serviceman, service_years, govt_employee, phone, target_type")
     .eq("id", user.id)
     .maybeSingle()
 
@@ -53,6 +53,7 @@ export default async function IdentityPage({
 
   const exServiceman = profile?.ex_serviceman ?? false
   const govtEmployee = profile?.govt_employee ?? false
+  const serviceYears = profile?.service_years ?? null
 
   return (
     <div className="animate-fadeUp">
@@ -65,6 +66,16 @@ export default async function IdentityPage({
       {params?.error && (
         <div className="cc-alert-error">{decodeURIComponent(params.error)}</div>
       )}
+
+      {/* DPDP Act 2023 consent notice — required before collecting personal data */}
+      <div className="cc-alert-info" style={{ fontSize: "0.8125rem", marginBottom: "1.5rem" }}>
+        <strong>Data notice (DPDP Act 2023):</strong> The information below is used solely to match
+        you with eligible government job notifications. It is stored securely and never shared with
+        third parties. You can delete your account and all associated data at any time from{" "}
+        <a href="/account/delete" style={{ color: "var(--accent)", textDecoration: "underline" }}>
+          Account settings
+        </a>.
+      </div>
 
       <form action={saveIdentity} className="cc-step-form">
 
@@ -171,9 +182,38 @@ export default async function IdentityPage({
           <div className="flex flex-col gap-3">
             <label className="cc-checkbox-row">
               <input type="checkbox" name="ex_serviceman" value="true"
-                defaultChecked={exServiceman} />
+                defaultChecked={exServiceman}
+                id="ex_serviceman_checkbox" />
               <span>Ex-serviceman or dependent of ex-serviceman (age: actual − service − 3 years)</span>
             </label>
+
+            {/* Phase 3B: service_years — shown when ex-serviceman is checked */}
+            <div
+              id="service_years_field"
+              className="cc-field ml-6"
+              style={{ display: exServiceman ? "block" : "none" }}
+            >
+              <label htmlFor="service_years" className="cc-label">
+                Years of military service
+              </label>
+              <input
+                id="service_years"
+                name="service_years"
+                type="number"
+                min="0"
+                max="40"
+                step="1"
+                defaultValue={serviceYears ?? ""}
+                placeholder="e.g. 6"
+                className="cc-input"
+                style={{ maxWidth: "120px" }}
+              />
+              <p className="text-xs mt-1" style={{ color: "var(--text-ghost)" }}>
+                Used to compute effective age: actual age − service years − 3.
+                Leave blank if unknown (a minimum 3-year relaxation will be applied).
+              </p>
+            </div>
+
             <label className="cc-checkbox-row">
               <input type="checkbox" name="govt_employee" value="true"
                 defaultChecked={govtEmployee} />
@@ -181,6 +221,19 @@ export default async function IdentityPage({
             </label>
           </div>
         </div>
+
+        {/* Phase 3B: toggle service_years field visibility client-side */}
+        <script dangerouslySetInnerHTML={{ __html: `
+          (function() {
+            var cb = document.getElementById('ex_serviceman_checkbox');
+            var field = document.getElementById('service_years_field');
+            if (cb && field) {
+              cb.addEventListener('change', function() {
+                field.style.display = cb.checked ? 'block' : 'none';
+              });
+            }
+          })();
+        `}} />
 
         <div className="cc-form-nav">
           <a href="/onboarding" className="cc-btn-link">← Back</a>

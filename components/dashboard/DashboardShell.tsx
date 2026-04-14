@@ -57,7 +57,7 @@ export function DashboardShell({
     ? eligibleRecruitments
         .filter((r) => r.is_eligible)
         .map((r) => {
-          const name = (r.recruitment_name ?? r.name ?? "").toLowerCase()
+          const name = ((r.posts as any)?.recruitments?.name ?? "").toLowerCase()
           const matched = Object.entries(EXAM_NAME_TO_REGISTRY_ID).find(
             ([key]) => name.includes(key)
           )

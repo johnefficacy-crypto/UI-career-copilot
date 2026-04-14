@@ -48,6 +48,7 @@ export type IdentityStepPayload = {
   pwbd_status:    PwbdStatus | null
   domicile_state: string | null
   ex_serviceman:  boolean
+  service_years:  number | null   // Phase 3B: years of military service for age formula
   govt_employee:  boolean
   phone:          string | null
 }
@@ -121,6 +122,7 @@ export type OnboardingProfileDraft = {
   pwbd_status:         string | null
   domicile_state:      string | null
   ex_serviceman:       boolean | null
+  service_years:       number | null   // Phase 3B
   govt_employee:       boolean | null
   onboarding_step:     number
   onboarding_completed: boolean
