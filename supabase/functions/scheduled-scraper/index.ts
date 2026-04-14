@@ -15,7 +15,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 
 // ─── Env ──────────────────────────────────────────────────────────────────────
 const ANTHROPIC_KEY     = Deno.env.get("ANTHROPIC_API_KEY")        ?? ""
-const SUPABASE_URL      = Deno.env.get("NEXT_PUBLIC_SUPABASE_ANON_KEY")             ?? ""
+const SUPABASE_URL      = Deno.env.get("SUPABASE_URL")              ?? ""  // fix: was NEXT_PUBLIC_SUPABASE_ANON_KEY
 const SERVICE_ROLE_KEY  = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
 const CLAUDE_MODEL      = "claude-sonnet-4-20250514"
 const REQUEST_TIMEOUT   = 18_000
@@ -142,11 +142,6 @@ function jitter(src: SourceRecord): number {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function fingerprint(orgName: string, year: number, title: string): string {
-  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "")
-  return `${norm(orgName)}-${year}-${norm(title).slice(0, 30)}`
-}
 
 function deriveStatus(start: string | null, end: string | null): string {
   const now = new Date()
@@ -396,33 +391,45 @@ async function acquireContent(
 }
 
 // ─── Claude extraction ────────────────────────────────────────────────────────
+// Returns ALL recruitments found on a page (Employment News / UPSC Current
+// Openings can have 10–30 separate notifications — the old single-object
+// approach silently dropped all but the first).
 
 async function callClaude(
   text:       string,
   sourceUrl:  string,
   sourceName: string,
   year:       number
-): Promise<ExtractedRecruitment | null> {
+): Promise<ExtractedRecruitment[]> {
   const truncated = text.slice(0, 12000)
-  const prompt    = `Extract all recruitment notifications from this text scraped from ${sourceName} (${sourceUrl}).
+  const prompt    = `Extract ALL recruitment notifications from this text scraped from ${sourceName} (${sourceUrl}).
 
-Return a JSON object:
+There may be multiple separate recruitment notifications in this text. Extract EACH one separately.
+
+Return a JSON object with a "recruitments" array:
 {
-  "title": "full recruitment name",
-  "organization_name": "string",
-  "org_type": "UPSC|SSC|Banking|Railway|State|Insurance|Defence|Other",
-  "notification_date": "YYYY-MM-DD or null",
-  "apply_start_date": "YYYY-MM-DD or null",
-  "apply_end_date": "YYYY-MM-DD or null",
-  "total_vacancies": number or null,
-  "year": ${year},
-  "source_pdf_url": "string or null",
-  "official_notification_url": "${sourceUrl}",
-  "confidence": 0.0-1.0,
-  "posts": [{"post_name":"","group_type":"A|B|C|D|null","vacancies":null,"min_age":null,"max_age":null,"education_required":null}]
+  "recruitments": [
+    {
+      "title": "full recruitment name",
+      "organization_name": "string",
+      "org_type": "UPSC|SSC|Banking|Railway|State|Insurance|Defence|Other",
+      "notification_date": "YYYY-MM-DD or null",
+      "apply_start_date": "YYYY-MM-DD or null",
+      "apply_end_date": "YYYY-MM-DD or null",
+      "total_vacancies": number or null,
+      "year": ${year},
+      "source_pdf_url": "string or null",
+      "official_notification_url": "direct URL to this notification or ${sourceUrl} if not specified",
+      "confidence": 0.0-1.0,
+      "posts": [{"post_name":"","group_type":"A|B|C|D or null","vacancies":null,"min_age":null,"max_age":null,"education_required":null,"disciplines":null}]
+    }
+  ]
 }
 
-Return ONLY valid JSON, never markdown or explanation.
+Rules:
+- Set confidence=1.0 only when all key fields (title, org, dates, vacancies) are present and unambiguous.
+- If no recruitments found, return {"recruitments": []}.
+- Return ONLY valid JSON, never markdown or explanation.
 
 TEXT:
 ${truncated}`
@@ -437,14 +444,14 @@ ${truncated}`
       },
       body: JSON.stringify({
         model:      CLAUDE_MODEL,
-        max_tokens: 800,
-        system:     "You are a specialist data extraction agent for Indian government recruitment notifications. Return ONLY valid JSON, never markdown or explanation.",
+        max_tokens: 4000,  // increased from 800 — multi-recruitment responses can be large
+        system:     "You are a specialist data extraction agent for Indian government recruitment notifications. Return ONLY valid JSON with a top-level 'recruitments' array. Never return markdown or explanation.",
         messages:   [{ role: "user", content: prompt }],
       }),
       signal: AbortSignal.timeout(CLAUDE_TIMEOUT),
     })
 
-    if (!res.ok) return null
+    if (!res.ok) return []
 
     const data   = await res.json() as { content?: Array<{ type: string; text: string }> }
     const raw    = data.content?.find(b => b.type === "text")?.text ?? ""
@@ -452,11 +459,19 @@ ${truncated}`
 
     const jsonStart = clean.indexOf("{")
     const jsonEnd   = clean.lastIndexOf("}")
-    if (jsonStart === -1 || jsonEnd === -1) return null
+    if (jsonStart === -1 || jsonEnd === -1) return []
 
-    return JSON.parse(clean.slice(jsonStart, jsonEnd + 1)) as ExtractedRecruitment
+    const parsed = JSON.parse(clean.slice(jsonStart, jsonEnd + 1)) as { recruitments?: unknown[] }
+    const list   = Array.isArray(parsed.recruitments) ? parsed.recruitments : []
+
+    // Type-guard: keep only well-formed items
+    return list.filter((r): r is ExtractedRecruitment =>
+      typeof r === "object" && r !== null &&
+      typeof (r as Record<string, unknown>).title === "string" &&
+      (r as Record<string, unknown>).title !== ""
+    )
   } catch {
-    return null
+    return []
   }
 }
 
@@ -544,20 +559,18 @@ Deno.serve(async (req) => {
 
       const { text, url, skipped } = await acquireContent(supabase, src)
 
-      // Track health metric
-      await supabase.from("source_health_metrics").insert({
-        source_registry_id: src.id,  // FK to source_registry (new FK, post TASK 8 migration)
-        source_id:          src.id,  // legacy FK — kept until migration fully applied
-        fetch_duration_ms:  Date.now() - startMs,
-        http_status:        200,
-        parse_success:      true,
-        items_extracted:    skipped ? 0 : (text.length > 100 ? 1 : 0),
-        confidence_avg:     null,
-      })
-
       if (skipped) {
         totalSkipped++
         await supabase.from("source_registry").update({ last_scraped_at: now.toISOString() }).eq("id", src.id)
+        await supabase.from("source_health_metrics").insert({
+          source_registry_id: src.id,
+          source_id:          src.id,
+          fetch_duration_ms:  Date.now() - startMs,
+          http_status:        304,
+          parse_success:      true,
+          items_extracted:    0,
+          confidence_avg:     null,
+        })
         continue
       }
 
@@ -566,57 +579,78 @@ Deno.serve(async (req) => {
         continue
       }
 
-      // Claude extraction
-      const extracted = await callClaude(text, url, src.source_name, year)
-      if (!extracted || !extracted.title || (extracted.confidence ?? 0) < 0.30) {
+      // Claude extraction — returns ALL recruitments found on the page
+      const extractedList = await callClaude(text, url, src.source_name, year)
+
+      // Health metric: now includes actual item count and avg confidence
+      const validItems = extractedList.filter(r => r.title && (r.confidence ?? 0) >= 0.30)
+      await supabase.from("source_health_metrics").insert({
+        source_registry_id: src.id,
+        source_id:          src.id,  // legacy FK — kept until migration fully applied
+        fetch_duration_ms:  Date.now() - startMs,
+        http_status:        200,
+        parse_success:      validItems.length > 0,
+        items_extracted:    validItems.length,
+        confidence_avg:     validItems.length > 0
+          ? validItems.reduce((s, r) => s + (r.confidence ?? 0), 0) / validItems.length
+          : null,
+      })
+
+      if (validItems.length === 0) {
         totalSkipped++
         await supabase.from("source_registry").update({
-          last_scraped_at: now.toISOString(),
-          consecutive_fails: src.consecutive_fails,
+          last_scraped_at:   now.toISOString(),
+          consecutive_fails: src.consecutive_fails + 1,
+          last_error:        `No recruitments extracted (${extractedList.length} found, all below confidence threshold)`,
         }).eq("id", src.id)
         continue
       }
 
-      totalFound++
+      // Process each recruitment extracted from this source
+      let sourceHadNew = false
 
-      const fp        = fingerprintKey(extracted.organization_name, extracted.year, extracted.title)
-      const dupId     = existingFps.get(fp) ?? null
-      const isDup     = Boolean(dupId)
-      const queueStatus = isDup ? "duplicate"
-        : extracted.confidence >= 0.90 ? "approved"
-        : "pending"
+      for (const extracted of validItems) {
+        totalFound++
 
-      if (isDup) {
-        totalDup++
-      } else {
-        totalNew++
-        existingFps.set(fp, "queued")
+        const fp          = fingerprintKey(extracted.organization_name, extracted.year, extracted.title)
+        const dupId       = existingFps.get(fp) ?? null
+        const isDup       = Boolean(dupId)
+        const queueStatus = isDup ? "duplicate"
+          : extracted.confidence >= 0.90 ? "approved"
+          : "pending"
+
+        if (isDup) {
+          totalDup++
+        } else {
+          totalNew++
+          sourceHadNew = true
+          existingFps.set(fp, "queued")
+        }
+
+        const { confidence: _conf, ...dataWithoutConf } = extracted
+        void _conf
+
+        await supabase.from("scrape_queue").insert({
+          source_url:       url,
+          source_name:      src.source_name,
+          extracted_data:   dataWithoutConf as unknown as Record<string, unknown>,
+          confidence_score: extracted.confidence,
+          status:           queueStatus,
+          scrape_run_id:    runId,
+          duplicate_of:     dupId,
+        })
+
+        if (queueStatus === "approved") {
+          await supabase.rpc("fn_auto_recompute_eligibility", {
+            p_source_name: src.source_name,
+          }).then(() => { /* non-fatal */ }).catch(() => { /* non-fatal */ })
+        }
       }
 
-      const { confidence: _conf, ...dataWithoutConf } = extracted
-      void _conf
-
-      await supabase.from("scrape_queue").insert({
-        source_url:       url,
-        source_name:      src.source_name,
-        extracted_data:   dataWithoutConf as unknown as Record<string, unknown>,
-        confidence_score: extracted.confidence,
-        status:           queueStatus,
-        scrape_run_id:    runId,
-        duplicate_of:     dupId,
-      })
-
-      // If approved, try to populate eligibility_recompute_queue
-      if (queueStatus === "approved") {
-        await supabase.rpc("fn_auto_recompute_eligibility", {
-          p_source_name: src.source_name,
-        }).then(() => { /* non-fatal */ }).catch(() => { /* non-fatal */ })
-      }
-
-      // Update source health
+      // Update source health once — after all its recruitments are processed
       await supabase.from("source_registry").update({
         last_scraped_at:   now.toISOString(),
-        last_success_at:   now.toISOString(),
+        ...(sourceHadNew ? { last_success_at: now.toISOString() } : {}),
         consecutive_fails: 0,
         last_error:        null,
       }).eq("id", src.id)

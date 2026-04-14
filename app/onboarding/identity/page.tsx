@@ -67,6 +67,16 @@ export default async function IdentityPage({
         <div className="cc-alert-error">{decodeURIComponent(params.error)}</div>
       )}
 
+      {/* DPDP Act 2023 consent notice — required before collecting personal data */}
+      <div className="cc-alert-info" style={{ fontSize: "0.8125rem", marginBottom: "1.5rem" }}>
+        <strong>Data notice (DPDP Act 2023):</strong> The information below is used solely to match
+        you with eligible government job notifications. It is stored securely and never shared with
+        third parties. You can delete your account and all associated data at any time from{" "}
+        <a href="/account/delete" style={{ color: "var(--accent)", textDecoration: "underline" }}>
+          Account settings
+        </a>.
+      </div>
+
       <form action={saveIdentity} className="cc-step-form">
 
         {/* DOB + Gender */}
