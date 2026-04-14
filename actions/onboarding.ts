@@ -73,13 +73,21 @@ export async function saveIdentity(formData: FormData) {
   const user = await requireUser()
 
   try {
+    // Phase 3B: parse service_years — only meaningful when ex_serviceman is true
+    const exServiceman = formData.get("ex_serviceman") === "true"
+    const serviceYearsRaw = formData.get("service_years") as string | null
+    const serviceYears = exServiceman && serviceYearsRaw
+      ? (parseInt(serviceYearsRaw, 10) || null)
+      : null
+
     await updateProfileIdentity(user.id, {
       dob:            (formData.get("dob") as string) || null,
       gender:         (formData.get("gender") as string) || null,
       category:       (formData.get("category") as string) || null,
       pwbd_status:    (formData.get("pwbd_status") as string) || null,
       domicile_state: (formData.get("domicile_state") as string) || null,
-      ex_serviceman:  formData.get("ex_serviceman") === "true",
+      ex_serviceman:  exServiceman,
+      service_years:  serviceYears,
       govt_employee:  formData.get("govt_employee") === "true",
       phone:          (formData.get("phone") as string) || null,
     })

@@ -95,6 +95,7 @@ export async function updateProfileIdentity(
     pwbd_status:    string | null
     domicile_state: string | null
     ex_serviceman:  boolean
+    service_years:  number | null   // Phase 3B: for ex-serviceman age formula
     govt_employee:  boolean
     phone:          string | null
   }
@@ -110,6 +111,7 @@ export async function updateProfileIdentity(
       pwbd_status:     data.pwbd_status,
       domicile_state:  data.domicile_state,
       ex_serviceman:   data.ex_serviceman,
+      service_years:   data.service_years,
       govt_employee:   data.govt_employee,
       phone:           data.phone,
       onboarding_step: ONBOARDING_STEPS.IDENTITY,
