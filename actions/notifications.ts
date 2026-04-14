@@ -214,7 +214,7 @@ export async function adminTriggerScraper(): Promise<{
         "Authorization": `Bearer ${serviceKey}`,
         "apikey":        anonKey,
       },
-      body:   JSON.stringify({ triggered_by: "admin" }),
+      body:   JSON.stringify({ triggered_by: "admin", force: true }),
       signal: AbortSignal.timeout(90_000),
     })
 

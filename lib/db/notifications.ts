@@ -33,6 +33,7 @@ import type {
   SourceTier,
   UserNotificationPrefs,
 } from "@/types/notifications"
+import type { ExtractedRecruitment } from "@/types/scraping"
 
 // ─── Re-export SourceRegistryEntry from the authoritative file ─────────────────
 // NEVER duplicate this type here — lib/db/source-registry.ts is the single source.
@@ -189,16 +190,87 @@ export async function approveScrapeItem(
   itemId: string, reviewerId: string, notes?: string
 ): Promise<void> {
   const supabase = await createClient()
-  const { error } = await supabase
+ 
+  // ── 1. Load queue row ──────────────────────────────────────────────────────
+  const { data: item, error: fetchErr } = await supabase
+    .from("scrape_queue")
+    .select("*")
+    .eq("id", itemId)
+    .single()
+ 
+  if (fetchErr || !item) throw new Error(`approveScrapeItem: row not found ${itemId}`)
+ 
+  // ── 2. Idempotency: already promoted? ──────────────────────────────────────
+  // duplicate_of stores the promoted recruitment_id after first approval
+  if (item.status === "approved" && item.duplicate_of) return
+ 
+  // ── 3. Validate ────────────────────────────────────────────────────────────
+  if (!["pending", "reviewing"].includes(item.status)) {
+    throw new Error(`approveScrapeItem: cannot approve item in status '${item.status}'`)
+  }
+ 
+  // ── 4. Promote to canonical recruitments ──────────────────────────────────
+  const { promoteToRecruitments } = await import("@/lib/scraping/runner")
+  if (!item.extracted_data) throw new Error(`approveScrapeItem: no extracted_data on item ${itemId}`)
+
+  const recruitmentId = await promoteToRecruitments(
+    item.extracted_data as unknown as ExtractedRecruitment,
+    supabase
+  )
+ 
+  // ── 5. Mark approved (+ store recruited_id in duplicate_of for idempotency) 
+  const { error: updateErr } = await supabase
     .from("scrape_queue")
     .update({
       status:         "approved",
       reviewer_id:    reviewerId,
       reviewer_notes: notes ?? null,
       reviewed_at:    new Date().toISOString(),
+      ...(recruitmentId ? { duplicate_of: recruitmentId } : {}),
     })
     .eq("id", itemId)
-  if (error) throw new Error(`approveScrapeItem: ${error.message}`)
+ 
+  if (updateErr) throw new Error(`approveScrapeItem update: ${updateErr.message}`)
+ 
+  // ── 6. alert_event + fanout (non-fatal after this point) ──────────────────
+  if (!recruitmentId) return // promotion failed silently — runner logged it
+ 
+  try {
+    const { data: evt, error: evtErr } = await supabase
+      .from("alert_events")
+      .insert({
+        event_type:     "new_recruitment",
+        recruitment_id: recruitmentId,
+        priority:       2,
+        payload:        {
+          source_url:    item.source_url,
+          source_name:   item.source_name,
+          queue_item_id: itemId,
+        },
+        fanout_status: "pending",
+      })
+      .select("id")
+      .single()
+ 
+    if (evtErr || !evt) {
+      console.error("[approveScrapeItem] alert_event insert:", evtErr?.message)
+      return
+    }
+ 
+    const { error: fanoutErr } = await supabase.rpc("fn_fanout_alert_event", {
+      p_event_id: evt.id,
+    })
+ 
+    if (fanoutErr) {
+      console.error("[approveScrapeItem] fanout:", fanoutErr.message)
+      await supabase
+        .from("alert_events")
+        .update({ fanout_status: "failed" })
+        .eq("id", evt.id)
+    }
+  } catch (e) {
+    console.error("[approveScrapeItem] alert/fanout non-fatal:", e)
+  }
 }
 
 export async function rejectScrapeItem(
