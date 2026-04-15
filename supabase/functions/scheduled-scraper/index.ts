@@ -21,7 +21,9 @@ const ANTHROPIC_KEY    = Deno.env.get("ANTHROPIC_API_KEY")        ?? ""
 const SUPABASE_URL     = Deno.env.get("SUPABASE_URL")              ||
                          Deno.env.get("SB_PROJECT_URL")            || ""
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
-const CLAUDE_MODEL      = "claude-sonnet-4-20250514"
+// Use Haiku for extraction — ~20x cheaper than Sonnet, adequate for structured JSON
+// extraction from govt recruitment text. Switch to sonnet only if quality is poor.
+const CLAUDE_MODEL      = "claude-haiku-4-20250514"
 const REQUEST_TIMEOUT   = 18_000
 const CLAUDE_TIMEOUT    = 32_000
 // TASK 6: time budget — 42s of the ~50s Edge Function wall-clock limit
