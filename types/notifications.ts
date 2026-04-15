@@ -193,23 +193,24 @@ export type UserNotificationPrefs = {
 // ─── Admin views ──────────────────────────────────────────────────────────────
 
 export type QueueReviewItem = {
-  id:               string
-  source_url:       string
-  source_name:      string
-  confidence_score: number
-  status:           ScrapeQueueItem["status"]
-  scraped_at:       string
-  reviewed_at:      string | null
-  reviewer_notes:   string | null
-  title:            string | null
-  org_name:         string | null
-  apply_end_date:   string | null
-  total_vacancies:  string | null
-  fingerprint:      string | null
-  obs_status:       string | null
-  canonical_id:     string | null
-  canonical_name:   string | null
-  run_started_at:   string | null
+  id:                 string
+  source_url:         string
+  source_name:        string
+  confidence_score:   number
+  data_quality_score: number | null  // 0-100 completeness score (Stage 3)
+  status:             ScrapeQueueItem["status"]
+  scraped_at:         string
+  reviewed_at:        string | null
+  reviewer_notes:     string | null
+  title:              string | null
+  org_name:           string | null
+  apply_end_date:     string | null
+  total_vacancies:    string | null
+  fingerprint:        string | null
+  obs_status:         string | null
+  canonical_id:       string | null
+  canonical_name:     string | null
+  run_started_at:     string | null
 }
 
 export type ScraperStats = {

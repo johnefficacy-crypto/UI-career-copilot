@@ -82,10 +82,12 @@ interface RunError {
 }
 
 interface AcquireResult {
-  text:    string
-  url:     string
-  skipped: boolean   // true = ETag matched or Playwright pending
-  headers: Record<string, string>
+  text:      string
+  url:       string
+  skipped:   boolean         // true = ETag matched or Playwright pending
+  headers:   Record<string, string>
+  pdfBytes?: Uint8Array      // set by pdf adapter; triggers callClaudeOnPdf()
+  linkedPdfs?: Uint8Array[]  // PDFs discovered in HTML pages
 }
 
 // ─── Supabase client ──────────────────────────────────────────────────────────
@@ -94,6 +96,20 @@ function db() {
   return createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
     auth: { persistSession: false },
   })
+}
+
+// ─── Startup env validation ───────────────────────────────────────────────────
+// Called once at handler start — logs clearly instead of failing mid-run.
+
+function validateEnv(): { ok: boolean; warnings: string[] } {
+  const warnings: string[] = []
+  if (!SUPABASE_URL)     warnings.push("SUPABASE_URL / SB_PROJECT_URL not set — all DB ops will fail")
+  if (!SERVICE_ROLE_KEY) warnings.push("SUPABASE_SERVICE_ROLE_KEY not set — all DB ops will fail")
+  if (!ANTHROPIC_KEY)    warnings.push("ANTHROPIC_API_KEY not set — ALL source extractions will return empty (items_found=0)")
+  warnings.forEach(w => console.error(`[env] ⚠ ${w}`))
+  const ok = !!(SUPABASE_URL && SERVICE_ROLE_KEY && ANTHROPIC_KEY)
+  if (ok) console.log("[env] ✓ All required env vars present")
+  return { ok, warnings }
 }
 
 // ─── Idempotency guard ────────────────────────────────────────────────────────
@@ -205,42 +221,172 @@ function flattenJson(json: unknown, src: SourceRecord): string {
   }
 }
 
-// ─── PDF text extraction ──────────────────────────────────────────────────────
+// ─── Base64 helper (chunked — avoids stack overflow for large PDFs) ───────────
 
-function extractPdfText(pdfBytes: Uint8Array): string {
+function toBase64(bytes: Uint8Array): string {
+  let binary = ""
+  const chunk = 8192
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk))
+  }
+  return btoa(binary)
+}
+
+// ─── Shared extraction prompt ─────────────────────────────────────────────────
+
+function makeExtractionPrompt(sourceUrl: string, sourceName: string, year: number): string {
+  return `Extract ALL recruitment notifications from this content from ${sourceName} (${sourceUrl}).
+
+There may be multiple separate notifications. Extract EACH one separately.
+
+Return a JSON object with a "recruitments" array:
+{
+  "recruitments": [
+    {
+      "title": "full recruitment name",
+      "organization_name": "string",
+      "org_type": "UPSC|SSC|Banking|Railway|State|Insurance|Defence|Other",
+      "notification_date": "YYYY-MM-DD or null",
+      "apply_start_date": "YYYY-MM-DD or null",
+      "apply_end_date": "YYYY-MM-DD or null",
+      "total_vacancies": number or null,
+      "year": ${year},
+      "source_pdf_url": "string or null",
+      "official_notification_url": "direct URL or ${sourceUrl}",
+      "confidence": 0.0-1.0,
+      "posts": [{"post_name":"","group_type":"A|B|C|D or null","vacancies":null,"min_age":null,"max_age":null,"education_required":null,"disciplines":null}]
+    }
+  ]
+}
+
+Rules:
+- confidence=1.0 only when title, org, dates, vacancies AND post-level age/education are all present.
+- If no recruitments found, return {"recruitments": []}.
+- Return ONLY valid JSON, never markdown or explanation.`
+}
+
+// ─── Parse Claude's recruitment JSON response ─────────────────────────────────
+
+function parseClaudeRecruitmentResponse(raw: string): ExtractedRecruitment[] {
+  const clean = raw.replace(/^```json\s*/i, "").replace(/^```/, "").replace(/```$/, "").trim()
+  const jsonStart = clean.indexOf("{")
+  const jsonEnd   = clean.lastIndexOf("}")
+  if (jsonStart === -1 || jsonEnd === -1) return []
+  const parsed = JSON.parse(clean.slice(jsonStart, jsonEnd + 1)) as { recruitments?: unknown[] }
+  const list   = Array.isArray(parsed.recruitments) ? parsed.recruitments : []
+  return list.filter((r): r is ExtractedRecruitment =>
+    typeof r === "object" && r !== null &&
+    typeof (r as Record<string, unknown>).title === "string" &&
+    (r as Record<string, unknown>).title !== ""
+  )
+}
+
+// ─── Claude extraction on PDF bytes (Anthropic PDF beta API) ─────────────────
+// Sends the raw PDF directly to Claude — handles compressed streams, CIDFont,
+// and scanned pages that naive BT/ET regex completely misses.
+
+async function callClaudeOnPdf(
+  pdfBytes:   Uint8Array,
+  sourceUrl:  string,
+  sourceName: string,
+  year:       number
+): Promise<ExtractedRecruitment[]> {
+  if (!ANTHROPIC_KEY) return []
+  // Skip PDFs > 20 MB (Anthropic limit is 32 MB but edge function memory is tighter)
+  if (pdfBytes.length > 20_000_000) {
+    console.log(`[${sourceName}] PDF too large (${(pdfBytes.length / 1e6).toFixed(1)} MB) — skipping`)
+    return []
+  }
+
+  const base64 = toBase64(pdfBytes)
+
   try {
-    const text       = new TextDecoder("utf-8", { fatal: false }).decode(pdfBytes)
-    const textBlocks: string[] = []
-    const btEtRegex  = /BT([\s\S]*?)ET/g
-    let match
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method:  "POST",
+      headers: {
+        "Content-Type":      "application/json",
+        "x-api-key":         ANTHROPIC_KEY,
+        "anthropic-version": "2023-06-01",
+        "anthropic-beta":    "pdfs-2024-09-25",
+      },
+      body: JSON.stringify({
+        model:      CLAUDE_MODEL,
+        max_tokens: 4000,
+        system:     "You are a specialist data extraction agent for Indian government recruitment notifications. Return ONLY valid JSON with a top-level 'recruitments' array.",
+        messages: [{
+          role:    "user",
+          content: [
+            {
+              type:   "document",
+              source: { type: "base64", media_type: "application/pdf", data: base64 },
+            },
+            { type: "text", text: makeExtractionPrompt(sourceUrl, sourceName, year) },
+          ],
+        }],
+      }),
+      signal: AbortSignal.timeout(CLAUDE_TIMEOUT),
+    })
 
-    while ((match = btEtRegex.exec(text)) !== null) {
-      const block    = match[1]
-      const strRegex = /\(([^)]{1,200})\)/g
-      let strMatch
-      while ((strMatch = strRegex.exec(block)) !== null) {
-        const s = strMatch[1]
-          .replace(/\\n/g, " ").replace(/\\r/g, " ").replace(/\\t/g, " ")
-          .replace(/\\\(/g, "(").replace(/\\\)/g, ")").replace(/\\\\/g, "\\")
-          .trim()
-        if (s.length > 2) textBlocks.push(s)
-      }
+    if (!res.ok) {
+      console.error(`[${sourceName}] PDF Claude API ${res.status}: ${await res.text().catch(() => "")}`)
+      return []
     }
 
-    // Hex strings
-    const hexRegex = /<([0-9A-Fa-f\s]{4,})>/g
-    while ((match = hexRegex.exec(text)) !== null) {
-      const hex = match[1].replace(/\s/g, "")
+    const data = await res.json() as { content?: Array<{ type: string; text: string }> }
+    const raw  = data.content?.find(b => b.type === "text")?.text ?? ""
+    const results = parseClaudeRecruitmentResponse(raw)
+    console.log(`[${sourceName}] PDF extraction: ${results.length} recruitment(s)`)
+    return results
+  } catch (err) {
+    console.error(`[${sourceName}] PDF Claude error:`, err)
+    return []
+  }
+}
+
+// ─── Find PDF notification links in HTML ──────────────────────────────────────
+// Most central-govt sites (UPSC, SSC, IBPS) have HTML that only lists a brief
+// summary + a link to the actual PDF notification. This extracts those links.
+
+function findPdfLinksInHtml(html: string, baseUrl: string): string[] {
+  const base  = new URL(baseUrl)
+  const found = new Set<string>()
+
+  // Match href="*.pdf" or links with notification/recruitment/advt keywords
+  const patterns = [
+    /href=["']([^"']*\.pdf(?:\?[^"']*)?)["']/gi,
+    /href=["']([^"']*(?:notification|recruitment|advt|advertisement|vacancy|circular)[^"']*\.pdf[^"']*)["']/gi,
+  ]
+
+  for (const pattern of patterns) {
+    let m
+    while ((m = pattern.exec(html)) !== null) {
       try {
-        const bytes: number[] = []
-        for (let i = 0; i < hex.length; i += 2) bytes.push(parseInt(hex.substr(i, 2), 16))
-        const s = new TextDecoder("utf-8").decode(new Uint8Array(bytes)).trim()
-        if (s.length > 3 && /[a-zA-Z]/.test(s)) textBlocks.push(s)
-      } catch { /* ignore invalid hex */ }
+        const url = new URL(m[1].startsWith("http") ? m[1] : m[1], base.href).href
+        found.add(url)
+        if (found.size >= 3) break  // fetch at most 3 PDFs per HTML page
+      } catch { /* invalid URL, skip */ }
     }
+    if (found.size >= 3) break
+  }
 
-    return textBlocks.join(" ").replace(/\s{2,}/g, " ").trim().slice(0, 15000)
-  } catch { return "" }
+  return [...found]
+}
+
+// ─── Data quality scoring ─────────────────────────────────────────────────────
+// Scores extracted data 0–100 based on field completeness.
+// High score = admin can approve with confidence; low = needs manual review.
+
+function computeDataQualityScore(item: ExtractedRecruitment): number {
+  let score = 0
+  if ((item.title?.trim().length ?? 0) > 5)                           score += 15
+  if ((item.organization_name?.trim().length ?? 0) > 2)               score += 15
+  if (item.apply_end_date)                                             score += 20
+  if (item.apply_start_date)                                           score += 10
+  if (item.total_vacancies != null && item.total_vacancies > 0)        score += 10
+  if (Array.isArray(item.posts) && item.posts.length > 0)              score += 10
+  if (item.posts?.some(p => (p as Record<string,unknown>).min_age || (p as Record<string,unknown>).max_age)) score += 10
+  if (item.posts?.some(p => (p as Record<string,unknown>).education_required))                               score += 10
+  return score   // 0–100
 }
 
 // ─── Content acquisition ──────────────────────────────────────────────────────
@@ -313,12 +459,13 @@ async function acquireContent(
   }
 
   // ── PDF adapter ────────────────────────────────────────────────────────────
+  // Stage 2: replaced naive BT/ET regex with Anthropic PDF API.
+  // Returns raw bytes so the main loop can call callClaudeOnPdf().
   if (src.adapter_type === "pdf" && src.pdf_bulletin_url) {
     const res  = await fetch(src.pdf_bulletin_url, { signal: AbortSignal.timeout(REQUEST_TIMEOUT) })
     if (!res.ok) throw new Error(`PDF fetch ${res.status}`)
     const buf  = await res.arrayBuffer()
-    const text = extractPdfText(new Uint8Array(buf))
-    return { text, url: src.pdf_bulletin_url, skipped: false, headers: {} }
+    return { text: "", url: src.pdf_bulletin_url, skipped: false, headers: {}, pdfBytes: new Uint8Array(buf) }
   }
 
   // ── HTML adapter ───────────────────────────────────────────────────────────
@@ -390,7 +537,28 @@ async function acquireContent(
       .replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
       .replace(/\s{2,}/g, " ").trim()
 
-    return { text: stripped, url: targetUrl, skipped: false, headers: {} }
+    // ── Stage 2: PDF link detection ───────────────────────────────────────────
+    // Many govt pages (UPSC, SSC, IBPS) show only a summary in HTML and put the
+    // full eligibility matrix in a linked PDF. Fetch up to 3 linked PDFs so
+    // Claude gets complete post-level data (age limits, education, vacancies).
+    const linkedPdfs: Uint8Array[] = []
+    if (src.adapter_type !== "pdf") {
+      const pdfLinks = findPdfLinksInHtml(rawHtml, targetUrl)
+      for (const pdfUrl of pdfLinks) {
+        try {
+          const pdfRes = await fetch(pdfUrl, { signal: AbortSignal.timeout(REQUEST_TIMEOUT) })
+          if (pdfRes.ok) {
+            const buf = await pdfRes.arrayBuffer()
+            if (buf.byteLength < 20_000_000) {  // skip PDFs > 20 MB
+              linkedPdfs.push(new Uint8Array(buf))
+              console.log(`[${src.source_name}] Fetched linked PDF: ${pdfUrl} (${(buf.byteLength / 1024).toFixed(0)} KB)`)
+            }
+          }
+        } catch { /* non-fatal — HTML text still goes to Claude */ }
+      }
+    }
+
+    return { text: stripped, url: targetUrl, skipped: false, headers: {}, linkedPdfs }
   }
 }
 
@@ -405,38 +573,13 @@ async function callClaude(
   sourceName: string,
   year:       number
 ): Promise<ExtractedRecruitment[]> {
+  if (!ANTHROPIC_KEY) {
+    console.error(`[${sourceName}] ANTHROPIC_API_KEY missing — skipping extraction`)
+    return []
+  }
+
+  const prompt = makeExtractionPrompt(sourceUrl, sourceName, year)
   const truncated = text.slice(0, 12000)
-  const prompt    = `Extract ALL recruitment notifications from this text scraped from ${sourceName} (${sourceUrl}).
-
-There may be multiple separate recruitment notifications in this text. Extract EACH one separately.
-
-Return a JSON object with a "recruitments" array:
-{
-  "recruitments": [
-    {
-      "title": "full recruitment name",
-      "organization_name": "string",
-      "org_type": "UPSC|SSC|Banking|Railway|State|Insurance|Defence|Other",
-      "notification_date": "YYYY-MM-DD or null",
-      "apply_start_date": "YYYY-MM-DD or null",
-      "apply_end_date": "YYYY-MM-DD or null",
-      "total_vacancies": number or null,
-      "year": ${year},
-      "source_pdf_url": "string or null",
-      "official_notification_url": "direct URL to this notification or ${sourceUrl} if not specified",
-      "confidence": 0.0-1.0,
-      "posts": [{"post_name":"","group_type":"A|B|C|D or null","vacancies":null,"min_age":null,"max_age":null,"education_required":null,"disciplines":null}]
-    }
-  ]
-}
-
-Rules:
-- Set confidence=1.0 only when all key fields (title, org, dates, vacancies) are present and unambiguous.
-- If no recruitments found, return {"recruitments": []}.
-- Return ONLY valid JSON, never markdown or explanation.
-
-TEXT:
-${truncated}`
 
   try {
     const res = await fetch("https://api.anthropic.com/v1/messages", {
@@ -448,33 +591,25 @@ ${truncated}`
       },
       body: JSON.stringify({
         model:      CLAUDE_MODEL,
-        max_tokens: 4000,  // increased from 800 — multi-recruitment responses can be large
+        max_tokens: 4000,
         system:     "You are a specialist data extraction agent for Indian government recruitment notifications. Return ONLY valid JSON with a top-level 'recruitments' array. Never return markdown or explanation.",
-        messages:   [{ role: "user", content: prompt }],
+        messages:   [{ role: "user", content: `${prompt}\n\nTEXT:\n${truncated}` }],
       }),
       signal: AbortSignal.timeout(CLAUDE_TIMEOUT),
     })
 
-    if (!res.ok) return []
+    if (!res.ok) {
+      console.error(`[${sourceName}] Anthropic API ${res.status} — check ANTHROPIC_API_KEY secret`)
+      return []
+    }
 
-    const data   = await res.json() as { content?: Array<{ type: string; text: string }> }
-    const raw    = data.content?.find(b => b.type === "text")?.text ?? ""
-    const clean  = raw.replace(/^```json\s*/i, "").replace(/^```/, "").replace(/```$/, "").trim()
-
-    const jsonStart = clean.indexOf("{")
-    const jsonEnd   = clean.lastIndexOf("}")
-    if (jsonStart === -1 || jsonEnd === -1) return []
-
-    const parsed = JSON.parse(clean.slice(jsonStart, jsonEnd + 1)) as { recruitments?: unknown[] }
-    const list   = Array.isArray(parsed.recruitments) ? parsed.recruitments : []
-
-    // Type-guard: keep only well-formed items
-    return list.filter((r): r is ExtractedRecruitment =>
-      typeof r === "object" && r !== null &&
-      typeof (r as Record<string, unknown>).title === "string" &&
-      (r as Record<string, unknown>).title !== ""
-    )
-  } catch {
+    const data    = await res.json() as { content?: Array<{ type: string; text: string }> }
+    const raw     = data.content?.find(b => b.type === "text")?.text ?? ""
+    const results = parseClaudeRecruitmentResponse(raw)
+    console.log(`[${sourceName}] Text extraction: ${results.length} recruitment(s)`)
+    return results
+  } catch (err) {
+    console.error(`[${sourceName}] callClaude error:`, err)
     return []
   }
 }
@@ -492,6 +627,9 @@ Deno.serve(async (req) => {
   const body        = req.method === "POST"
     ? await req.json().catch(() => ({})) as Record<string, unknown>
     : {}
+  // ── Startup env validation ────────────────────────────────────────────────
+  const { warnings: envWarnings } = validateEnv()
+
   const triggeredBy = (body.triggered_by as string) ?? "scheduled"
   const forceRun    = body.force === true
 
@@ -561,7 +699,7 @@ Deno.serve(async (req) => {
       // TASK 4: source-aware jitter
       await sleep(jitter(src))
 
-      const { text, url, skipped } = await acquireContent(supabase, src)
+      const { text, url, skipped, pdfBytes, linkedPdfs } = await acquireContent(supabase, src)
 
       if (skipped) {
         totalSkipped++
@@ -578,13 +716,36 @@ Deno.serve(async (req) => {
         continue
       }
 
-      if (!text.trim()) {
+      if (!text.trim() && !pdfBytes && (!linkedPdfs || linkedPdfs.length === 0)) {
         totalSkipped++
         continue
       }
 
-      // Claude extraction — returns ALL recruitments found on the page
-      const extractedList = await callClaude(text, url, src.source_name, year)
+      // ── Stage 2: Route to appropriate Claude extractor ───────────────────────
+      // PDF sources use Anthropic PDF API (handles compressed/scanned PDFs).
+      // HTML sources with linked PDFs extract from each PDF + the HTML text.
+      // Plain HTML/RSS/JSON uses text extraction.
+      let extractedList: ExtractedRecruitment[] = []
+
+      if (pdfBytes) {
+        // Dedicated PDF source — send bytes directly to Claude
+        extractedList = await callClaudeOnPdf(pdfBytes, url, src.source_name, year)
+      } else {
+        // HTML/RSS — extract from text first
+        if (text.trim()) {
+          extractedList = await callClaude(text, url, src.source_name, year)
+        }
+        // Also extract from any linked PDFs and merge (dedup by title fingerprint)
+        for (const pdf of (linkedPdfs ?? [])) {
+          const pdfResults = await callClaudeOnPdf(pdf, url, src.source_name, year)
+          for (const r of pdfResults) {
+            const fp = fingerprintKey(r.organization_name, r.year, r.title)
+            if (!extractedList.some(e => fingerprintKey(e.organization_name, e.year, e.title) === fp)) {
+              extractedList.push(r)
+            }
+          }
+        }
+      }
 
       // Health metric: now includes actual item count and avg confidence
       const validItems = extractedList.filter(r => r.title && (r.confidence ?? 0) >= 0.30)
@@ -605,7 +766,7 @@ Deno.serve(async (req) => {
         await supabase.from("source_registry").update({
           last_scraped_at:   now.toISOString(),
           consecutive_fails: src.consecutive_fails + 1,
-          last_error:        `No recruitments extracted (${extractedList.length} found, all below confidence threshold)`,
+          last_error:        `No recruitments extracted (total=${extractedList.length}, all below confidence threshold)`,
         }).eq("id", src.id)
         continue
       }
@@ -616,12 +777,17 @@ Deno.serve(async (req) => {
       for (const extracted of validItems) {
         totalFound++
 
+        // ── Stage 3: Data quality score ─────────────────────────────────────
+        const qualityScore = computeDataQualityScore(extracted)
+
         const fp          = fingerprintKey(extracted.organization_name, extracted.year, extracted.title)
         const dupId       = existingFps.get(fp) ?? null
         const isDup       = Boolean(dupId)
         const queueStatus = isDup ? "duplicate"
           : extracted.confidence >= 0.90 ? "approved"
           : "pending"
+
+        console.log(`[${src.source_name}] "${extracted.title.slice(0, 50)}" conf=${(extracted.confidence ?? 0).toFixed(2)} quality=${qualityScore} status=${queueStatus}`)
 
         if (isDup) {
           totalDup++
@@ -635,13 +801,14 @@ Deno.serve(async (req) => {
         void _conf
 
         await supabase.from("scrape_queue").insert({
-          source_url:       url,
-          source_name:      src.source_name,
-          extracted_data:   dataWithoutConf as unknown as Record<string, unknown>,
-          confidence_score: extracted.confidence,
-          status:           queueStatus,
-          scrape_run_id:    runId,
-          duplicate_of:     dupId,
+          source_url:        url,
+          source_name:       src.source_name,
+          extracted_data:    dataWithoutConf as unknown as Record<string, unknown>,
+          confidence_score:  extracted.confidence,
+          data_quality_score: qualityScore,
+          status:            queueStatus,
+          scrape_run_id:     runId,
+          duplicate_of:      dupId,
         })
 
         if (queueStatus === "approved") {
@@ -738,6 +905,7 @@ Deno.serve(async (req) => {
       sourcesChecked:  dueSources.length,
       totalFound,
       totalNew,
+      envWarnings,
       totalDuplicate:  totalDup,
       totalSkipped,
       usersNotified:   totalFanout,
