@@ -40,7 +40,8 @@ const CLAUDE_TIMEOUT  = 32_000
 // Module-level state — shared across ALL callGemini* invocations in one run.
 const GEMINI_MIN_GAP_MS   = 5_000   // 60s / 5s = 12 RPM (safe under 15 RPM cap)
 const GEMINI_RETRY_WAIT   = 5_000   // after a 429, wait 5s then retry once; keep budget for other sources
-let   _geminiLastCallMs   = 0
+let   _geminiLastCallMs           = 0
+let   _geminiDailyQuotaExhausted  = false  // set true on confirmed daily quota; skip all subsequent calls this run
 
 async function geminiRateLimit(): Promise<void> {
   const elapsed = Date.now() - _geminiLastCallMs
@@ -445,8 +446,14 @@ async function callClaudeOnPdf(
 
     if (!res.ok) {
       const body = await res.text().catch(() => "")
-      const hint = res.status === 400 && body.includes("credit") ? " (insufficient credits — top up at console.anthropic.com/settings/billing)" : ""
-      console.error(`[${sourceName}] Anthropic PDF ${res.status}${hint}`)
+      const hint = res.status === 400 && body.includes("credit")
+        ? " (insufficient credits — top up at console.anthropic.com/settings/billing)"
+        : res.status === 404
+          ? " (model not found or API key revoked — rotate key at console.anthropic.com/settings/api-keys)"
+          : res.status === 401
+            ? " (invalid API key — check ANTHROPIC_API_KEY secret)"
+            : ""
+      console.error(`[${sourceName}] Anthropic PDF ${res.status}${hint} body=${body.slice(0, 300)}`)
       return null
     }
 
@@ -736,6 +743,12 @@ async function acquireContent(
 // ─── Gemini low-level fetch (with rate limiter + one retry on 429) ────────────
 
 async function geminiFetch(body: object, sourceName: string, label: string): Promise<Response | null> {
+  // Short-circuit: if we already confirmed daily quota is gone this run, don't waste time
+  if (_geminiDailyQuotaExhausted) {
+    console.warn(`[${sourceName}] Gemini ${label} — daily quota exhausted this run, skipping`)
+    return null
+  }
+
   await geminiRateLimit()
 
   let res = await fetch(`${GEMINI_ENDPOINT}?key=${GEMINI_KEY}`, {
@@ -760,7 +773,16 @@ async function geminiFetch(body: object, sourceName: string, label: string): Pro
   }
 
   if (res.status === 429) {
-    console.warn(`[${sourceName}] Gemini ${label} quota exhausted — skipping source (add Anthropic credits or wait for Gemini reset)`)
+    // Check whether it's a daily quota exhaustion or just persistent per-minute throttle.
+    // Gemini returns {"error":{"status":"RESOURCE_EXHAUSTED","message":"..."}} for daily quota.
+    const errBody = await res.clone().text().catch(() => "")
+    const isDaily = errBody.includes("RESOURCE_EXHAUSTED") || errBody.includes("quota")
+    if (isDaily) {
+      _geminiDailyQuotaExhausted = true
+      console.warn(`[${sourceName}] Gemini ${label} DAILY quota exhausted — disabling Gemini for this run. Wait until midnight Pacific for reset.`)
+    } else {
+      console.warn(`[${sourceName}] Gemini ${label} persistent rate limit — skipping source`)
+    }
     return null
   }
   if (!res.ok) {
@@ -913,8 +935,14 @@ async function callClaude(
 
     if (!res.ok) {
       const body = await res.text().catch(() => "")
-      const hint = res.status === 400 && body.includes("credit") ? " (insufficient credits — top up at console.anthropic.com/settings/billing)" : ""
-      console.error(`[${sourceName}] Anthropic text ${res.status}${hint} — trying Gemini fallback`)
+      const hint = res.status === 400 && body.includes("credit")
+        ? " (insufficient credits)"
+        : res.status === 404
+          ? " (model not found or API key revoked — rotate at console.anthropic.com/settings/api-keys)"
+          : res.status === 401
+            ? " (invalid API key — check ANTHROPIC_API_KEY secret)"
+            : ""
+      console.error(`[${sourceName}] Anthropic text ${res.status}${hint} body=${body.slice(0, 300)} — trying Gemini fallback`)
       return null
     }
 
