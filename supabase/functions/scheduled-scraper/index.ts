@@ -38,7 +38,7 @@ const CLAUDE_TIMEOUT  = 32_000
 // to absorb bursts caused by sources with multiple linked PDFs.
 // Module-level state — shared across ALL callGemini* invocations in one run.
 const GEMINI_MIN_GAP_MS   = 5_000   // 60s / 5s = 12 RPM (safe under 15 RPM cap)
-const GEMINI_RETRY_WAIT   = 16_000  // after a 429, wait 16s (> 1 RPM window) then retry
+const GEMINI_RETRY_WAIT   = 5_000   // after a 429, wait 5s then retry once; keep budget for other sources
 let   _geminiLastCallMs   = 0
 
 async function geminiRateLimit(): Promise<void> {
@@ -354,8 +354,10 @@ async function callClaudeOnPdf(
     })
 
     if (!res.ok) {
-      console.error(`[${sourceName}] Anthropic PDF ${res.status}: ${await res.text().catch(() => "")}`)
-      return null  // API error → try Gemini fallback
+      const body = await res.text().catch(() => "")
+      const hint = res.status === 400 && body.includes("credit") ? " (insufficient credits — top up at console.anthropic.com/settings/billing)" : ""
+      console.error(`[${sourceName}] Anthropic PDF ${res.status}${hint}`)
+      return null
     }
 
     const data    = await res.json() as { content?: Array<{ type: string; text: string }> }
@@ -644,8 +646,7 @@ async function geminiFetch(body: object, sourceName: string, label: string): Pro
   })
 
   if (res.status === 429) {
-    // Per-minute rate limit hit — wait for the rate-limit window to clear, then retry once.
-    // Do NOT fall back to Anthropic yet: this is a transient burst, not exhausted daily quota.
+    // Per-minute rate limit — wait briefly and retry once before giving up on Gemini.
     console.warn(`[${sourceName}] Gemini ${label} rate limited (429) — retrying in ${GEMINI_RETRY_WAIT / 1000}s`)
     await sleep(GEMINI_RETRY_WAIT)
     _geminiLastCallMs = 0  // force rate limiter to allow immediate retry
@@ -659,11 +660,11 @@ async function geminiFetch(body: object, sourceName: string, label: string): Pro
   }
 
   if (res.status === 429) {
-    console.warn(`[${sourceName}] Gemini ${label} still rate limited after retry — using Anthropic fallback`)
-    return null  // daily quota likely exhausted — genuine fallback needed
+    console.warn(`[${sourceName}] Gemini ${label} quota exhausted — skipping source (add Anthropic credits or wait for Gemini reset)`)
+    return null
   }
   if (!res.ok) {
-    console.error(`[${sourceName}] Gemini ${label} API ${res.status} — using Anthropic fallback`)
+    console.error(`[${sourceName}] Gemini ${label} API ${res.status} — skipping`)
     return null
   }
   return res
@@ -811,8 +812,10 @@ async function callClaude(
     })
 
     if (!res.ok) {
-      console.error(`[${sourceName}] Anthropic text ${res.status} — trying Gemini fallback`)
-      return null  // triggers Gemini fallback in extractFromText()
+      const body = await res.text().catch(() => "")
+      const hint = res.status === 400 && body.includes("credit") ? " (insufficient credits — top up at console.anthropic.com/settings/billing)" : ""
+      console.error(`[${sourceName}] Anthropic text ${res.status}${hint} — trying Gemini fallback`)
+      return null
     }
 
     const data    = await res.json() as { content?: Array<{ type: string; text: string }> }
