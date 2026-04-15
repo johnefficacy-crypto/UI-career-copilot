@@ -26,7 +26,7 @@ SELECT
   '{}',
   'Official GOI weekly newspaper. RSS feed. Covers all central govt notifications. Direct RSS extraction — zero LLM cost.'
 WHERE NOT EXISTS (
-  SELECT 1 FROM public.source_registry WHERE source_name = 'Employment News (GOI)'
+  SELECT 1 FROM public.source_registry WHERE official_url = 'https://www.employmentnews.gov.in'
 );
 
 INSERT INTO public.source_registry (
@@ -45,7 +45,7 @@ SELECT
   '{}',
   'Largest Indian govt-job aggregator. RSS feed covers central + state. ~500 new notifications/month. Direct RSS extraction.'
 WHERE NOT EXISTS (
-  SELECT 1 FROM public.source_registry WHERE source_name = 'FreeJobAlert'
+  SELECT 1 FROM public.source_registry WHERE official_url = 'https://www.freejobalert.com'
 );
 
 INSERT INTO public.source_registry (
@@ -64,7 +64,7 @@ SELECT
   '{"items_selector": ".TableRow", "title_selector": "a", "link_selector": "a"}',
   'High-traffic aggregator. No RSS — HTML scrape with ETag. 1 LLM call per changed page.'
 WHERE NOT EXISTS (
-  SELECT 1 FROM public.source_registry WHERE source_name = 'Sarkari Result'
+  SELECT 1 FROM public.source_registry WHERE official_url = 'https://www.sarkariresult.com'
 );
 
 INSERT INTO public.source_registry (
@@ -83,7 +83,7 @@ SELECT
   '{}',
   'Official state-level employment newspaper. Strong Hindi-belt + state PSC coverage. Direct RSS extraction.'
 WHERE NOT EXISTS (
-  SELECT 1 FROM public.source_registry WHERE source_name = 'Rojgar Samachar'
+  SELECT 1 FROM public.source_registry WHERE official_url = 'https://rojgarsamachar.gov.in'
 );
 
 INSERT INTO public.source_registry (
@@ -102,5 +102,5 @@ SELECT
   '{}',
   'Centralised banking recruitment — covers all PSBs via CRP. Tier-1 authoritative source.'
 WHERE NOT EXISTS (
-  SELECT 1 FROM public.source_registry WHERE source_name = 'IBPS CRP Notifications'
+  SELECT 1 FROM public.source_registry WHERE official_url = 'https://www.ibps.in'
 );
