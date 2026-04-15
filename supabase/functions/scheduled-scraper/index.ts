@@ -24,9 +24,10 @@ const SUPABASE_URL     = Deno.env.get("SUPABASE_URL")              ||
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
 
 // ── Model config ──────────────────────────────────────────────────────────────
-// Gemini 2.0 Flash: primary, free tier (1,500 req/day, 15 RPM).
-// Claude Haiku: fallback — only used when Gemini retries are exhausted.
-const CLAUDE_MODEL    = "claude-haiku-4-20250514"
+// Architecture: Gemini 2.0 Flash (free, 1500/day) PRIMARY for LLM extraction.
+// Anthropic claude-3-5-haiku (paid, cheap) is FALLBACK only.
+// RSS sources bypass LLM entirely — direct structured extraction, zero cost.
+const CLAUDE_MODEL    = "claude-3-5-haiku-20241022"  // known valid, ~$0.0008/source
 const GEMINI_MODEL    = "gemini-2.0-flash"
 const GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`
 const SYSTEM_PROMPT   = "You are a specialist data extraction agent for Indian government recruitment notifications. Return ONLY valid JSON with a top-level 'recruitments' array. Never return markdown or explanation."
@@ -104,12 +105,13 @@ interface RunError {
 }
 
 interface AcquireResult {
-  text:      string
-  url:       string
-  skipped:   boolean         // true = ETag matched or Playwright pending
-  headers:   Record<string, string>
-  pdfBytes?: Uint8Array      // set by pdf adapter; triggers callClaudeOnPdf()
-  linkedPdfs?: Uint8Array[]  // PDFs discovered in HTML pages
+  text:       string
+  url:        string
+  skipped:    boolean          // true = ETag matched or Playwright pending
+  headers:    Record<string, string>
+  pdfBytes?:  Uint8Array       // set by pdf adapter; triggers PDF extraction
+  linkedPdfs?: Uint8Array[]    // PDFs discovered in HTML pages
+  rssItems?:  ExtractedRecruitment[]  // set when RSS direct extraction succeeds — bypasses LLM
 }
 
 // ─── Supabase client ──────────────────────────────────────────────────────────
@@ -222,6 +224,94 @@ function parseRssItems(xml: string): string {
     if (items.length >= 20) break
   }
   return items.join("\n\n")
+}
+
+// ─── RSS direct extraction (LLM-free) ────────────────────────────────────────
+// Converts RSS <item> elements directly to ExtractedRecruitment objects without
+// any LLM call. Works for well-structured feeds (Employment News, UPSC, SSC,
+// most banking RSS). Saves ~1,500 Gemini calls/day at 66+ RSS sources.
+// confidence=0.55: we have title+org+date but rarely post-level age/education.
+
+function extractRssDirect(
+  xml:        string,
+  sourceUrl:  string,
+  sourceName: string,
+  orgType:    string,
+  year:       number
+): ExtractedRecruitment[] {
+  const results: ExtractedRecruitment[] = []
+  const itemRegex = /<item[^>]*>([\s\S]*?)<\/item>/gi
+
+  // Recruitment-signal keywords — skip items that are clearly not job notifications
+  const RECRUITMENT_SIGNALS = [
+    "recruit", "vacancy", "vacancies", "advt", "advertisement", "notification",
+    "exam", "post", "posts", "appointment", "hiring", "career", "job", "opening",
+    "result", "admit card", "merit list", "cutoff", "shortlist", "interview",
+  ]
+
+  let match
+  while ((match = itemRegex.exec(xml)) !== null) {
+    const block   = match[1]
+    const title   = block.match(/<title[^>]*>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/title>/i)?.[1]?.trim().replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">") ?? ""
+    const link    = block.match(/<link[^>]*>([\s\S]*?)<\/link>/i)?.[1]?.trim() ?? sourceUrl
+    const desc    = block.match(/<description[^>]*>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/description>/i)?.[1]?.replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").trim() ?? ""
+    const pubDate = block.match(/<pubDate[^>]*>([\s\S]*?)<\/pubDate>/i)?.[1]?.trim() ?? null
+
+    if (!title) continue
+
+    // Only include items with at least one recruitment signal
+    const combined = (title + " " + desc).toLowerCase()
+    const hasSignal = RECRUITMENT_SIGNALS.some(s => combined.includes(s))
+    if (!hasSignal) continue
+
+    // Parse publication date
+    let notificationDate: string | null = null
+    if (pubDate) {
+      const d = new Date(pubDate)
+      if (!isNaN(d.getTime())) notificationDate = d.toISOString().slice(0, 10)
+    }
+
+    // Best-effort vacancy extraction from title + description
+    const vacancyMatch = combined.match(/(\d[\d,]+)\s*(?:posts?|vacancies|positions?|seats?)/i)
+    const totalVacancies = vacancyMatch ? parseInt(vacancyMatch[1].replace(/,/g, ""), 10) : null
+
+    // Best-effort apply end date from description
+    let applyEndDate: string | null = null
+    const datePatterns = [
+      /last\s*date[^:]*:\s*(\d{1,2}[\s\-\/]\w+[\s\-\/]\d{4})/i,
+      /apply\s*(?:before|by|till|upto)[^:]*:\s*(\d{1,2}[\s\-\/]\w+[\s\-\/]\d{4})/i,
+      /(\d{1,2}[\s\-\/]\w+[\s\-\/]\d{4})/,  // fallback: first date found in desc
+    ]
+    for (const pat of datePatterns) {
+      const m = desc.match(pat)
+      if (m) {
+        const d = new Date(m[1])
+        if (!isNaN(d.getTime())) {
+          applyEndDate = d.toISOString().slice(0, 10)
+          break
+        }
+      }
+    }
+
+    results.push({
+      title,
+      organization_name: sourceName,
+      org_type:          orgType,
+      notification_date: notificationDate,
+      apply_start_date:  null,
+      apply_end_date:    applyEndDate,
+      total_vacancies:   totalVacancies,
+      year,
+      official_notification_url: link || sourceUrl,
+      source_pdf_url:    null,
+      posts:             [],
+      confidence:        0.55,  // structural extraction: title+org+date but no post-level detail
+    })
+
+    if (results.length >= 20) break
+  }
+
+  return results
 }
 
 // ─── JSON adapter ─────────────────────────────────────────────────────────────
@@ -510,6 +600,16 @@ async function acquireContent(
       checked_at:    new Date().toISOString(),
     })
 
+    // Try direct LLM-free extraction first.
+    // If it yields results, return them in rssItems — main loop skips LLM entirely.
+    // Fall back to text-for-LLM only when direct extraction finds nothing.
+    const direct = extractRssDirect(xml, rssUrl, src.source_name, src.source_type ?? "Other", year)
+    if (direct.length > 0) {
+      console.log(`[${src.source_name}] RSS direct: ${direct.length} item(s) (no LLM used)`)
+      return { text: "", url: rssUrl, skipped: false, headers: {}, rssItems: direct }
+    }
+
+    // Direct extraction found nothing — fall through to LLM with formatted text
     return { text: parseRssItems(xml), url: rssUrl, skipped: false, headers: {} }
   }
 
@@ -914,7 +1014,7 @@ Deno.serve(async (req) => {
       // TASK 4: source-aware jitter
       await sleep(jitter(src))
 
-      const { text, url, skipped, pdfBytes, linkedPdfs } = await acquireContent(supabase, src)
+      const { text, url, skipped, pdfBytes, linkedPdfs, rssItems } = await acquireContent(supabase, src)
 
       if (skipped) {
         totalSkipped++
@@ -931,17 +1031,21 @@ Deno.serve(async (req) => {
         continue
       }
 
-      if (!text.trim() && !pdfBytes && (!linkedPdfs || linkedPdfs.length === 0)) {
+      if (!text.trim() && !pdfBytes && !rssItems && (!linkedPdfs || linkedPdfs.length === 0)) {
         totalSkipped++
         continue
       }
 
-      // ── Stage 2: Route to Gemini (primary) or Anthropic (fallback) extractor ──
-      // Gemini 2.0 Flash handles both text and PDF natively — free tier covers
-      // all current scraping volume. Anthropic kicks in only on Gemini 429/error.
+      // ── Stage 2: Route to extractor ──────────────────────────────────────────
+      // RSS direct: no LLM, zero cost — structured data already parsed.
+      // PDF: Gemini (primary) or Anthropic (fallback) PDF extraction.
+      // HTML/RSS-text: Gemini (primary) or Anthropic (fallback) text extraction.
       let extractedList: ExtractedRecruitment[] = []
 
-      if (pdfBytes) {
+      if (rssItems) {
+        // RSS direct extraction — LLM completely bypassed
+        extractedList = rssItems
+      } else if (pdfBytes) {
         // Dedicated PDF source — send bytes directly (Gemini → Anthropic fallback)
         extractedList = await extractFromPdf(pdfBytes, url, src.source_name, year)
       } else {
