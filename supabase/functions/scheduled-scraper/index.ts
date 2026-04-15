@@ -127,11 +127,11 @@ function validateEnv(): { ok: boolean; warnings: string[] } {
   const warnings: string[] = []
   if (!SUPABASE_URL)     warnings.push("SUPABASE_URL / SB_PROJECT_URL not set — all DB ops will fail")
   if (!SERVICE_ROLE_KEY) warnings.push("SUPABASE_SERVICE_ROLE_KEY not set — all DB ops will fail")
-  if (!GEMINI_KEY && !ANTHROPIC_KEY) {
-    warnings.push("Neither GEMINI_API_KEY nor ANTHROPIC_API_KEY is set — ALL extractions will return empty (items_found=0). Set at least one.")
+  if (!ANTHROPIC_KEY && !GEMINI_KEY) {
+    warnings.push("Neither ANTHROPIC_API_KEY nor GEMINI_API_KEY is set — ALL extractions will return empty (items_found=0). Set at least one.")
   } else {
-    const primary  = GEMINI_KEY    ? "Gemini 2.0 Flash (free tier)"     : "—"
-    const fallback = ANTHROPIC_KEY ? "Claude Haiku (paid)"               : "none"
+    const primary  = ANTHROPIC_KEY ? "Claude Haiku (Anthropic — paid)" : "—"
+    const fallback = GEMINI_KEY    ? "Gemini 2.0 Flash (free tier)"    : "none"
     console.log(`[env] LLM: primary=${primary}  fallback=${fallback}`)
   }
   warnings.forEach(w => console.error(`[env] ⚠ ${w}`))
@@ -313,14 +313,15 @@ function parseClaudeRecruitmentResponse(raw: string): ExtractedRecruitment[] {
 // Sends the raw PDF directly to Claude — handles compressed streams, CIDFont,
 // and scanned pages that naive BT/ET regex completely misses.
 
+// Returns null on API error (caller should try Gemini fallback).
+// Returns [] if the model ran OK but found no recruitments.
 async function callClaudeOnPdf(
   pdfBytes:   Uint8Array,
   sourceUrl:  string,
   sourceName: string,
   year:       number
-): Promise<ExtractedRecruitment[]> {
-  if (!ANTHROPIC_KEY) return []
-  // Skip PDFs > 20 MB (Anthropic limit is 32 MB but edge function memory is tighter)
+): Promise<ExtractedRecruitment[] | null> {
+  if (!ANTHROPIC_KEY) return null
   if (pdfBytes.length > 20_000_000) {
     console.log(`[${sourceName}] PDF too large (${(pdfBytes.length / 1e6).toFixed(1)} MB) — skipping`)
     return []
@@ -344,11 +345,8 @@ async function callClaudeOnPdf(
         messages: [{
           role:    "user",
           content: [
-            {
-              type:   "document",
-              source: { type: "base64", media_type: "application/pdf", data: base64 },
-            },
-            { type: "text", text: makeExtractionPrompt(sourceUrl, sourceName, year) },
+            { type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 } },
+            { type: "text",     text: makeExtractionPrompt(sourceUrl, sourceName, year) },
           ],
         }],
       }),
@@ -356,48 +354,86 @@ async function callClaudeOnPdf(
     })
 
     if (!res.ok) {
-      console.error(`[${sourceName}] PDF Claude API ${res.status}: ${await res.text().catch(() => "")}`)
-      return []
+      console.error(`[${sourceName}] Anthropic PDF ${res.status}: ${await res.text().catch(() => "")}`)
+      return null  // API error → try Gemini fallback
     }
 
-    const data = await res.json() as { content?: Array<{ type: string; text: string }> }
-    const raw  = data.content?.find(b => b.type === "text")?.text ?? ""
+    const data    = await res.json() as { content?: Array<{ type: string; text: string }> }
+    const raw     = data.content?.find(b => b.type === "text")?.text ?? ""
     const results = parseClaudeRecruitmentResponse(raw)
-    console.log(`[${sourceName}] PDF extraction: ${results.length} recruitment(s)`)
+    console.log(`[${sourceName}] Anthropic PDF: ${results.length} recruitment(s)`)
     return results
   } catch (err) {
-    console.error(`[${sourceName}] PDF Claude error:`, err)
-    return []
+    console.error(`[${sourceName}] callClaudeOnPdf error:`, err)
+    return null
   }
 }
 
-// ─── Find PDF notification links in HTML ──────────────────────────────────────
-// Most central-govt sites (UPSC, SSC, IBPS) have HTML that only lists a brief
-// summary + a link to the actual PDF notification. This extracts those links.
+// ─── Find RECRUITMENT PDF links in HTML ──────────────────────────────────────
+// Scores each PDF link by how likely it is to be a recruitment notification.
+// Only returns PDFs with positive recruitment signals — avoids annual reports,
+// citizen charters, product brochures, and other irrelevant govt documents.
 
 function findPdfLinksInHtml(html: string, baseUrl: string): string[] {
-  const base  = new URL(baseUrl)
-  const found = new Set<string>()
+  const base = new URL(baseUrl)
 
-  // Match href="*.pdf" or links with notification/recruitment/advt keywords
-  const patterns = [
-    /href=["']([^"']*\.pdf(?:\?[^"']*)?)["']/gi,
-    /href=["']([^"']*(?:notification|recruitment|advt|advertisement|vacancy|circular)[^"']*\.pdf[^"']*)["']/gi,
+  // Words in a URL/filename that signal a recruitment PDF
+  const URL_POSITIVE = [
+    "notification", "recruitment", "advt", "advertisement", "vacancy",
+    "circular", "career", "employment", "job", "exam", "result",
+    "admit", "cutoff", "merit", "selection", "application", "opening",
+    "notice", "hiring", "post", "joining", "interview", "shortlist",
+  ]
+  // Words in anchor link text that signal a recruitment PDF
+  const TEXT_POSITIVE = [
+    "notification", "recruitment", "vacancy", "advertisement", "advt",
+    "career", "employment", "job", "exam", "result", "admit card",
+    "apply", "application", "opening", "post", "hiring", "notice",
+    "circular", "shortlist", "interview", "joining",
+  ]
+  // URL substrings that definitively mark a non-recruitment PDF — skip always
+  const URL_NEGATIVE = [
+    "annual_report", "best_practice", "citizen_charter", "citizen_char",
+    "product", "tender", "vendor", "price_list", "rate_contract",
+    "manual", "guideline", "policy", "brochure", "ar_", "_ar_",
+    "dar.pdf", "rti", "award", "grievance", "press_release", "tariff",
+    "schedule_of_charges", "form_", "_form", "proforma", "norms",
   ]
 
-  for (const pattern of patterns) {
-    let m
-    while ((m = pattern.exec(html)) !== null) {
-      try {
-        const url = new URL(m[1].startsWith("http") ? m[1] : m[1], base.href).href
-        found.add(url)
-        if (found.size >= 3) break  // fetch at most 3 PDFs per HTML page
-      } catch { /* invalid URL, skip */ }
-    }
-    if (found.size >= 3) break
+  interface ScoredLink { url: string; score: number }
+  const candidates = new Map<string, ScoredLink>()
+
+  // Match <a href="...pdf...">anchor text</a> to capture both URL and link text
+  const anchorRe = /<a[^>]*href=["']([^"']*\.pdf(?:\?[^"']*)?)["'][^>]*>([\s\S]{0,300}?)<\/a>/gi
+  let m
+  while ((m = anchorRe.exec(html)) !== null) {
+    const rawHref  = m[1]
+    const linkText = m[2].replace(/<[^>]+>/g, " ").trim().toLowerCase()
+
+    try {
+      const url      = new URL(rawHref.startsWith("http") ? rawHref : rawHref, base.href).href
+      const urlLower = url.toLowerCase()
+
+      // Hard exclude: non-recruitment document types
+      if (URL_NEGATIVE.some(kw => urlLower.includes(kw))) continue
+
+      let score = 0
+      for (const kw of URL_POSITIVE)  if (urlLower.includes(kw))  score += 2
+      for (const kw of TEXT_POSITIVE) if (linkText.includes(kw)) score += 3
+
+      // Must have at least one positive signal to be considered
+      if (score === 0) continue
+
+      const existing = candidates.get(url)
+      if (!existing || score > existing.score) candidates.set(url, { url, score })
+    } catch { /* invalid URL — skip */ }
   }
 
-  return [...found]
+  // Return top 3 by relevance score (highest first)
+  return [...candidates.values()]
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 3)
+    .map(c => c.url)
 }
 
 // ─── Data quality scoring ─────────────────────────────────────────────────────
@@ -709,7 +745,10 @@ async function callGeminiOnPdf(
 }
 
 // ─── Unified extraction wrappers ──────────────────────────────────────────────
-// Try Gemini first (free). null return = quota/error → fall back to Anthropic.
+// Anthropic is PRIMARY (paid, reliable, no rate limit at typical scraping volume).
+// Gemini is FALLBACK — activates only when Anthropic key is absent or API errors.
+// null from either function = "I can't handle this call, try the other one".
+// [] from either function = "I ran fine, there's simply nothing to extract".
 
 async function extractFromText(
   text:       string,
@@ -717,9 +756,12 @@ async function extractFromText(
   sourceName: string,
   year:       number
 ): Promise<ExtractedRecruitment[]> {
-  const geminiResult = await callGemini(text, sourceUrl, sourceName, year)
-  if (geminiResult !== null) return geminiResult
-  return callClaude(text, sourceUrl, sourceName, year)
+  if (ANTHROPIC_KEY) {
+    const result = await callClaude(text, sourceUrl, sourceName, year)
+    if (result !== null) return result   // null = API error → try Gemini
+  }
+  // Gemini fallback (free tier, rate-limited)
+  return await callGemini(text, sourceUrl, sourceName, year) ?? []
 }
 
 async function extractFromPdf(
@@ -728,23 +770,25 @@ async function extractFromPdf(
   sourceName: string,
   year:       number
 ): Promise<ExtractedRecruitment[]> {
-  const geminiResult = await callGeminiOnPdf(pdfBytes, sourceUrl, sourceName, year)
-  if (geminiResult !== null) return geminiResult
-  return callClaudeOnPdf(pdfBytes, sourceUrl, sourceName, year)
+  if (ANTHROPIC_KEY) {
+    const result = await callClaudeOnPdf(pdfBytes, sourceUrl, sourceName, year)
+    if (result !== null) return result
+  }
+  // Gemini PDF fallback
+  return await callGeminiOnPdf(pdfBytes, sourceUrl, sourceName, year) ?? []
 }
 
-// ─── Anthropic extraction — text (fallback) ───────────────────────────────────
+// ─── Anthropic extraction — text (primary) ────────────────────────────────────
+// Returns null on API error so extractFromText() can try Gemini fallback.
+// Returns [] when the model ran OK but found no recruitments on the page.
 
 async function callClaude(
   text:       string,
   sourceUrl:  string,
   sourceName: string,
   year:       number
-): Promise<ExtractedRecruitment[]> {
-  if (!ANTHROPIC_KEY) {
-    console.error(`[${sourceName}] ANTHROPIC_API_KEY missing — no fallback available`)
-    return []
-  }
+): Promise<ExtractedRecruitment[] | null> {
+  if (!ANTHROPIC_KEY) return null  // no key → caller will try Gemini
 
   const prompt    = makeExtractionPrompt(sourceUrl, sourceName, year)
   const truncated = text.slice(0, 12000)
@@ -767,18 +811,18 @@ async function callClaude(
     })
 
     if (!res.ok) {
-      console.error(`[${sourceName}] Anthropic API ${res.status} — check ANTHROPIC_API_KEY secret`)
-      return []
+      console.error(`[${sourceName}] Anthropic text ${res.status} — trying Gemini fallback`)
+      return null  // triggers Gemini fallback in extractFromText()
     }
 
     const data    = await res.json() as { content?: Array<{ type: string; text: string }> }
     const raw     = data.content?.find(b => b.type === "text")?.text ?? ""
     const results = parseClaudeRecruitmentResponse(raw)
-    console.log(`[${sourceName}] Anthropic text (fallback): ${results.length} recruitment(s)`)
+    console.log(`[${sourceName}] Anthropic text: ${results.length} recruitment(s)`)
     return results
   } catch (err) {
     console.error(`[${sourceName}] callClaude error:`, err)
-    return []
+    return null
   }
 }
 
