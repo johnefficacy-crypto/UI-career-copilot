@@ -24,16 +24,28 @@ const SUPABASE_URL     = Deno.env.get("SUPABASE_URL")              ||
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
 
 // ── Model config ──────────────────────────────────────────────────────────────
-// Gemini 2.0 Flash is the primary extractor — free tier: 1,500 req/day, native
-// PDF support, comparable quality to Claude Haiku for structured JSON extraction.
-// Anthropic Claude Haiku is the fallback — used when Gemini hits quota (429) or
-// is unavailable. ~$0.02–0.05 per full 66-source run at Haiku pricing.
-const CLAUDE_MODEL     = "claude-haiku-4-20250514"
-const GEMINI_MODEL     = "gemini-2.0-flash"
-const GEMINI_ENDPOINT  = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`
-const SYSTEM_PROMPT    = "You are a specialist data extraction agent for Indian government recruitment notifications. Return ONLY valid JSON with a top-level 'recruitments' array. Never return markdown or explanation."
-const REQUEST_TIMEOUT  = 18_000
-const CLAUDE_TIMEOUT   = 32_000
+// Gemini 2.0 Flash: primary, free tier (1,500 req/day, 15 RPM).
+// Claude Haiku: fallback — only used when Gemini retries are exhausted.
+const CLAUDE_MODEL    = "claude-haiku-4-20250514"
+const GEMINI_MODEL    = "gemini-2.0-flash"
+const GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`
+const SYSTEM_PROMPT   = "You are a specialist data extraction agent for Indian government recruitment notifications. Return ONLY valid JSON with a top-level 'recruitments' array. Never return markdown or explanation."
+const REQUEST_TIMEOUT = 18_000
+const CLAUDE_TIMEOUT  = 32_000
+
+// ── Gemini rate limiter ───────────────────────────────────────────────────────
+// Free tier limit: 15 RPM. We enforce 5 s minimum gap between calls (~12 RPM)
+// to absorb bursts caused by sources with multiple linked PDFs.
+// Module-level state — shared across ALL callGemini* invocations in one run.
+const GEMINI_MIN_GAP_MS   = 5_000   // 60s / 5s = 12 RPM (safe under 15 RPM cap)
+const GEMINI_RETRY_WAIT   = 16_000  // after a 429, wait 16s (> 1 RPM window) then retry
+let   _geminiLastCallMs   = 0
+
+async function geminiRateLimit(): Promise<void> {
+  const elapsed = Date.now() - _geminiLastCallMs
+  if (elapsed < GEMINI_MIN_GAP_MS) await sleep(GEMINI_MIN_GAP_MS - elapsed)
+  _geminiLastCallMs = Date.now()
+}
 // TASK 6: time budget — 42s of the ~50s Edge Function wall-clock limit
 const RUN_BUDGET_MS     = 42_000
 
@@ -583,9 +595,47 @@ async function acquireContent(
 // Openings can have 10–30 separate notifications — the old single-object
 // approach silently dropped all but the first).
 
+// ─── Gemini low-level fetch (with rate limiter + one retry on 429) ────────────
+
+async function geminiFetch(body: object, sourceName: string, label: string): Promise<Response | null> {
+  await geminiRateLimit()
+
+  let res = await fetch(`${GEMINI_ENDPOINT}?key=${GEMINI_KEY}`, {
+    method:  "POST",
+    headers: { "Content-Type": "application/json" },
+    body:    JSON.stringify(body),
+    signal:  AbortSignal.timeout(CLAUDE_TIMEOUT),
+  })
+
+  if (res.status === 429) {
+    // Per-minute rate limit hit — wait for the rate-limit window to clear, then retry once.
+    // Do NOT fall back to Anthropic yet: this is a transient burst, not exhausted daily quota.
+    console.warn(`[${sourceName}] Gemini ${label} rate limited (429) — retrying in ${GEMINI_RETRY_WAIT / 1000}s`)
+    await sleep(GEMINI_RETRY_WAIT)
+    _geminiLastCallMs = 0  // force rate limiter to allow immediate retry
+    await geminiRateLimit()
+    res = await fetch(`${GEMINI_ENDPOINT}?key=${GEMINI_KEY}`, {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify(body),
+      signal:  AbortSignal.timeout(CLAUDE_TIMEOUT),
+    })
+  }
+
+  if (res.status === 429) {
+    console.warn(`[${sourceName}] Gemini ${label} still rate limited after retry — using Anthropic fallback`)
+    return null  // daily quota likely exhausted — genuine fallback needed
+  }
+  if (!res.ok) {
+    console.error(`[${sourceName}] Gemini ${label} API ${res.status} — using Anthropic fallback`)
+    return null
+  }
+  return res
+}
+
 // ─── Gemini extraction — text ─────────────────────────────────────────────────
-// Returns null to signal "quota/error → caller should try Anthropic fallback".
-// Returns [] when Gemini ran OK but found no recruitments (don't waste a fallback call).
+// Returns null ONLY on genuine failure (exhausted retries, not a transient 429).
+// Returns [] when the model ran OK but found no recruitments.
 
 async function callGemini(
   text:       string,
@@ -599,25 +649,13 @@ async function callGemini(
   const truncated = text.slice(0, 12000)
 
   try {
-    const res = await fetch(`${GEMINI_ENDPOINT}?key=${GEMINI_KEY}`, {
-      method:  "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-        contents: [{ role: "user", parts: [{ text: `${prompt}\n\nTEXT:\n${truncated}` }] }],
-        generationConfig: { responseMimeType: "application/json", maxOutputTokens: 4096 },
-      }),
-      signal: AbortSignal.timeout(CLAUDE_TIMEOUT),
-    })
+    const res = await geminiFetch({
+      systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+      contents: [{ role: "user", parts: [{ text: `${prompt}\n\nTEXT:\n${truncated}` }] }],
+      generationConfig: { responseMimeType: "application/json", maxOutputTokens: 4096 },
+    }, sourceName, "text")
 
-    if (res.status === 429) {
-      console.warn(`[${sourceName}] Gemini quota exceeded — falling back to Anthropic`)
-      return null  // caller will try Anthropic
-    }
-    if (!res.ok) {
-      console.error(`[${sourceName}] Gemini API ${res.status} — falling back to Anthropic`)
-      return null
-    }
+    if (!res) return null
 
     const data    = await res.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> }
     const raw     = data.candidates?.[0]?.content?.parts?.[0]?.text ?? ""
@@ -626,7 +664,7 @@ async function callGemini(
     return results
   } catch (err) {
     console.error(`[${sourceName}] callGemini error:`, err)
-    return null  // network/timeout — try Anthropic
+    return null
   }
 }
 
@@ -645,31 +683,19 @@ async function callGeminiOnPdf(
   const prompt  = makeExtractionPrompt(sourceUrl, sourceName, year)
 
   try {
-    const res = await fetch(`${GEMINI_ENDPOINT}?key=${GEMINI_KEY}`, {
-      method:  "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-        contents: [{
-          role: "user",
-          parts: [
-            { inlineData: { mimeType: "application/pdf", data: base64 } },
-            { text: prompt },
-          ],
-        }],
-        generationConfig: { responseMimeType: "application/json", maxOutputTokens: 4096 },
-      }),
-      signal: AbortSignal.timeout(CLAUDE_TIMEOUT),
-    })
+    const res = await geminiFetch({
+      systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+      contents: [{
+        role: "user",
+        parts: [
+          { inlineData: { mimeType: "application/pdf", data: base64 } },
+          { text: prompt },
+        ],
+      }],
+      generationConfig: { responseMimeType: "application/json", maxOutputTokens: 4096 },
+    }, sourceName, "PDF")
 
-    if (res.status === 429) {
-      console.warn(`[${sourceName}] Gemini PDF quota exceeded — falling back to Anthropic`)
-      return null
-    }
-    if (!res.ok) {
-      console.error(`[${sourceName}] Gemini PDF API ${res.status} — falling back to Anthropic`)
-      return null
-    }
+    if (!res) return null
 
     const data    = await res.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> }
     const raw     = data.candidates?.[0]?.content?.parts?.[0]?.text ?? ""
