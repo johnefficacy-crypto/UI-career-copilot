@@ -18,14 +18,22 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 // SB_PROJECT_URL is a user-settable fallback for projects where auto-injection
 // is absent (e.g. CLI not linked). Set via: supabase secrets set SB_PROJECT_URL=...
 const ANTHROPIC_KEY    = Deno.env.get("ANTHROPIC_API_KEY")        ?? ""
+const GEMINI_KEY       = Deno.env.get("GEMINI_API_KEY")           ?? ""
 const SUPABASE_URL     = Deno.env.get("SUPABASE_URL")              ||
                          Deno.env.get("SB_PROJECT_URL")            || ""
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
-// Use Haiku for extraction — ~20x cheaper than Sonnet, adequate for structured JSON
-// extraction from govt recruitment text. Switch to sonnet only if quality is poor.
-const CLAUDE_MODEL      = "claude-haiku-4-20250514"
-const REQUEST_TIMEOUT   = 18_000
-const CLAUDE_TIMEOUT    = 32_000
+
+// ── Model config ──────────────────────────────────────────────────────────────
+// Gemini 2.0 Flash is the primary extractor — free tier: 1,500 req/day, native
+// PDF support, comparable quality to Claude Haiku for structured JSON extraction.
+// Anthropic Claude Haiku is the fallback — used when Gemini hits quota (429) or
+// is unavailable. ~$0.02–0.05 per full 66-source run at Haiku pricing.
+const CLAUDE_MODEL     = "claude-haiku-4-20250514"
+const GEMINI_MODEL     = "gemini-2.0-flash"
+const GEMINI_ENDPOINT  = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`
+const SYSTEM_PROMPT    = "You are a specialist data extraction agent for Indian government recruitment notifications. Return ONLY valid JSON with a top-level 'recruitments' array. Never return markdown or explanation."
+const REQUEST_TIMEOUT  = 18_000
+const CLAUDE_TIMEOUT   = 32_000
 // TASK 6: time budget — 42s of the ~50s Edge Function wall-clock limit
 const RUN_BUDGET_MS     = 42_000
 
@@ -107,9 +115,15 @@ function validateEnv(): { ok: boolean; warnings: string[] } {
   const warnings: string[] = []
   if (!SUPABASE_URL)     warnings.push("SUPABASE_URL / SB_PROJECT_URL not set — all DB ops will fail")
   if (!SERVICE_ROLE_KEY) warnings.push("SUPABASE_SERVICE_ROLE_KEY not set — all DB ops will fail")
-  if (!ANTHROPIC_KEY)    warnings.push("ANTHROPIC_API_KEY not set — ALL source extractions will return empty (items_found=0)")
+  if (!GEMINI_KEY && !ANTHROPIC_KEY) {
+    warnings.push("Neither GEMINI_API_KEY nor ANTHROPIC_API_KEY is set — ALL extractions will return empty (items_found=0). Set at least one.")
+  } else {
+    const primary  = GEMINI_KEY    ? "Gemini 2.0 Flash (free tier)"     : "—"
+    const fallback = ANTHROPIC_KEY ? "Claude Haiku (paid)"               : "none"
+    console.log(`[env] LLM: primary=${primary}  fallback=${fallback}`)
+  }
   warnings.forEach(w => console.error(`[env] ⚠ ${w}`))
-  const ok = !!(SUPABASE_URL && SERVICE_ROLE_KEY && ANTHROPIC_KEY)
+  const ok = !!(SUPABASE_URL && SERVICE_ROLE_KEY && (GEMINI_KEY || ANTHROPIC_KEY))
   if (ok) console.log("[env] ✓ All required env vars present")
   return { ok, warnings }
 }
@@ -314,7 +328,7 @@ async function callClaudeOnPdf(
       body: JSON.stringify({
         model:      CLAUDE_MODEL,
         max_tokens: 4000,
-        system:     "You are a specialist data extraction agent for Indian government recruitment notifications. Return ONLY valid JSON with a top-level 'recruitments' array.",
+        system:     SYSTEM_PROMPT,
         messages: [{
           role:    "user",
           content: [
@@ -569,6 +583,132 @@ async function acquireContent(
 // Openings can have 10–30 separate notifications — the old single-object
 // approach silently dropped all but the first).
 
+// ─── Gemini extraction — text ─────────────────────────────────────────────────
+// Returns null to signal "quota/error → caller should try Anthropic fallback".
+// Returns [] when Gemini ran OK but found no recruitments (don't waste a fallback call).
+
+async function callGemini(
+  text:       string,
+  sourceUrl:  string,
+  sourceName: string,
+  year:       number
+): Promise<ExtractedRecruitment[] | null> {
+  if (!GEMINI_KEY) return null
+
+  const prompt    = makeExtractionPrompt(sourceUrl, sourceName, year)
+  const truncated = text.slice(0, 12000)
+
+  try {
+    const res = await fetch(`${GEMINI_ENDPOINT}?key=${GEMINI_KEY}`, {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+        contents: [{ role: "user", parts: [{ text: `${prompt}\n\nTEXT:\n${truncated}` }] }],
+        generationConfig: { responseMimeType: "application/json", maxOutputTokens: 4096 },
+      }),
+      signal: AbortSignal.timeout(CLAUDE_TIMEOUT),
+    })
+
+    if (res.status === 429) {
+      console.warn(`[${sourceName}] Gemini quota exceeded — falling back to Anthropic`)
+      return null  // caller will try Anthropic
+    }
+    if (!res.ok) {
+      console.error(`[${sourceName}] Gemini API ${res.status} — falling back to Anthropic`)
+      return null
+    }
+
+    const data    = await res.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> }
+    const raw     = data.candidates?.[0]?.content?.parts?.[0]?.text ?? ""
+    const results = parseClaudeRecruitmentResponse(raw)
+    console.log(`[${sourceName}] Gemini text: ${results.length} recruitment(s)`)
+    return results
+  } catch (err) {
+    console.error(`[${sourceName}] callGemini error:`, err)
+    return null  // network/timeout — try Anthropic
+  }
+}
+
+// ─── Gemini extraction — PDF ──────────────────────────────────────────────────
+
+async function callGeminiOnPdf(
+  pdfBytes:   Uint8Array,
+  sourceUrl:  string,
+  sourceName: string,
+  year:       number
+): Promise<ExtractedRecruitment[] | null> {
+  if (!GEMINI_KEY) return null
+  if (pdfBytes.length > 20_000_000) return null  // >20 MB — skip
+
+  const base64 = toBase64(pdfBytes)
+  const prompt  = makeExtractionPrompt(sourceUrl, sourceName, year)
+
+  try {
+    const res = await fetch(`${GEMINI_ENDPOINT}?key=${GEMINI_KEY}`, {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+        contents: [{
+          role: "user",
+          parts: [
+            { inlineData: { mimeType: "application/pdf", data: base64 } },
+            { text: prompt },
+          ],
+        }],
+        generationConfig: { responseMimeType: "application/json", maxOutputTokens: 4096 },
+      }),
+      signal: AbortSignal.timeout(CLAUDE_TIMEOUT),
+    })
+
+    if (res.status === 429) {
+      console.warn(`[${sourceName}] Gemini PDF quota exceeded — falling back to Anthropic`)
+      return null
+    }
+    if (!res.ok) {
+      console.error(`[${sourceName}] Gemini PDF API ${res.status} — falling back to Anthropic`)
+      return null
+    }
+
+    const data    = await res.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> }
+    const raw     = data.candidates?.[0]?.content?.parts?.[0]?.text ?? ""
+    const results = parseClaudeRecruitmentResponse(raw)
+    console.log(`[${sourceName}] Gemini PDF: ${results.length} recruitment(s)`)
+    return results
+  } catch (err) {
+    console.error(`[${sourceName}] callGeminiOnPdf error:`, err)
+    return null
+  }
+}
+
+// ─── Unified extraction wrappers ──────────────────────────────────────────────
+// Try Gemini first (free). null return = quota/error → fall back to Anthropic.
+
+async function extractFromText(
+  text:       string,
+  sourceUrl:  string,
+  sourceName: string,
+  year:       number
+): Promise<ExtractedRecruitment[]> {
+  const geminiResult = await callGemini(text, sourceUrl, sourceName, year)
+  if (geminiResult !== null) return geminiResult
+  return callClaude(text, sourceUrl, sourceName, year)
+}
+
+async function extractFromPdf(
+  pdfBytes:   Uint8Array,
+  sourceUrl:  string,
+  sourceName: string,
+  year:       number
+): Promise<ExtractedRecruitment[]> {
+  const geminiResult = await callGeminiOnPdf(pdfBytes, sourceUrl, sourceName, year)
+  if (geminiResult !== null) return geminiResult
+  return callClaudeOnPdf(pdfBytes, sourceUrl, sourceName, year)
+}
+
+// ─── Anthropic extraction — text (fallback) ───────────────────────────────────
+
 async function callClaude(
   text:       string,
   sourceUrl:  string,
@@ -576,11 +716,11 @@ async function callClaude(
   year:       number
 ): Promise<ExtractedRecruitment[]> {
   if (!ANTHROPIC_KEY) {
-    console.error(`[${sourceName}] ANTHROPIC_API_KEY missing — skipping extraction`)
+    console.error(`[${sourceName}] ANTHROPIC_API_KEY missing — no fallback available`)
     return []
   }
 
-  const prompt = makeExtractionPrompt(sourceUrl, sourceName, year)
+  const prompt    = makeExtractionPrompt(sourceUrl, sourceName, year)
   const truncated = text.slice(0, 12000)
 
   try {
@@ -594,7 +734,7 @@ async function callClaude(
       body: JSON.stringify({
         model:      CLAUDE_MODEL,
         max_tokens: 4000,
-        system:     "You are a specialist data extraction agent for Indian government recruitment notifications. Return ONLY valid JSON with a top-level 'recruitments' array. Never return markdown or explanation.",
+        system:     SYSTEM_PROMPT,
         messages:   [{ role: "user", content: `${prompt}\n\nTEXT:\n${truncated}` }],
       }),
       signal: AbortSignal.timeout(CLAUDE_TIMEOUT),
@@ -608,7 +748,7 @@ async function callClaude(
     const data    = await res.json() as { content?: Array<{ type: string; text: string }> }
     const raw     = data.content?.find(b => b.type === "text")?.text ?? ""
     const results = parseClaudeRecruitmentResponse(raw)
-    console.log(`[${sourceName}] Text extraction: ${results.length} recruitment(s)`)
+    console.log(`[${sourceName}] Anthropic text (fallback): ${results.length} recruitment(s)`)
     return results
   } catch (err) {
     console.error(`[${sourceName}] callClaude error:`, err)
@@ -723,23 +863,22 @@ Deno.serve(async (req) => {
         continue
       }
 
-      // ── Stage 2: Route to appropriate Claude extractor ───────────────────────
-      // PDF sources use Anthropic PDF API (handles compressed/scanned PDFs).
-      // HTML sources with linked PDFs extract from each PDF + the HTML text.
-      // Plain HTML/RSS/JSON uses text extraction.
+      // ── Stage 2: Route to Gemini (primary) or Anthropic (fallback) extractor ──
+      // Gemini 2.0 Flash handles both text and PDF natively — free tier covers
+      // all current scraping volume. Anthropic kicks in only on Gemini 429/error.
       let extractedList: ExtractedRecruitment[] = []
 
       if (pdfBytes) {
-        // Dedicated PDF source — send bytes directly to Claude
-        extractedList = await callClaudeOnPdf(pdfBytes, url, src.source_name, year)
+        // Dedicated PDF source — send bytes directly (Gemini → Anthropic fallback)
+        extractedList = await extractFromPdf(pdfBytes, url, src.source_name, year)
       } else {
         // HTML/RSS — extract from text first
         if (text.trim()) {
-          extractedList = await callClaude(text, url, src.source_name, year)
+          extractedList = await extractFromText(text, url, src.source_name, year)
         }
         // Also extract from any linked PDFs and merge (dedup by title fingerprint)
         for (const pdf of (linkedPdfs ?? [])) {
-          const pdfResults = await callClaudeOnPdf(pdf, url, src.source_name, year)
+          const pdfResults = await extractFromPdf(pdf, url, src.source_name, year)
           for (const r of pdfResults) {
             const fp = fingerprintKey(r.organization_name, r.year, r.title)
             if (!extractedList.some(e => fingerprintKey(e.organization_name, e.year, e.title) === fp)) {
