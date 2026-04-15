@@ -88,6 +88,26 @@ function confBar(score: number) {
   )
 }
 
+// Data quality bar — 0-100 completeness score
+// ≥80 green (approve freely), 50-79 amber (review), <50 red (needs enrichment)
+function qualityBar(score: number | null) {
+  if (score == null) return <span className="text-xs" style={{ color: "var(--text-ghost)" }}>—</span>
+  const color = score >= 80
+    ? "var(--success)"
+    : score >= 50
+      ? "var(--warning)"
+      : "var(--danger)"
+  const label = score >= 80 ? "Complete" : score >= 50 ? "Partial" : "Sparse"
+  return (
+    <div className="flex flex-col gap-0.5">
+      <div className="h-1.5 rounded-full" style={{ background: "rgba(255,255,255,0.08)" }}>
+        <div className="h-full rounded-full transition-all" style={{ width: `${score}%`, background: color }} />
+      </div>
+      <span className="text-[10px] tabular-nums text-center" style={{ color }}>{score} · {label}</span>
+    </div>
+  )
+}
+
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 function StatTile({ label, value, sub, color }: {
@@ -148,7 +168,8 @@ function QueueRow({ item, onApprove, onReject, disabled }: {
           </p>
         )}
       </div>
-      <div className="w-24 shrink-0">{confBar(item.confidence_score ?? 0)}</div>
+      <div className="w-24 shrink-0" title="Claude confidence score">{confBar(item.confidence_score ?? 0)}</div>
+      <div className="w-24 shrink-0" title="Data completeness (title+org+dates+posts+criteria)">{qualityBar(item.data_quality_score ?? null)}</div>
       <div className="shrink-0">{statusBadge(item.status)}</div>
       {item.status === "pending" ? (
         <div className="flex gap-2 shrink-0">

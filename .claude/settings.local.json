@@ -28,7 +28,8 @@
       "Bash(netstat -ano)",
       "Bash(findstr \":3000\")",
       "Bash(taskkill /F /PID 348)",
-      "Bash(supabase functions:*)"
+      "Bash(supabase functions:*)",
+      "Bash(grep -n \"triggered_by\\\\|scrape_runs\\\\|fn_auto_recompute\" supabase/migrations/*.sql)"
     ]
   }
 }
