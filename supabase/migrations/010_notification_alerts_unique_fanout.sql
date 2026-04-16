@@ -15,10 +15,21 @@
 --    in TypeScript in lib/db/notifications.ts approveScrapeItem().
 
 -- ── 1. Unique constraint ──────────────────────────────────────────────────────
+-- PostgreSQL does not support ADD CONSTRAINT IF NOT EXISTS — use a DO block.
 
-ALTER TABLE public.notification_alerts
-  ADD CONSTRAINT IF NOT EXISTS uq_notification_alert
-  UNIQUE (user_id, recruitment_id, alert_type);
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'uq_notification_alert'
+      AND conrelid = 'public.notification_alerts'::regclass
+  ) THEN
+    ALTER TABLE public.notification_alerts
+      ADD CONSTRAINT uq_notification_alert
+      UNIQUE (user_id, recruitment_id, alert_type);
+  END IF;
+END;
+$$;
 
 -- ── 2. fn_fanout_alert_event stub ────────────────────────────────────────────
 
