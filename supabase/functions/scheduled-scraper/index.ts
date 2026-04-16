@@ -390,14 +390,25 @@ function parseClaudeRecruitmentResponse(raw: string): ExtractedRecruitment[] {
   const clean = raw.replace(/^```json\s*/i, "").replace(/^```/, "").replace(/```$/, "").trim()
   const jsonStart = clean.indexOf("{")
   const jsonEnd   = clean.lastIndexOf("}")
-  if (jsonStart === -1 || jsonEnd === -1) return []
-  const parsed = JSON.parse(clean.slice(jsonStart, jsonEnd + 1)) as { recruitments?: unknown[] }
-  const list   = Array.isArray(parsed.recruitments) ? parsed.recruitments : []
-  return list.filter((r): r is ExtractedRecruitment =>
-    typeof r === "object" && r !== null &&
-    typeof (r as Record<string, unknown>).title === "string" &&
-    (r as Record<string, unknown>).title !== ""
-  )
+  if (jsonStart === -1) return []
+
+  // Try full parse first; on failure (truncated response) try closing the JSON
+  const attempts = jsonEnd !== -1
+    ? [clean.slice(jsonStart, jsonEnd + 1), clean.slice(jsonStart) + "]}"]
+    : [clean.slice(jsonStart) + "]}"]
+
+  for (const attempt of attempts) {
+    try {
+      const parsed = JSON.parse(attempt) as { recruitments?: unknown[] }
+      const list   = Array.isArray(parsed.recruitments) ? parsed.recruitments : []
+      return list.filter((r): r is ExtractedRecruitment =>
+        typeof r === "object" && r !== null &&
+        typeof (r as Record<string, unknown>).title === "string" &&
+        (r as Record<string, unknown>).title !== ""
+      )
+    } catch { /* try next */ }
+  }
+  return []
 }
 
 // ─── Claude extraction on PDF bytes (Anthropic PDF beta API) ─────────────────
@@ -444,15 +455,25 @@ async function callClaudeOnPdf(
       signal: AbortSignal.timeout(CLAUDE_TIMEOUT),
     })
 
+    if (res.status === 429) {
+      const retryAfter = parseInt(res.headers.get("retry-after") ?? "10", 10)
+      const wait = Math.min(retryAfter, 10) * 1000
+      console.warn(`[${sourceName}] Anthropic PDF 429 rate limit — retrying in ${wait / 1000}s`)
+      await sleep(wait)
+      const res2 = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-api-key": ANTHROPIC_KEY, "anthropic-version": "2023-06-01", "anthropic-beta": "pdfs-2024-09-25" },
+        body: JSON.stringify({ model: CLAUDE_MODEL, max_tokens: 4000, system: SYSTEM_PROMPT, messages: [{ role: "user", content: [{ type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 } }, { type: "text", text: makeExtractionPrompt(sourceUrl, sourceName, year) }] }] }),
+        signal: AbortSignal.timeout(CLAUDE_TIMEOUT),
+      })
+      if (!res2.ok) { console.error(`[${sourceName}] Anthropic PDF retry ${res2.status}`); return null }
+      const data2 = await res2.json() as { content?: Array<{ type: string; text: string }> }
+      return parseClaudeRecruitmentResponse(data2.content?.find(b => b.type === "text")?.text ?? "")
+    }
     if (!res.ok) {
       const body = await res.text().catch(() => "")
-      const hint = res.status === 400 && body.includes("credit")
-        ? " (insufficient credits — top up at console.anthropic.com/settings/billing)"
-        : res.status === 404
-          ? " (model not found or API key revoked — rotate key at console.anthropic.com/settings/api-keys)"
-          : res.status === 401
-            ? " (invalid API key — check ANTHROPIC_API_KEY secret)"
-            : ""
+      const hint = res.status === 404 ? " (model not found or API key revoked — use console.anthropic.com)"
+                 : res.status === 401 ? " (invalid API key)" : ""
       console.error(`[${sourceName}] Anthropic PDF ${res.status}${hint} body=${body.slice(0, 300)}`)
       return null
     }
@@ -933,15 +954,26 @@ async function callClaude(
       signal: AbortSignal.timeout(CLAUDE_TIMEOUT),
     })
 
+    if (res.status === 429) {
+      const retryAfter = parseInt(res.headers.get("retry-after") ?? "10", 10)
+      const wait = Math.min(retryAfter, 10) * 1000
+      console.warn(`[${sourceName}] Anthropic text 429 rate limit — retrying in ${wait / 1000}s`)
+      await sleep(wait)
+      // single retry
+      const res2 = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-api-key": ANTHROPIC_KEY, "anthropic-version": "2023-06-01" },
+        body: JSON.stringify({ model: CLAUDE_MODEL, max_tokens: 4000, system: SYSTEM_PROMPT, messages: [{ role: "user", content: `${makeExtractionPrompt(sourceUrl, sourceName, year)}\n\nTEXT:\n${text.slice(0, 12000)}` }] }),
+        signal: AbortSignal.timeout(CLAUDE_TIMEOUT),
+      })
+      if (!res2.ok) { console.error(`[${sourceName}] Anthropic text retry ${res2.status}`); return null }
+      const data2 = await res2.json() as { content?: Array<{ type: string; text: string }> }
+      return parseClaudeRecruitmentResponse(data2.content?.find(b => b.type === "text")?.text ?? "")
+    }
     if (!res.ok) {
       const body = await res.text().catch(() => "")
-      const hint = res.status === 400 && body.includes("credit")
-        ? " (insufficient credits)"
-        : res.status === 404
-          ? " (model not found or API key revoked — rotate at console.anthropic.com/settings/api-keys)"
-          : res.status === 401
-            ? " (invalid API key — check ANTHROPIC_API_KEY secret)"
-            : ""
+      const hint = res.status === 404 ? " (model not found or API key revoked — use console.anthropic.com)"
+                 : res.status === 401 ? " (invalid API key)" : ""
       console.error(`[${sourceName}] Anthropic text ${res.status}${hint} body=${body.slice(0, 300)} — trying Gemini fallback`)
       return null
     }
