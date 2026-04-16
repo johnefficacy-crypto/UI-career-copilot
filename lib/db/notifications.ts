@@ -174,16 +174,70 @@ export async function getScrapeQueue(
   limit = 50
 ): Promise<QueueReviewItem[]> {
   const supabase = await createClient()
-  // v_admin_queue_review is defined in sql/002_helper_functions.sql
+
+  // ── Try the enriched view first (v_admin_queue_review from migration 009) ──
+  // If the view doesn't exist yet (pre-migration DB), fall back to a direct
+  // scrape_queue query that extracts title/org from the extracted_data JSONB.
+  // Supabase returns code "42P01" (PGRST116/42P01) when relation does not exist.
+  {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let viewQuery = (supabase as any)
+      .from("v_admin_queue_review")
+      .select("*")
+      .order("scraped_at", { ascending: false })
+      .limit(limit)
+    if (status) viewQuery = viewQuery.eq("status", status)
+    const { data: viewData, error: viewErr } = await viewQuery
+    if (!viewErr) {
+      return (viewData ?? []) as QueueReviewItem[]
+    }
+    // If error.code is not a missing-relation error, rethrow so real errors surface
+    const code: string = viewErr?.code ?? ""
+    if (code !== "42P01" && code !== "PGRST116" && !viewErr.message?.includes("does not exist")) {
+      throw new Error(`getScrapeQueue (view): ${viewErr.message}`)
+    }
+    // Fall through to direct table query
+  }
+
+  // ── Fallback: query scrape_queue directly ────────────────────────────────
+  // Extracts title + org_name from the extracted_data JSONB.
+  // The view fields fingerprint / obs_status / canonical_id / canonical_name
+  // (from source_observations JOIN) are null in the fallback — UI handles nulls.
   let query = supabase
-    .from("v_admin_queue_review")
-    .select("*")
+    .from("scrape_queue")
+    .select("id,source_url,source_name,confidence_score,data_quality_score,status,scraped_at,reviewed_at,reviewer_notes,extracted_data")
     .order("scraped_at", { ascending: false })
     .limit(limit)
   if (status) query = query.eq("status", status)
+
   const { data, error } = await query
   if (error) throw new Error(`getScrapeQueue: ${error.message}`)
-  return (data ?? []) as QueueReviewItem[]
+
+  return (data ?? []).map((row) => {
+    const ext = (row.extracted_data ?? {}) as Record<string, unknown>
+    return {
+      id:                 row.id,
+      source_url:         row.source_url,
+      source_name:        row.source_name ?? "",
+      confidence_score:   row.confidence_score ?? 0,
+      data_quality_score: (row.data_quality_score as number | null) ?? null,
+      status:             row.status as ScrapeQueueItem["status"],
+      scraped_at:         row.scraped_at,
+      reviewed_at:        row.reviewed_at ?? null,
+      reviewer_notes:     row.reviewer_notes ?? null,
+      // Extracted from JSONB
+      title:              (ext.title as string | null)               ?? null,
+      org_name:           (ext.organization_name as string | null)   ?? null,
+      apply_end_date:     (ext.apply_end_date as string | null)      ?? null,
+      total_vacancies:    ext.total_vacancies != null ? String(ext.total_vacancies) : null,
+      // Fields from source_observations JOIN — not available in direct fallback
+      fingerprint:        null,
+      obs_status:         null,
+      canonical_id:       null,
+      canonical_name:     null,
+      run_started_at:     null,
+    } satisfies QueueReviewItem
+  })
 }
 
 export async function approveScrapeItem(

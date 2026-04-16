@@ -159,16 +159,17 @@ export default async function AdminScrapePage({
     .single()
   if (!profile?.is_admin) redirect("/dashboard")
 
-  // All data + searchParams resolved in parallel
-  // Was sequential before — caused 13s load (each 1.3s Supabase RTT adds up)
+  // All data + searchParams resolved in parallel.
+  // Promise.allSettled — a single failed fetch does NOT crash the whole page.
+  // Was sequential before — caused 13s load (each 1.3s Supabase RTT adds up).
   const [
     params,
-    stats,
-    recentRuns,
-    pendingQueue,
-    sourceHealth,
-    sourceRegistry,
-  ] = await Promise.all([
+    statsResult,
+    runsResult,
+    queueResult,
+    healthResult,
+    registryResult,
+  ] = await Promise.allSettled([
     searchParams,
     getScraperStats(),
     getScrapeRuns(10),
@@ -177,6 +178,22 @@ export default async function AdminScrapePage({
     dbGetActiveSources(),
   ])
 
+  const stats         = statsResult.status === "fulfilled"    ? statsResult.value    : { lastRun: null, pendingReview: 0, approvedTotal: 0, failedSources: 0, healthySources: 0 }
+  const recentRuns    = runsResult.status === "fulfilled"     ? runsResult.value     : []
+  const pendingQueue  = queueResult.status === "fulfilled"    ? queueResult.value    : []
+  const sourceHealth  = healthResult.status === "fulfilled"   ? healthResult.value   : []
+  const sourceRegistry = registryResult.status === "fulfilled" ? registryResult.value : []
+
+  // Surface a data-fetch error in the dashboard's error banner
+  const fetchError =
+    queueResult.status === "rejected"
+      ? `Queue load failed: ${queueResult.reason instanceof Error ? queueResult.reason.message : String(queueResult.reason)}`
+      : statsResult.status === "rejected"
+        ? `Stats load failed: ${statsResult.reason instanceof Error ? statsResult.reason.message : String(statsResult.reason)}`
+        : undefined
+
+  const resolvedParams = params.status === "fulfilled" ? params.value : {}
+
   return (
     <AdminScrapeDashboardClient
       stats={stats}
@@ -184,8 +201,8 @@ export default async function AdminScrapePage({
       pendingQueue={pendingQueue}
       sourceHealth={sourceHealth}
       sourceRegistry={sourceRegistry}
-      errorMessage={params.error}
-      activeTab={params.tab ?? "queue"}
+      errorMessage={fetchError ?? resolvedParams.error}
+      activeTab={resolvedParams.tab ?? "queue"}
     />
   )
 }
