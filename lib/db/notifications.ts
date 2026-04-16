@@ -389,10 +389,12 @@ export async function approveScrapeItem(
           userIds.map((u) => ({
             user_id:        u.id,
             recruitment_id: recruitmentId,
+            status:         "pending",
             reason:         "new_recruitment_approved",
             queued_at:      new Date().toISOString(),
           })),
-          { onConflict: "user_id,recruitment_id", ignoreDuplicates: true }
+          // uq_recompute_queue is on (user_id, recruitment_id, status) — must include all 3
+          { onConflict: "user_id,recruitment_id,status", ignoreDuplicates: true }
         )
       console.log(`[approveScrapeItem] queued eligibility recompute for ${userIds.length} users`)
     }
