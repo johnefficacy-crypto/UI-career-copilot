@@ -1,4 +1,5 @@
 import type { DashboardData }            from "@/lib/db/dashboard"
+import type { NotificationAlert }         from "@/types/notifications"
 import { DashboardNav }                   from "./DashboardNav"
 import { ProfileCard }                    from "./ProfileCard"
 import { ExamTargetCard }                 from "./ExamTargetCard"
@@ -17,6 +18,9 @@ interface Props {
   data:                 DashboardData
   userId:               string
   eligibleRecruitments: EligibleRecruitmentsResult
+  userAlerts:           NotificationAlert[]
+  unreadCount:          number
+  isPaid:               boolean
   primaryPlan:          UserPlansResult[number] | null
   planStats:            null
   lastChatSessionId:    string | null
@@ -27,14 +31,16 @@ export function DashboardShell({
   data,
   userId,
   eligibleRecruitments,
+  userAlerts,
+  unreadCount,
+  isPaid,
   primaryPlan,
   planStats,
   lastChatSessionId,
 }: Props) {
-  const { profile, education, experience, preferences, targets, attempts, notifications } = data
+  const { profile, education, experience, preferences, targets, attempts } = data
 
   const firstName = profile?.full_name?.split(" ")[0] ?? "Aspirant"
-  const isPaid    = profile?.plan_id === "pro" || profile?.plan_id === "elite"
 
   // ── Derive eligibleExamIds for SkillTestWidget ─────────────────────────────
   // eligibleRecruitments comes from the eligibility runner — it's an array of
@@ -114,9 +120,10 @@ export function DashboardShell({
           <div className="lg:col-span-2 flex flex-col gap-5">
             <ExamTargetCard targets={targets} attempts={attempts} />
             <NotificationsFeed
-              notifications={notifications}
-              preferences={preferences}
-              eligibleRecruitments={eligibleRecruitments}
+              alerts={userAlerts}
+              unreadCount={unreadCount}
+              planId={profile?.plan_id ?? "free"}
+              userId={userId}
             />
 
             {/* SkillTestWidget — correct props ───────────────────────── */}
