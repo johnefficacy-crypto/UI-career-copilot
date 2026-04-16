@@ -286,44 +286,89 @@ export async function approveScrapeItem(
  
   if (updateErr) throw new Error(`approveScrapeItem update: ${updateErr.message}`)
  
-  // ── 6. alert_event + fanout (non-fatal after this point) ──────────────────
+  // ── 6. Broadcast admin-reviewed notification to all onboarded users ──────────
+  //
+  // WHY we do this in TypeScript rather than via fn_fanout_alert_event RPC:
+  //   • fn_fanout_alert_event does not exist in any migration — was documented
+  //     in Phase 3A but never created. Every previous call silently failed.
+  //   • fn_notify_recruitment_opened trigger only fires for status='open'.
+  //     Scraped items with past deadlines get status='closed' → trigger skips them.
+  //   • The trigger's org_type matching table is incomplete (no Courts/Judiciary).
+  //
+  // A human admin has verified this item. That makes it trustworthy enough to
+  // notify ALL users who have completed onboarding, regardless of org_type or
+  // recruitment status. Users can filter/ignore in their notification feed.
+  //
+  // alert_type = 'new_match' (the only valid type for a new opening per the
+  // notification_alerts_alert_type_check constraint).
+
   if (!recruitmentId) return // promotion failed silently — runner logged it
- 
+
   try {
-    const { data: evt, error: evtErr } = await supabase
+    // Record the alert_event for audit trail
+    const { data: evt } = await supabase
       .from("alert_events")
       .insert({
         event_type:     "new_recruitment",
         recruitment_id: recruitmentId,
         priority:       2,
-        payload:        {
-          source_url:    item.source_url,
-          source_name:   item.source_name,
-          queue_item_id: itemId,
+        payload: {
+          source_url:      item.source_url,
+          source_name:     item.source_name,
+          queue_item_id:   itemId,
+          reviewer_id:     reviewerId,
+          confidence_score: item.confidence_score,
         },
         fanout_status: "pending",
       })
       .select("id")
       .single()
- 
-    if (evtErr || !evt) {
-      console.error("[approveScrapeItem] alert_event insert:", evtErr?.message)
-      return
-    }
- 
-    const { error: fanoutErr } = await supabase.rpc("fn_fanout_alert_event", {
-      p_event_id: evt.id,
-    })
- 
-    if (fanoutErr) {
-      console.error("[approveScrapeItem] fanout:", fanoutErr.message)
-      await supabase
-        .from("alert_events")
-        .update({ fanout_status: "failed" })
-        .eq("id", evt.id)
+
+    // Fetch all onboarded users
+    const { data: users } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("onboarding_completed", true)
+
+    if (users && users.length > 0) {
+      const now = new Date().toISOString()
+      const { error: notifErr } = await supabase
+        .from("notification_alerts")
+        .upsert(
+          users.map((u) => ({
+            user_id:        u.id,
+            recruitment_id: recruitmentId,
+            alert_type:     "new_match" as const,
+            is_read:        false,
+            priority:       3 as const,
+            sent_at:        now,
+            alert_event_id: evt?.id ?? null,
+            explanation: {
+              is_tracked:     false,
+              is_eligible:    false,
+              matched_exam:   false,
+              matched_sector: false,
+              matched_type:   false,
+            },
+          })),
+          { onConflict: "user_id,recruitment_id,alert_type", ignoreDuplicates: true }
+        )
+
+      if (notifErr) {
+        console.error("[approveScrapeItem] notification broadcast:", notifErr.message)
+      } else {
+        console.log(`[approveScrapeItem] broadcast to ${users.length} users for recruitment ${recruitmentId}`)
+        // Mark alert_event as completed
+        if (evt) {
+          await supabase
+            .from("alert_events")
+            .update({ fanout_status: "completed", users_notified: users.length })
+            .eq("id", evt.id)
+        }
+      }
     }
   } catch (e) {
-    console.error("[approveScrapeItem] alert/fanout non-fatal:", e)
+    console.error("[approveScrapeItem] notification broadcast non-fatal:", e)
   }
 
   // ── 7. Queue eligibility recompute for all users ───────────────────────────
