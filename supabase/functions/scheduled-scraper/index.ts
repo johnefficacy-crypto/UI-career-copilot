@@ -13,6 +13,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 
+const insecureClient = Deno.createHttpClient({ unsafelyIgnoreCertificateErrors: true })
 // ─── Env ──────────────────────────────────────────────────────────────────────
 // SUPABASE_URL is a reserved Supabase system var — auto-injected at runtime.
 // SB_PROJECT_URL is a user-settable fallback for projects where auto-injection
@@ -590,7 +591,7 @@ async function acquireContent(
     if ((cached as ETagRecord | null)?.etag) headers["If-None-Match"] = (cached as ETagRecord).etag!
     if ((cached as ETagRecord | null)?.last_modified) headers["If-Modified-Since"] = (cached as ETagRecord).last_modified!
 
-    const res = await fetch(rssUrl, { headers, signal: AbortSignal.timeout(REQUEST_TIMEOUT) })
+    const res = await fetch(rssUrl, { headers, signal: AbortSignal.timeout(REQUEST_TIMEOUT),client: insecureClient, })
     if (res.status === 304) return { text: "", url: rssUrl, skipped: true, headers: {} }
 
     const xml  = await res.text()
@@ -625,6 +626,7 @@ async function acquireContent(
     const res  = await fetch(src.api_url, {
       headers:{ "User-Agent": "CareerCopilot/1.0", "Accept": "application/json" },
       signal: AbortSignal.timeout(REQUEST_TIMEOUT),
+      client: insecureClient
     })
     if (!res.ok) throw new Error(`JSON fetch ${res.status}`)
     const json = await res.json()
@@ -635,7 +637,7 @@ async function acquireContent(
   // Stage 2: replaced naive BT/ET regex with Anthropic PDF API.
   // Returns raw bytes so the main loop can call callClaudeOnPdf().
   if (src.adapter_type === "pdf" && src.pdf_bulletin_url) {
-    const res  = await fetch(src.pdf_bulletin_url, { signal: AbortSignal.timeout(REQUEST_TIMEOUT) })
+    const res  = await fetch(src.pdf_bulletin_url, { signal: AbortSignal.timeout(REQUEST_TIMEOUT), client: insecureClient })
     if (!res.ok) throw new Error(`PDF fetch ${res.status}`)
     const buf  = await res.arrayBuffer()
     return { text: "", url: src.pdf_bulletin_url, skipped: false, headers: {}, pdfBytes: new Uint8Array(buf) }
@@ -657,7 +659,7 @@ async function acquireContent(
     if ((cached as ETagRecord | null)?.etag) reqHeaders["If-None-Match"] = (cached as ETagRecord).etag!
     if ((cached as ETagRecord | null)?.last_modified) reqHeaders["If-Modified-Since"] = (cached as ETagRecord).last_modified!
 
-    const res = await fetch(targetUrl, { headers: reqHeaders, signal: AbortSignal.timeout(REQUEST_TIMEOUT) })
+    const res = await fetch(targetUrl, { headers: reqHeaders, signal: AbortSignal.timeout(REQUEST_TIMEOUT), client: insecureClient })
     if (res.status === 304) return { text: "", url: targetUrl, skipped: true, headers: {} }
     if (!res.ok) throw new Error(`HTML fetch ${res.status}`)
 
@@ -769,6 +771,7 @@ async function geminiFetch(body: object, sourceName: string, label: string): Pro
       headers: { "Content-Type": "application/json" },
       body:    JSON.stringify(body),
       signal:  AbortSignal.timeout(CLAUDE_TIMEOUT),
+      
     })
   }
 
@@ -931,6 +934,7 @@ async function callClaude(
         messages:   [{ role: "user", content: `${prompt}\n\nTEXT:\n${truncated}` }],
       }),
       signal: AbortSignal.timeout(CLAUDE_TIMEOUT),
+      
     })
 
     if (!res.ok) {
