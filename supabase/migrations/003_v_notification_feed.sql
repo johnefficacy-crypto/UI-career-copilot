@@ -34,10 +34,10 @@ SELECT
   r.year,
   r.total_vacancies,
 
-  -- organizations
+  -- organizations (column is `type`, aliased to match NotificationAlert shape)
   o.id            AS org_id,
   o.name          AS org_name,
-  o.org_type,
+  o.type          AS org_type,
   o.state         AS org_state,
 
   -- days until apply_end_date (null if already passed or no date)

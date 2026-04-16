@@ -110,8 +110,13 @@ export async function adminApproveQueueItem(formData: FormData) {
   if (!itemId) redirect("/admin/scrape?error=Missing+item_id")
   try {
     await approveScrapeItem(itemId, admin.id, notes)
-    revalidatePath("/admin/scrape")
-    revalidatePath("/admin/recruitments")
+    // Do NOT revalidatePath("/admin/scrape") — the client already applies an
+    // optimistic update (status → "approved") in handleApprove(), and
+    // revalidating the full page causes Next.js to recompile it in dev mode
+    // (5-10 s delay per click). The DB is updated; on next full page load
+    // the correct data will be shown.
+    revalidatePath("/admin/recruitments")   // admin recruitment list
+    revalidatePath("/dashboard")            // user dashboard feed
   } catch (err) {
     redirect(`/admin/scrape?error=${encodeURIComponent(err instanceof Error ? err.message : "Error")}`)
   }
