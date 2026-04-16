@@ -11,7 +11,7 @@ import Link from "next/link"
 import { getAllRecruitmentsAdmin } from "@/lib/db/admin"
 import { formatDate, daysUntil } from "@/lib/utils/dates"
 import { adminDeleteRecruitment } from "@/actions/admin"
-import { DeleteConfirmButton } from "@/components/admin/Deleteconfirmbutton"
+import { DeleteConfirmButton } from "@/components/admin/DeleteConfirmButton"
 
 const STATUS_STYLES: Record<string, string> = {
   open:     "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
