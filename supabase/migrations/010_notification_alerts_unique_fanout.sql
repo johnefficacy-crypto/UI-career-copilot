@@ -33,7 +33,9 @@ $$;
 
 -- ── 2. fn_fanout_alert_event stub ────────────────────────────────────────────
 
-CREATE OR REPLACE FUNCTION public.fn_fanout_alert_event(p_event_id uuid)
+DROP FUNCTION IF EXISTS public.fn_fanout_alert_event(uuid);
+
+CREATE FUNCTION public.fn_fanout_alert_event(p_event_id uuid)
 RETURNS void
 LANGUAGE plpgsql
 SECURITY DEFINER
