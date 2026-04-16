@@ -325,6 +325,35 @@ export async function approveScrapeItem(
   } catch (e) {
     console.error("[approveScrapeItem] alert/fanout non-fatal:", e)
   }
+
+  // ── 7. Queue eligibility recompute for all users ───────────────────────────
+  // Each user who has completed onboarding needs to be re-evaluated against
+  // the new recruitment. We insert into eligibility_recompute_queue; the
+  // eligibility-consumer Edge Function drains this every 5 minutes.
+  // Non-fatal — a failure here doesn't affect the approval itself.
+  try {
+    const { data: userIds } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("onboarding_completed", true)
+
+    if (userIds && userIds.length > 0) {
+      await supabase
+        .from("eligibility_recompute_queue")
+        .upsert(
+          userIds.map((u) => ({
+            user_id:        u.id,
+            recruitment_id: recruitmentId,
+            reason:         "new_recruitment_approved",
+            queued_at:      new Date().toISOString(),
+          })),
+          { onConflict: "user_id,recruitment_id", ignoreDuplicates: true }
+        )
+      console.log(`[approveScrapeItem] queued eligibility recompute for ${userIds.length} users`)
+    }
+  } catch (e) {
+    console.error("[approveScrapeItem] eligibility queue non-fatal:", e)
+  }
 }
 
 export async function rejectScrapeItem(
