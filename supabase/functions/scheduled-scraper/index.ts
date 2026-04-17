@@ -56,6 +56,20 @@ async function geminiRateLimit(): Promise<void> {
   if (elapsed < GEMINI_MIN_GAP_MS) await sleep(GEMINI_MIN_GAP_MS - elapsed)
   _geminiLastCallMs = Date.now()
 }
+
+// ── Anthropic rate limiter ────────────────────────────────────────────────────
+// Claude Haiku tier-1 paid allows ~5 req/sec. We enforce 800ms min gap between
+// ALL Anthropic calls (text + PDF) to avoid 429 cascades when processing
+// sources with multiple linked PDFs. Cheaper than retrying and prevents the
+// Gemini-fallback cascade that burned our daily quota.
+const ANTHROPIC_MIN_GAP_MS = 800
+let   _anthropicLastCallMs = 0
+
+async function anthropicRateLimit(): Promise<void> {
+  const elapsed = Date.now() - _anthropicLastCallMs
+  if (elapsed < ANTHROPIC_MIN_GAP_MS) await sleep(ANTHROPIC_MIN_GAP_MS - elapsed)
+  _anthropicLastCallMs = Date.now()
+}
 // TASK 6: time budget — 42s of the ~50s Edge Function wall-clock limit
 const RUN_BUDGET_MS     = 42_000
 
@@ -466,6 +480,7 @@ async function callClaudeOnPdf(
   const base64 = toBase64(pdfBytes)
 
   try {
+    await anthropicRateLimit()
     const res = await fetch("https://api.anthropic.com/v1/messages", {
       method:  "POST",
       headers: {
@@ -494,12 +509,20 @@ async function callClaudeOnPdf(
       const wait = Math.min(retryAfter, 10) * 1000
       console.warn(`[${sourceName}] Anthropic PDF 429 rate limit — retrying in ${wait / 1000}s`)
       await sleep(wait)
+      await anthropicRateLimit()
       const res2 = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-api-key": ANTHROPIC_KEY, "anthropic-version": "2023-06-01", "anthropic-beta": "pdfs-2024-09-25" },
         body: JSON.stringify({ model: CLAUDE_MODEL, max_tokens: 4000, system: SYSTEM_PROMPT, messages: [{ role: "user", content: [{ type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 } }, { type: "text", text: makeExtractionPrompt(sourceUrl, sourceName, year) }] }] }),
         signal: AbortSignal.timeout(CLAUDE_TIMEOUT),
       })
+      // If still rate-limited on retry, return [] (not null) so the cross-provider
+      // Gemini fallback does NOT trigger — Gemini has a much tighter daily quota
+      // and cascading rate-limits from Anthropic to Gemini will exhaust it fast.
+      if (res2.status === 429) {
+        console.warn(`[${sourceName}] Anthropic PDF still 429 after retry — dropping source (not cascading to Gemini)`)
+        return []
+      }
       if (!res2.ok) { console.error(`[${sourceName}] Anthropic PDF retry ${res2.status}`); return null }
       const data2 = await res2.json() as { content?: Array<{ type: string; text: string }> }
       return parseClaudeRecruitmentResponse(data2.content?.find(b => b.type === "text")?.text ?? "")
@@ -1050,15 +1073,24 @@ async function geminiFetch(body: object, sourceName: string, label: string): Pro
   }
 
   if (res.status === 429) {
-    // Check whether it's a daily quota exhaustion or just persistent per-minute throttle.
-    // Gemini returns {"error":{"status":"RESOURCE_EXHAUSTED","message":"..."}} for daily quota.
+    // Distinguish genuine daily quota from a persistent per-minute throttle.
+    // Gemini emits both as 429 + RESOURCE_EXHAUSTED — the difference is in the
+    // quotaMetric / quotaId field inside the error body. Daily metrics contain
+    // "PerDay"; per-minute metrics contain "PerMinute". Matching bare "quota"
+    // (the previous heuristic) was a false positive because every 429 body
+    // mentions the word "quota", which disabled Gemini for the whole run after
+    // one per-minute hiccup.
     const errBody = await res.clone().text().catch(() => "")
-    const isDaily = errBody.includes("RESOURCE_EXHAUSTED") || errBody.includes("quota")
+    const isDaily =
+      /PerDay/i.test(errBody) ||
+      /per[\s-]?day/i.test(errBody) ||
+      /daily[\s_-]?limit/i.test(errBody) ||
+      /daily[\s_-]?quota/i.test(errBody)
     if (isDaily) {
       _geminiDailyQuotaExhausted = true
       console.warn(`[${sourceName}] Gemini ${label} DAILY quota exhausted — disabling Gemini for this run. Wait until midnight Pacific for reset.`)
     } else {
-      console.warn(`[${sourceName}] Gemini ${label} persistent rate limit — skipping source`)
+      console.warn(`[${sourceName}] Gemini ${label} persistent per-minute rate limit — skipping source (Gemini remains enabled for other sources)`)
     }
     return null
   }
@@ -1197,6 +1229,7 @@ async function callClaude(
   const truncated = text.slice(0, MAX_LLM_INPUT_CHARS)
 
   try {
+    await anthropicRateLimit()
     const res = await fetch("https://api.anthropic.com/v1/messages", {
       method:  "POST",
       headers: {
@@ -1218,6 +1251,7 @@ async function callClaude(
       const wait = Math.min(retryAfter, 10) * 1000
       console.warn(`[${sourceName}] Anthropic text 429 rate limit — retrying in ${wait / 1000}s`)
       await sleep(wait)
+      await anthropicRateLimit()
       // single retry
       const res2 = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
@@ -1225,6 +1259,13 @@ async function callClaude(
         body: JSON.stringify({ model: CLAUDE_MODEL, max_tokens: 4000, system: SYSTEM_PROMPT, messages: [{ role: "user", content: `${makeExtractionPrompt(sourceUrl, sourceName, year)}\n\nTEXT:\n${text.slice(0, MAX_LLM_INPUT_CHARS)}` }] }),
         signal: AbortSignal.timeout(CLAUDE_TIMEOUT),
       })
+      // If still rate-limited on retry, return [] (not null) so the cross-provider
+      // Gemini fallback does NOT trigger — the cascading 429 → Gemini path is
+      // exactly what burned our daily quota in earlier runs.
+      if (res2.status === 429) {
+        console.warn(`[${sourceName}] Anthropic text still 429 after retry — dropping source (not cascading to Gemini)`)
+        return []
+      }
       if (!res2.ok) { console.error(`[${sourceName}] Anthropic text retry ${res2.status}`); return null }
       const data2 = await res2.json() as { content?: Array<{ type: string; text: string }> }
       return parseClaudeRecruitmentResponse(data2.content?.find(b => b.type === "text")?.text ?? "")
