@@ -68,6 +68,14 @@ Posts — one notification often has many posts with different criteria (e.g.
 const REQUEST_TIMEOUT = 18_000
 const CLAUDE_TIMEOUT  = 32_000
 
+// ── LLM input budget ──────────────────────────────────────────────────────────
+// Haiku handles 200K tokens; 25K chars ≈ 6K tokens ≈ $0.0015 per call.
+// 12K was cutting off notifications that live below large navigation menus.
+// 25K is the empirical sweet-spot for Indian govt notification pages: captures
+// the full notifications section on UPSC/SSC/banking/state PSC without doubling
+// cost. At 66 sources × 4 runs/day that's ~$0.4/day ≈ $12/month — economical.
+const MAX_LLM_INPUT_CHARS = 25_000
+
 // ── Gemini rate limiter ───────────────────────────────────────────────────────
 // Free tier limit: 15 RPM. We enforce 5 s minimum gap between calls (~12 RPM)
 // to absorb bursts caused by sources with multiple linked PDFs.
@@ -539,6 +547,77 @@ async function callClaudeOnPdf(
   }
 }
 
+// ─── Smart HTML → LLM-ready text ─────────────────────────────────────────────
+// Aggressive tag-stripping (the old approach) destroyed the semantic structure
+// that Claude needs to identify notifications. For govt pages, the recruitment
+// signal lives in anchor text + href patterns — not prose. This preserves:
+//   • Anchor text annotated with abs URL:  "Civil Services 2026 [PDF:/upload/notif.pdf]"
+//   • Heading hierarchy:                   "## Current Recruitments"
+//   • List bullets:                        "• Advt No. 01/2026..."
+// And strips nav/header/footer/aside/script/style — the sections that dominate
+// the first N KB of raw HTML on Indian govt sites and previously caused the
+// 12K truncation window to never reach actual notifications.
+
+function htmlToLlmText(html: string, baseUrl: string): string {
+  let base: URL
+  try { base = new URL(baseUrl) } catch { return html.replace(/<[^>]+>/g, " ").replace(/\s{2,}/g, " ").trim() }
+
+  return html
+    // Strip irrelevant blocks whole — before they consume the truncation budget
+    .replace(/<!--[\s\S]*?-->/g, " ")
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, " ")
+    .replace(/<nav\b[\s\S]*?<\/nav>/gi, " ")
+    .replace(/<footer\b[\s\S]*?<\/footer>/gi, " ")
+    .replace(/<header\b[\s\S]*?<\/header>/gi, " ")
+    .replace(/<aside\b[\s\S]*?<\/aside>/gi, " ")
+    .replace(/<form\b[\s\S]*?<\/form>/gi, " ")
+
+    // Preserve anchors with absolute href — single most important signal
+    .replace(/<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi, (_m, href: string, inner: string) => {
+      const text = inner.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()
+      if (!text) return " "
+      let abs: string
+      try { abs = new URL(href, base.href).href } catch { return ` ${text} ` }
+      const isPdfLike =
+        /\.pdf(\?|#|$)/i.test(abs) ||
+        /\/(download|viewer|attachment|file)[^"']*[?&](file|id|doc|attachment|name)=/i.test(abs) ||
+        /\/pdf\//i.test(abs) ||
+        /\/upload[^"']*\.pdf/i.test(abs)
+      return ` ${text} [${isPdfLike ? "PDF" : "LINK"}:${abs}] `
+    })
+
+    // Preserve heading hierarchy (limit to h1-h3 — below that is usually sidebar)
+    .replace(/<h([1-3])[^>]*>([\s\S]*?)<\/h\1>/gi, (_m, _n: string, inner: string) => {
+      const text = inner.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()
+      return text ? `\n### ${text}\n` : " "
+    })
+
+    // Preserve list items — notification pages are usually <ul>/<li>
+    .replace(/<li\b[^>]*>([\s\S]*?)<\/li>/gi, (_m, inner: string) => {
+      const text = inner.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()
+      return text ? `\n• ${text}` : " "
+    })
+
+    // Preserve table rows — many govt sites tabulate notifications
+    .replace(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi, (_m, inner: string) => {
+      const text = inner.replace(/<[^>]+>/g, " | ").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()
+      return text ? `\n${text}` : " "
+    })
+
+    // Strip remaining tags and normalise entities + whitespace
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, "\"")
+    .replace(/&#(\d+);/g, (_m, n: string) => String.fromCharCode(parseInt(n, 10)))
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim()
+}
+
 // ─── Find RECRUITMENT PDF links in HTML ──────────────────────────────────────
 // Scores each PDF link by how likely it is to be a recruitment notification.
 // Only returns PDFs with positive recruitment signals — avoids annual reports,
@@ -573,15 +652,24 @@ function findPdfLinksInHtml(html: string, baseUrl: string): string[] {
   interface ScoredLink { url: string; score: number }
   const candidates = new Map<string, ScoredLink>()
 
-  // Match <a href="...pdf...">anchor text</a> to capture both URL and link text
-  const anchorRe = /<a[^>]*href=["']([^"']*\.pdf(?:\?[^"']*)?)["'][^>]*>([\s\S]{0,300}?)<\/a>/gi
+  // Recognise PDF links beyond just ".pdf" in the URL. Govt sites often serve
+  // PDFs via /download?file=..., /viewer.php?id=..., /pdf/<slug>, or
+  // /upload/notifications/xxx.pdf?token=...
+  const PDF_LIKE_HREF =
+    /\.pdf(?:\?[^"']*)?(?:#[^"']*)?$|\/(?:download|viewer|attachment|file|getfile)[^"']*[?&](?:file|id|doc|attachment|name|fname)=|\/pdf\/[^"']+|\/uploads?\/[^"']*\.pdf/i
+
+  // Match ALL anchors (not only ones containing `.pdf`) and score their href.
+  // This catches UPSC/SSC style `/download?file=notif.pdf` and viewer.php wrappers.
+  const anchorRe = /<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]{0,300}?)<\/a>/gi
   let m
   while ((m = anchorRe.exec(html)) !== null) {
     const rawHref  = m[1]
     const linkText = m[2].replace(/<[^>]+>/g, " ").trim().toLowerCase()
 
+    if (!PDF_LIKE_HREF.test(rawHref)) continue
+
     try {
-      const url      = new URL(rawHref.startsWith("http") ? rawHref : rawHref, base.href).href
+      const url      = new URL(rawHref, base.href).href
       const urlLower = url.toLowerCase()
 
       // Hard exclude: non-recruitment document types
@@ -774,13 +862,10 @@ async function acquireContent(
       }
     }
 
-    // Strip HTML to plain text for Claude
-    const stripped = rawHtml
-      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, " ")
-      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, " ")
-      .replace(/<[^>]+>/g, " ")
-      .replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
-      .replace(/\s{2,}/g, " ").trim()
+    // Convert HTML → LLM-ready text preserving anchors, headings, list items.
+    // This replaces naive tag stripping which destroyed the semantic signals
+    // (anchor text + href) that are the highest-value content on govt pages.
+    const stripped = htmlToLlmText(rawHtml, targetUrl)
 
     // ── Stage 2: PDF link detection ───────────────────────────────────────────
     // Many govt pages (UPSC, SSC, IBPS) show only a summary in HTML and put the
@@ -789,6 +874,7 @@ async function acquireContent(
     const linkedPdfs: Uint8Array[] = []
     if (src.adapter_type !== "pdf") {
       const pdfLinks = findPdfLinksInHtml(rawHtml, targetUrl)
+      console.log(`[${src.source_name}] PDF links detected: ${pdfLinks.length} (text=${stripped.length}ch)`)
       for (const pdfUrl of pdfLinks) {
         try {
           const pdfRes = await fetch(pdfUrl, { signal: AbortSignal.timeout(REQUEST_TIMEOUT) })
@@ -878,7 +964,7 @@ async function callGemini(
   if (!GEMINI_KEY) return null
 
   const prompt    = makeExtractionPrompt(sourceUrl, sourceName, year)
-  const truncated = text.slice(0, 12000)
+  const truncated = text.slice(0, MAX_LLM_INPUT_CHARS)
 
   try {
     const res = await geminiFetch({
@@ -892,7 +978,10 @@ async function callGemini(
     const data    = await res.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> }
     const raw     = data.candidates?.[0]?.content?.parts?.[0]?.text ?? ""
     const results = parseClaudeRecruitmentResponse(raw)
-    console.log(`[${sourceName}] Gemini text: ${results.length} recruitment(s)`)
+    console.log(`[${sourceName}] Gemini text: ${results.length} recruitment(s) (in=${truncated.length}ch)`)
+    if (results.length === 0) {
+      console.log(`[${sourceName}] Gemini 0-result sample: ${truncated.slice(0, 300).replace(/\s+/g, " ")}`)
+    }
     return results
   } catch (err) {
     console.error(`[${sourceName}] callGemini error:`, err)
@@ -987,7 +1076,7 @@ async function callClaude(
   if (!ANTHROPIC_KEY) return null  // no key → caller will try Gemini
 
   const prompt    = makeExtractionPrompt(sourceUrl, sourceName, year)
-  const truncated = text.slice(0, 12000)
+  const truncated = text.slice(0, MAX_LLM_INPUT_CHARS)
 
   try {
     const res = await fetch("https://api.anthropic.com/v1/messages", {
@@ -1016,7 +1105,7 @@ async function callClaude(
       const res2 = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-api-key": ANTHROPIC_KEY, "anthropic-version": "2023-06-01" },
-        body: JSON.stringify({ model: CLAUDE_MODEL, max_tokens: 4000, system: SYSTEM_PROMPT, messages: [{ role: "user", content: `${makeExtractionPrompt(sourceUrl, sourceName, year)}\n\nTEXT:\n${text.slice(0, 12000)}` }] }),
+        body: JSON.stringify({ model: CLAUDE_MODEL, max_tokens: 4000, system: SYSTEM_PROMPT, messages: [{ role: "user", content: `${makeExtractionPrompt(sourceUrl, sourceName, year)}\n\nTEXT:\n${text.slice(0, MAX_LLM_INPUT_CHARS)}` }] }),
         signal: AbortSignal.timeout(CLAUDE_TIMEOUT),
       })
       if (!res2.ok) { console.error(`[${sourceName}] Anthropic text retry ${res2.status}`); return null }
@@ -1034,7 +1123,12 @@ async function callClaude(
     const data    = await res.json() as { content?: Array<{ type: string; text: string }> }
     const raw     = data.content?.find(b => b.type === "text")?.text ?? ""
     const results = parseClaudeRecruitmentResponse(raw)
-    console.log(`[${sourceName}] Anthropic text: ${results.length} recruitment(s)`)
+    console.log(`[${sourceName}] Anthropic text: ${results.length} recruitment(s) (in=${truncated.length}ch)`)
+    // Diagnostic: when extraction yields 0 and we sent meaningful content, log
+    // a sample so we can tell whether the page is JS-empty vs content-present.
+    if (results.length === 0) {
+      console.log(`[${sourceName}] Anthropic 0-result sample: ${truncated.slice(0, 300).replace(/\s+/g, " ")}`)
+    }
     return results
   } catch (err) {
     console.error(`[${sourceName}] callClaude error:`, err)
@@ -1194,10 +1288,23 @@ Deno.serve(async (req) => {
 
       if (validItems.length === 0) {
         totalSkipped++
+        // Diagnostic: surface input characteristics so admin can tell whether
+        // this is a JS-rendered shell (needs Playwright) vs a valid page whose
+        // notifications simply didn't match the confidence threshold.
+        const textLen   = text?.length ?? 0
+        const linkedCnt = linkedPdfs?.length ?? 0
+        const reason    = textLen < 500 && linkedCnt === 0
+          ? "likely JS-rendered SPA — needs Playwright adapter"
+          : `extracted ${extractedList.length} items, all below confidence 0.30`
+        console.log(`[${src.source_name}] 0-extraction — text=${textLen}ch, linkedPdfs=${linkedCnt}, ${reason}`)
+        // Do NOT increment consecutive_fails — 0-result is a data-shape issue,
+        // not a fetch failure. Incrementing here triggered exponential backoff
+        // that hid JS-rendered sources behind ever-longer retry intervals and
+        // eventually disabled them (consecutive_fails >= 10 filters them out).
+        // True fetch/API failures still fall through to the catch block below.
         await supabase.from("source_registry").update({
-          last_scraped_at:   now.toISOString(),
-          consecutive_fails: src.consecutive_fails + 1,
-          last_error:        `No recruitments extracted (total=${extractedList.length}, all below confidence threshold)`,
+          last_scraped_at: now.toISOString(),
+          last_error:      `No recruitments extracted (${reason})`,
         }).eq("id", src.id)
         continue
       }
