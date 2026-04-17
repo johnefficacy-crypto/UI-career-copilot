@@ -107,14 +107,12 @@ export default async function OnboardingLayout({
   // Auth guard — middleware also does this but belt-and-suspenders
   if (!user) redirect("/auth/login")
 
-  // If already completed, send to dashboard
+  // Fetch profile to check completion state (no redirect — users can re-visit)
   const { data: profile } = await supabase
     .from("profiles")
     .select("onboarding_completed")
     .eq("id", user.id)
     .maybeSingle()
-
-  if (profile?.onboarding_completed) redirect("/dashboard")
 
   return (
     <div className="min-h-screen bg-[#0c0c0c]">
@@ -123,9 +121,16 @@ export default async function OnboardingLayout({
         className="border-b h-14 flex items-center px-6 justify-between"
         style={{ borderColor: "var(--border)" }}
       >
-        <Link href="/" className="cc-logo">Career Copilot</Link>
+        <div className="flex items-center gap-4">
+          <Link href="/" className="cc-logo">Career Copilot</Link>
+          {profile?.onboarding_completed && (
+            <Link href="/dashboard" className="text-xs" style={{ color: "var(--text-dim)" }}>
+              ← Dashboard
+            </Link>
+          )}
+        </div>
         <p className="text-xs" style={{ color: "var(--text-dim)" }}>
-          Setting up your profile
+          {profile?.onboarding_completed ? "Edit your profile" : "Setting up your profile"}
         </p>
       </div>
 

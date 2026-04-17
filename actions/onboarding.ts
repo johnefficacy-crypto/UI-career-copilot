@@ -214,5 +214,14 @@ export async function finishOnboarding() {
     console.error("[finishOnboarding] eligibility run failed (non-fatal):", e)
   }
 
+  // Seed initial notifications so the dashboard isn't empty for new users.
+  // Non-fatal — if this fails the user still lands on the dashboard.
+  try {
+    const { seedNotificationsForNewUser } = await import("@/lib/db/notifications")
+    await seedNotificationsForNewUser(user.id)
+  } catch (e) {
+    console.error("[finishOnboarding] seed notifications failed (non-fatal):", e)
+  }
+
   redirect("/dashboard")
 }

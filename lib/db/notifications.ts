@@ -100,6 +100,90 @@ export async function markAllAlertsRead(userId: string): Promise<void> {
   if (error) throw new Error(`markAllAlertsRead: ${error.message}`)
 }
 
+/**
+ * Seed initial notification_alerts for a newly onboarded user.
+ * Called once after finishOnboarding() so the user sees alerts immediately
+ * instead of waiting for the next fan-out cycle.
+ *
+ * Inserts `new_match` alerts for every open recruitment (apply_end_date >= today
+ * OR apply_end_date IS NULL) where an eligibility_results row marks them eligible.
+ * If no eligibility_results exist yet, inserts for ALL open recruitments so the
+ * feed is not empty (the user can always dismiss irrelevant ones).
+ */
+export async function seedNotificationsForNewUser(userId: string): Promise<number> {
+  const supabase = await createClient()
+  const today = new Date().toISOString().split("T")[0]
+
+  // Get open recruitments
+  const { data: recruitments } = await supabase
+    .from("recruitments")
+    .select("id, name, status, apply_end_date, apply_start_date, notification_date, year, total_vacancies, org_id")
+    .or(`apply_end_date.gte.${today},apply_end_date.is.null`)
+    .in("status", ["open", "upcoming", "published"])
+    .order("apply_end_date", { ascending: true })
+    .limit(30)
+
+  if (!recruitments || recruitments.length === 0) return 0
+
+  // Check if user has eligibility results already
+  const { data: eligibilityResults } = await supabase
+    .from("eligibility_results")
+    .select("recruitment_id, is_eligible, is_conditional")
+    .eq("user_id", userId)
+
+  const eligibleIds = new Set(
+    (eligibilityResults ?? [])
+      .filter(r => r.is_eligible || r.is_conditional)
+      .map(r => r.recruitment_id)
+  )
+  const hasEligibilityData = (eligibilityResults?.length ?? 0) > 0
+
+  // Decide which recruitments to notify about
+  const toNotify = hasEligibilityData
+    ? recruitments.filter(r => eligibleIds.has(r.id))
+    : recruitments // No eligibility data yet — show all open ones
+
+  if (toNotify.length === 0) return 0
+
+  // Fetch org info for the recruitments in one query
+  const orgIds = [...new Set(toNotify.map(r => r.org_id).filter(Boolean))]
+  const { data: orgs } = orgIds.length > 0
+    ? await supabase.from("organizations").select("id, name, type, state").in("id", orgIds as string[])
+    : { data: [] }
+  const orgMap = new Map((orgs ?? []).map(o => [o.id, o]))
+
+  // Build inserts — skip any that already exist (use upsert with ON CONFLICT DO NOTHING)
+  const now = new Date().toISOString()
+  const inserts = toNotify.map(r => {
+    const org = orgMap.get(r.org_id as string)
+    return {
+      user_id:             userId,
+      alert_type:          "new_match" as const,
+      is_read:             false,
+      sent_at:             now,
+      priority:            3 as const,
+      recruitment_id:      r.id,
+      alert_event_id:      null,
+      event_type:          "new_recruitment" as const,
+    }
+  })
+
+  const { data: inserted, error } = await supabase
+    .from("notification_alerts")
+    .upsert(inserts, {
+      onConflict: "user_id,recruitment_id,alert_type",
+      ignoreDuplicates: true,
+    })
+    .select("id")
+
+  if (error) {
+    console.error("[seedNotificationsForNewUser]", error.message)
+    return 0
+  }
+
+  return inserted?.length ?? 0
+}
+
 // =============================================================================
 // USER NOTIFICATION PREFERENCES
 // =============================================================================

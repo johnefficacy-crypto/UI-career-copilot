@@ -133,6 +133,7 @@ export function UserNav({ fullName, planId, avatarUrl, isAdmin }: Props) {
           {/* Nav items */}
           <div className="py-1">
             <NavItem href="/dashboard"          label="Dashboard"       icon="⊞" onClick={() => setOpen(false)} />
+            <NavItem href="/dashboard/exams"    label="Browse Exams"    icon="📋" onClick={() => setOpen(false)} />
             <NavItem href="/dashboard/chat"     label="AI Career Chat"  icon="💬" onClick={() => setOpen(false)} badge={planId !== "pro" && planId !== "elite" ? "Pro" : undefined} />
             <NavItem href="/onboarding"         label="Edit profile"    icon="✎" onClick={() => setOpen(false)} />
             <NavItem href="/dashboard/study-plan" label="Study plans"   icon="📅" onClick={() => setOpen(false)} />
@@ -153,6 +154,25 @@ export function UserNav({ fullName, planId, avatarUrl, isAdmin }: Props) {
               className="mx-3 my-1 border-t"
               style={{ borderColor: "var(--border)" }}
             />
+
+            {/* Danger zone */}
+            <Link
+              href="/account/delete"
+              onClick={() => setOpen(false)}
+              className="flex items-center gap-2.5 px-4 py-2 text-sm transition-colors rounded-lg w-full"
+              style={{ color: "rgba(239,68,68,0.70)" }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = "rgba(239,68,68,0.08)"
+                e.currentTarget.style.color = "rgb(239,68,68)"
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "transparent"
+                e.currentTarget.style.color = "rgba(239,68,68,0.70)"
+              }}
+            >
+              <span style={{ width: "16px", textAlign: "center", fontSize: "13px" }}>🗑</span>
+              <span className="flex-1">Delete account</span>
+            </Link>
 
             {/* Sign out — form action */}
             <form action={signOut} className="w-full">
