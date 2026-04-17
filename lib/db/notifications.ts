@@ -210,15 +210,38 @@ export async function approveScrapeItem(
   }
  
   // ── 4. Promote to canonical recruitments ──────────────────────────────────
+  // promoteToRecruitments now THROWS on real errors. We let those bubble to the
+  // admin UI so the reviewer sees the actual database error (e.g. missing
+  // unique constraint, CHECK violation, RLS denial) instead of a ghost approval.
   const { promoteToRecruitments } = await import("@/lib/scraping/runner")
   if (!item.extracted_data) throw new Error(`approveScrapeItem: no extracted_data on item ${itemId}`)
 
-  const recruitmentId = await promoteToRecruitments(
-    item.extracted_data as unknown as ExtractedRecruitment,
-    supabase
-  )
- 
-  // ── 5. Mark approved (+ store recruited_id in duplicate_of for idempotency) 
+  let recruitmentId: string | null = null
+  try {
+    recruitmentId = await promoteToRecruitments(
+      item.extracted_data as unknown as ExtractedRecruitment,
+      supabase
+    )
+  } catch (err) {
+    // Mark the row 'reviewing' with the error note, then re-throw so the admin
+    // UI shows the real error. DO NOT mark 'approved'.
+    await supabase
+      .from("scrape_queue")
+      .update({
+        status:         "reviewing",
+        reviewer_id:    reviewerId,
+        reviewer_notes: (notes ?? "") + ` [promotion failed: ${err instanceof Error ? err.message : String(err)}]`,
+        reviewed_at:    new Date().toISOString(),
+      })
+      .eq("id", itemId)
+    throw err
+  }
+
+  if (!recruitmentId) {
+    throw new Error(`approveScrapeItem: promotion returned no recruitment_id for item ${itemId}`)
+  }
+
+  // ── 5. Mark approved (+ store recruited_id in duplicate_of for idempotency)
   const { error: updateErr } = await supabase
     .from("scrape_queue")
     .update({
@@ -226,15 +249,41 @@ export async function approveScrapeItem(
       reviewer_id:    reviewerId,
       reviewer_notes: notes ?? null,
       reviewed_at:    new Date().toISOString(),
-      ...(recruitmentId ? { duplicate_of: recruitmentId } : {}),
+      duplicate_of:   recruitmentId,
     })
     .eq("id", itemId)
- 
+
   if (updateErr) throw new Error(`approveScrapeItem update: ${updateErr.message}`)
- 
-  // ── 6. alert_event + fanout (non-fatal after this point) ──────────────────
-  if (!recruitmentId) return // promotion failed silently — runner logged it
- 
+
+  // ── 6. Enqueue eligibility recompute for all onboarded users ───────────────
+  // Without this, getEligibleRecruitments() returns [] and the dashboard stays
+  // empty even after items are promoted. Non-fatal — logged on failure.
+  try {
+    const { data: users } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("onboarding_completed", true)
+
+    if (users && users.length > 0) {
+      const rows = users.map((u: { id: string }) => ({
+        user_id:        u.id,
+        recruitment_id: recruitmentId,
+        reason:         "new_recruitment",
+        status:         "pending",
+      }))
+      // Plain insert; if a (user_id, recruitment_id) row already exists and a
+      // unique constraint rejects it, we log and move on. Consumer dedups via
+      // eligibility_results.onConflict(user_id, post_id) anyway.
+      const { error: enqErr } = await supabase
+        .from("eligibility_recompute_queue")
+        .insert(rows)
+      if (enqErr) console.error("[approveScrapeItem] eligibility enqueue:", enqErr.message)
+    }
+  } catch (e) {
+    console.error("[approveScrapeItem] eligibility enqueue non-fatal:", e)
+  }
+
+  // ── 7. alert_event + fanout (non-fatal after this point) ──────────────────
   try {
     const { data: evt, error: evtErr } = await supabase
       .from("alert_events")
