@@ -171,11 +171,18 @@ function validateEnv(): { ok: boolean; warnings: string[] } {
 // ─── Idempotency guard ────────────────────────────────────────────────────────
 
 async function isAlreadyRunning(): Promise<boolean> {
+  // Edge Function wall-clock limit is ~50s, so any row still marked 'running'
+  // after 2 minutes is definitionally dead (the function was killed before
+  // it could mark status='failed'). Using a 10-minute window previously
+  // meant a single crashed run blocked scheduling for 10 minutes — and
+  // wedged rows from retired-model 404 runs blocked indefinitely until
+  // manually cleaned up in SQL. Tighten to 2 minutes: real overlaps are
+  // impossible (function dies at 50s), zombie rows age out automatically.
   const { data } = await db()
     .from("scrape_runs")
     .select("id")
     .eq("status", "running")
-    .gte("started_at", new Date(Date.now() - 10 * 60 * 1000).toISOString())
+    .gte("started_at", new Date(Date.now() - 2 * 60 * 1000).toISOString())
     .limit(1)
   return (data?.length ?? 0) > 0
 }
