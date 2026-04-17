@@ -43,7 +43,13 @@ export default async function BrowseExamsPage({
     .limit(60)
 
   if (filter === "open") {
-    query = query.gte("apply_end_date", today).in("status", ["open", "upcoming", "published"])
+    // Show recruitments that are open/upcoming AND either (a) have a future
+    // apply_end_date, or (b) have no apply_end_date at all (scraper couldn't
+    // parse it — still worth showing so users can click through to the
+    // official notification link). Past-dated closed recruitments excluded.
+    query = query
+      .in("status", ["open", "upcoming", "published"])
+      .or(`apply_end_date.gte.${today},apply_end_date.is.null`)
   } else if (filter === "closing") {
     const in7days = new Date(Date.now() + 7 * 86_400_000).toISOString().split("T")[0]
     query = query.gte("apply_end_date", today).lte("apply_end_date", in7days)

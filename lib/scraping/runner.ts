@@ -248,16 +248,23 @@ export async function promoteToRecruitments(
   if (!org)   throw new Error(`[promote] organization upsert returned no row`)
 
   // ── Insert recruitment ─────────────────────────────────────────────────────
+  // ExtractedRecruitment also carries total_vacancies, official_notification_url
+  // and source_pdf_url — write them so /dashboard/exams and the "Open official
+  // notification" link work. Columns added by migration 010.
+  const dataAny = data as Record<string, unknown>
   const { data: recruitment, error: recErr } = await supabase
     .from("recruitments")
     .insert({
-      organization_id:   org.id,
-      name:              data.title,
-      year:              typeof data.year === "string" ? parseInt(data.year, 10) : data.year,
-      notification_date: data.notification_date ?? null,
-      apply_start_date:  data.apply_start_date  ?? null,
-      apply_end_date:    data.apply_end_date     ?? null,
-      status:            deriveStatus(data.apply_start_date, data.apply_end_date),
+      organization_id:           org.id,
+      name:                      data.title,
+      year:                      typeof data.year === "string" ? parseInt(data.year, 10) : data.year,
+      notification_date:         data.notification_date ?? null,
+      apply_start_date:          data.apply_start_date  ?? null,
+      apply_end_date:            data.apply_end_date     ?? null,
+      status:                    deriveStatus(data.apply_start_date, data.apply_end_date),
+      total_vacancies:           (dataAny.total_vacancies as number | null) ?? null,
+      official_notification_url: (dataAny.official_notification_url as string | null) ?? null,
+      source_pdf_url:            (dataAny.source_pdf_url as string | null) ?? null,
     })
     .select("id")
     .single()
