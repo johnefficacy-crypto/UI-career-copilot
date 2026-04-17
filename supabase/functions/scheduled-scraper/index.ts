@@ -523,6 +523,56 @@ async function callClaudeOnPdf(
   }
 }
 
+// ─── Isolate main content zone BEFORE tag stripping ─────────────────────────
+// On listing sites like sarkariresult.com (~500KB raw HTML) the first 25KB
+// of stripped text is dominated by the header menu + syllabus/answer-key/admit
+// sidebar. The actual recruitment list is past that window. This helper finds
+// the densest content container (main/article/div#content/etc) and returns
+// just that subtree so the truncation budget is spent on notifications.
+//
+// Strategy: find the first recognised content-start marker + the nearest
+// content-end marker, and slice between them. If the slice is too small to be
+// meaningful (< 500 chars), fall back to the full HTML.
+
+function extractContentZone(html: string): string {
+  // Drop <head>...</head> unconditionally — it has no recruitment content
+  // but does consume chars and can leak meta-description text that looks
+  // like a notification to the LLM.
+  html = html.replace(/<head\b[\s\S]*?<\/head>/i, " ")
+
+  const startMarkers: RegExp[] = [
+    /<main\b[^>]*>/i,
+    /<article\b[^>]*>/i,
+    /<section\b[^>]*\b(?:id|class)=["'][^"']*(?:notifications?|recruit|vacanc|career|content|main)[^"']*["'][^>]*>/i,
+    /<div\b[^>]*\b(?:id|class)=["'][^"']*(?:main[-_]?content|maincontent|primary[-_]?content|content[-_]?wrapper|page[-_]?content|content-area|site-content)[^"']*["'][^>]*>/i,
+    /<div\b[^>]*role=["']main["'][^>]*>/i,
+    /<div\b[^>]*\bid=["'](?:content|main|primary|body|page-content|middle)["'][^>]*>/i,
+    /<body\b[^>]*>/i,   // fallback — at minimum skip <head>
+  ]
+  let start = -1
+  for (const re of startMarkers) {
+    const m = html.match(re)
+    if (m && m.index !== undefined) { start = m.index; break }
+  }
+  if (start === -1) return html
+
+  // Find the NEAREST end marker after start. This is a best-effort boundary —
+  // HTML doesn't need balanced tags in practice on govt sites, so we use
+  // pragmatic landmarks: the next <footer>, </main>, </article>, or </body>.
+  const afterStart = html.slice(start + 50)
+  const endMarkers: RegExp[] = [/<footer\b/i, /<\/main>/i, /<\/article>/i, /<\/body>/i]
+  let end = html.length
+  for (const re of endMarkers) {
+    const m = afterStart.match(re)
+    if (m && m.index !== undefined) {
+      end = Math.min(end, start + 50 + m.index)
+    }
+  }
+
+  const slice = html.slice(start, end)
+  return slice.length > 500 ? slice : html
+}
+
 // ─── Smart HTML → LLM-ready text ─────────────────────────────────────────────
 // Aggressive tag-stripping (the old approach) destroyed the semantic structure
 // that Claude needs to identify notifications. For govt pages, the recruitment
@@ -578,9 +628,16 @@ function htmlToLlmText(html: string, baseUrl: string): string {
       return text ? `\n• ${text}` : " "
     })
 
-    // Preserve table rows — many govt sites tabulate notifications
+    // Preserve table rows — many govt sites tabulate notifications.
+    // Split cells with " | " then strip any remaining inner tags.
     .replace(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi, (_m, inner: string) => {
-      const text = inner.replace(/<[^>]+>/g, " | ").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()
+      const text = inner
+        .replace(/<\/?(?:td|th)[^>]*>/gi, " | ")   // cell boundaries
+        .replace(/<[^>]+>/g, " ")                  // strip remaining tags
+        .replace(/\s+/g, " ")
+        .replace(/\s*\|\s*\|\s*/g, " | ")          // collapse empty cells
+        .replace(/^\s*\|\s*|\s*\|\s*$/g, "")       // trim leading/trailing pipes
+        .trim()
       return text ? `\n${text}` : " "
     })
 
@@ -896,10 +953,24 @@ async function acquireContent(
       }
     }
 
+    // Isolate main content first so the truncation budget is spent on
+    // notifications, not on site chrome / sidebars. Sarkari Result was the
+    // canonical failure case: 494KB raw HTML, first 25K was nav only.
+    const contentZone = extractContentZone(rawHtml)
     // Convert HTML → LLM-ready text preserving anchors, headings, list items.
     // This replaces naive tag stripping which destroyed the semantic signals
     // (anchor text + href) that are the highest-value content on govt pages.
-    const stripped = htmlToLlmText(rawHtml, targetUrl)
+    let stripped = htmlToLlmText(contentZone, targetUrl)
+
+    // Skip LLM call if the stripped output is clearly an unrendered JS shell.
+    // Angular-style {{expr}} placeholders or sub-200-char pages carry no
+    // extractable content and just burn Anthropic spend until the source is
+    // upgraded to Playwright. Flag it in last_error so admin can see the queue.
+    const jsTemplateMatches = (stripped.match(/\{\{[^}]+\}\}/g) ?? []).length
+    if (stripped.length < 200 || (stripped.length < 2000 && jsTemplateMatches >= 3)) {
+      console.log(`[${src.source_name}] HTML appears unrendered (len=${stripped.length}, {{expr}}=${jsTemplateMatches}) — skipping LLM call`)
+      stripped = ""   // main loop treats empty text + no pdfs as "skip"
+    }
 
     // ── Stage 2: PDF link detection ───────────────────────────────────────────
     // Many govt pages (UPSC, SSC, IBPS) show only a summary in HTML and put the
@@ -1286,6 +1357,13 @@ Deno.serve(async (req) => {
 
       if (!text.trim() && !pdfBytes && !rssItems && (!linkedPdfs || linkedPdfs.length === 0)) {
         totalSkipped++
+        // Still update the timestamp so the source isn't retried immediately on
+        // every run. An empty-extractable source is a data-shape issue, not a
+        // fetch failure — don't increment consecutive_fails here.
+        await supabase.from("source_registry").update({
+          last_scraped_at: now.toISOString(),
+          last_error:      "Empty content after stripping — likely JS-rendered, needs Playwright",
+        }).eq("id", src.id)
         continue
       }
 
