@@ -228,77 +228,87 @@ export async function promoteToRecruitments(
   data: ExtractedRecruitment,
   supabase: Awaited<ReturnType<typeof createClient>>
 ): Promise<string | null> {
-  try {
-    // Upsert organization
-    const { data: org } = await supabase
-      .from("organizations")
-      .upsert(
-        { name: data.organization_name, type: data.org_type },
-        { onConflict: "name", ignoreDuplicates: false }
-      )
-      .select("id")
-      .single()
+  // NOTE: errors here MUST throw — never swallow. The caller (approveScrapeItem)
+  // depends on real error messages to decide whether to mark the queue row
+  // 'approved' or 'pending'. Previous version returned null on failure which
+  // caused "ghost approved" rows (status='approved', duplicate_of=null,
+  // recruitments table empty). See migration 008 for the backfill.
 
-    if (!org) return null
+  // ── Upsert organization ────────────────────────────────────────────────────
+  const { data: org, error: orgErr } = await supabase
+    .from("organizations")
+    .upsert(
+      { name: data.organization_name, type: data.org_type },
+      { onConflict: "name", ignoreDuplicates: false }
+    )
+    .select("id")
+    .single()
 
-    // Insert recruitment
-    const { data: recruitment } = await supabase
-      .from("recruitments")
+  if (orgErr) throw new Error(`[promote] organization upsert failed: ${orgErr.message}`)
+  if (!org)   throw new Error(`[promote] organization upsert returned no row`)
+
+  // ── Insert recruitment ─────────────────────────────────────────────────────
+  const { data: recruitment, error: recErr } = await supabase
+    .from("recruitments")
+    .insert({
+      organization_id:   org.id,
+      name:              data.title,
+      year:              typeof data.year === "string" ? parseInt(data.year, 10) : data.year,
+      notification_date: data.notification_date ?? null,
+      apply_start_date:  data.apply_start_date  ?? null,
+      apply_end_date:    data.apply_end_date     ?? null,
+      status:            deriveStatus(data.apply_start_date, data.apply_end_date),
+    })
+    .select("id")
+    .single()
+
+  if (recErr)      throw new Error(`[promote] recruitment insert failed: ${recErr.message}`)
+  if (!recruitment) throw new Error(`[promote] recruitment insert returned no row`)
+
+  // ── Insert posts (each post creates age_criteria + education_criteria) ─────
+  for (const post of data.posts ?? []) {
+    const postAny = post as Record<string, unknown>
+    const { data: postRow, error: postErr } = await supabase
+      .from("posts")
       .insert({
-        organization_id:   org.id,
-        name:              data.title,
-        year:              data.year,
-        notification_date: data.notification_date ?? null,
-        apply_start_date:  data.apply_start_date  ?? null,
-        apply_end_date:    data.apply_end_date     ?? null,
-        status:            deriveStatus(data.apply_start_date, data.apply_end_date),
+        recruitment_id: recruitment.id,
+        post_name:      postAny.post_name as string,
+        group_type:     (postAny.group_type as string | null)  ?? null,
+        pay_level:      (postAny.pay_level as string | null)   ?? null,
+        job_type:       "direct",
       })
       .select("id")
       .single()
 
-    if (!recruitment) return null
+    if (postErr) {
+      console.error(`[promote] post insert failed (continuing): ${postErr.message}`)
+      continue
+    }
+    if (!postRow) continue
 
-    // Insert posts
-    for (const post of data.posts ?? []) {
-      const { data: postRow } = await supabase
-        .from("posts")
-        .insert({
-          recruitment_id: recruitment.id,
-          post_name:      post.post_name,
-          group_type:     post.group_type  ?? null,
-          pay_level:      post.pay_level   ?? null,
-          job_type:       "direct",
-        })
-        .select("id")
-        .single()
-
-      if (!postRow) continue
-
-      if (post.min_age || post.max_age) {
-        await supabase.from("age_criteria").insert({
-          post_id:     postRow.id,
-          min_age:     post.min_age  ?? null,
-          max_age:     post.max_age  ?? null,
-          cutoff_date: data.apply_end_date ?? null,
-        })
-      }
-
-      if (post.education_required) {
-        await supabase.from("education_criteria").insert({
-          post_id:                 postRow.id,
-          min_qualification_level: mapEducationLevel(post.education_required),
-          allowed_disciplines:     post.disciplines
-            ? (post.disciplines as unknown as Database["public"]["Tables"]["education_criteria"]["Insert"]["allowed_disciplines"])
-            : null,
-        })
-      }
+    if (postAny.min_age || postAny.max_age) {
+      const { error: ageErr } = await supabase.from("age_criteria").insert({
+        post_id:     postRow.id,
+        min_age:     (postAny.min_age as number | null) ?? null,
+        max_age:     (postAny.max_age as number | null) ?? null,
+        cutoff_date: data.apply_end_date ?? null,
+      })
+      if (ageErr) console.error(`[promote] age_criteria insert failed: ${ageErr.message}`)
     }
 
-    return recruitment.id
-  } catch (err) {
-    console.error("[runner] promoteToRecruitments failed:", err)
-    return null
+    if (postAny.education_required) {
+      const { error: eduErr } = await supabase.from("education_criteria").insert({
+        post_id:                 postRow.id,
+        min_qualification_level: mapEducationLevel(postAny.education_required as string),
+        allowed_disciplines:     postAny.disciplines
+          ? (postAny.disciplines as unknown as Database["public"]["Tables"]["education_criteria"]["Insert"]["allowed_disciplines"])
+          : null,
+      })
+      if (eduErr) console.error(`[promote] education_criteria insert failed: ${eduErr.message}`)
+    }
   }
+
+  return recruitment.id
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

@@ -348,15 +348,38 @@ export async function approveScrapeItem(
   }
  
   // ── 4. Promote to canonical recruitments ──────────────────────────────────
+  // promoteToRecruitments now THROWS on real errors. We let those bubble to the
+  // admin UI so the reviewer sees the actual database error (e.g. missing
+  // unique constraint, CHECK violation, RLS denial) instead of a ghost approval.
   const { promoteToRecruitments } = await import("@/lib/scraping/runner")
   if (!item.extracted_data) throw new Error(`approveScrapeItem: no extracted_data on item ${itemId}`)
 
-  const recruitmentId = await promoteToRecruitments(
-    item.extracted_data as unknown as ExtractedRecruitment,
-    supabase
-  )
- 
-  // ── 5. Mark approved (+ store recruited_id in duplicate_of for idempotency) 
+  let recruitmentId: string | null = null
+  try {
+    recruitmentId = await promoteToRecruitments(
+      item.extracted_data as unknown as ExtractedRecruitment,
+      supabase
+    )
+  } catch (err) {
+    // Mark the row 'reviewing' with the error note, then re-throw so the admin
+    // UI shows the real error. DO NOT mark 'approved'.
+    await supabase
+      .from("scrape_queue")
+      .update({
+        status:         "reviewing",
+        reviewer_id:    reviewerId,
+        reviewer_notes: (notes ?? "") + ` [promotion failed: ${err instanceof Error ? err.message : String(err)}]`,
+        reviewed_at:    new Date().toISOString(),
+      })
+      .eq("id", itemId)
+    throw err
+  }
+
+  if (!recruitmentId) {
+    throw new Error(`approveScrapeItem: promotion returned no recruitment_id for item ${itemId}`)
+  }
+
+  // ── 5. Mark approved (+ store recruited_id in duplicate_of for idempotency)
   const { error: updateErr } = await supabase
     .from("scrape_queue")
     .update({
@@ -364,12 +387,12 @@ export async function approveScrapeItem(
       reviewer_id:    reviewerId,
       reviewer_notes: notes ?? null,
       reviewed_at:    new Date().toISOString(),
-      ...(recruitmentId ? { duplicate_of: recruitmentId } : {}),
+      duplicate_of:   recruitmentId,
     })
     .eq("id", itemId)
- 
+
   if (updateErr) throw new Error(`approveScrapeItem update: ${updateErr.message}`)
- 
+
   // ── 6. Broadcast admin-reviewed notification to all onboarded users ──────────
   //
   // WHY we do this in TypeScript rather than via fn_fanout_alert_event RPC:
@@ -385,8 +408,10 @@ export async function approveScrapeItem(
   //
   // alert_type = 'new_match' (the only valid type for a new opening per the
   // notification_alerts_alert_type_check constraint).
-
-  if (!recruitmentId) return // promotion failed silently — runner logged it
+  //
+  // recruitmentId is guaranteed non-null here because promoteToRecruitments()
+  // throws on any failure (see runner.ts), and approveScrapeItem re-throws
+  // above before reaching this point.
 
   try {
     // Record the alert_event for audit trail
