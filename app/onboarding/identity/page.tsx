@@ -6,6 +6,7 @@ import {
   getStateReservationNote,
   PWBD_CATEGORIES,
 } from "@/lib/data/reservation-categories"
+import { ExServicemanFields } from "./ExServicemanFields"
 
 export const metadata = { title: "Identity & eligibility — Career Copilot" }
 
@@ -180,39 +181,12 @@ export default async function IdentityPage({
         <div className="cc-field">
           <span className="cc-section-label">Additional eligibility flags</span>
           <div className="flex flex-col gap-3">
-            <label className="cc-checkbox-row">
-              <input type="checkbox" name="ex_serviceman" value="true"
-                defaultChecked={exServiceman}
-                id="ex_serviceman_checkbox" />
-              <span>Ex-serviceman or dependent of ex-serviceman (age: actual − service − 3 years)</span>
-            </label>
-
-            {/* Phase 3B: service_years — shown when ex-serviceman is checked */}
-            <div
-              id="service_years_field"
-              className="cc-field ml-6"
-              style={{ display: exServiceman ? "block" : "none" }}
-            >
-              <label htmlFor="service_years" className="cc-label">
-                Years of military service
-              </label>
-              <input
-                id="service_years"
-                name="service_years"
-                type="number"
-                min="0"
-                max="40"
-                step="1"
-                defaultValue={serviceYears ?? ""}
-                placeholder="e.g. 6"
-                className="cc-input"
-                style={{ maxWidth: "120px" }}
-              />
-              <p className="text-xs mt-1" style={{ color: "var(--text-ghost)" }}>
-                Used to compute effective age: actual age − service years − 3.
-                Leave blank if unknown (a minimum 3-year relaxation will be applied).
-              </p>
-            </div>
+            {/* ExServicemanFields is a client component — handles checkbox toggle
+                and conditionally renders the service_years input via useState */}
+            <ExServicemanFields
+              defaultChecked={exServiceman}
+              defaultServiceYears={serviceYears}
+            />
 
             <label className="cc-checkbox-row">
               <input type="checkbox" name="govt_employee" value="true"
@@ -221,19 +195,6 @@ export default async function IdentityPage({
             </label>
           </div>
         </div>
-
-        {/* Phase 3B: toggle service_years field visibility client-side */}
-        <script dangerouslySetInnerHTML={{ __html: `
-          (function() {
-            var cb = document.getElementById('ex_serviceman_checkbox');
-            var field = document.getElementById('service_years_field');
-            if (cb && field) {
-              cb.addEventListener('change', function() {
-                field.style.display = cb.checked ? 'block' : 'none';
-              });
-            }
-          })();
-        `}} />
 
         <div className="cc-form-nav">
           <a href="/onboarding" className="cc-btn-link">← Back</a>
