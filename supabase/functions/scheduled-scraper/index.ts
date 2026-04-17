@@ -31,7 +31,40 @@ const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
 const CLAUDE_MODEL    = "claude-haiku-4-5-20251001"    // Tier-1 universal access, ~$0.00025/source
 const GEMINI_MODEL    = "gemini-2.0-flash"
 const GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`
-const SYSTEM_PROMPT   = "You are a specialist data extraction agent for Indian government recruitment notifications. Return ONLY valid JSON with a top-level 'recruitments' array. Never return markdown or explanation."
+const SYSTEM_PROMPT   = `You are a specialist data extraction agent for Indian government recruitment notifications.
+Return ONLY valid JSON with a top-level 'recruitments' array. Never return markdown or explanation.
+
+HARD RULES:
+- Extract ONLY factual information present in the text. Never fabricate data.
+- Dates → ISO 8601 (YYYY-MM-DD). Month-only? Use the 1st.
+- If a field is genuinely not mentioned, set it to null. But SEARCH THE ENTIRE
+  document before returning null — eligibility details are often in a separate
+  "Eligibility Criteria" / "Age Limit" / "Educational Qualification" section far
+  from the post list.
+- Vacancies = total across categories unless the text clearly separates posts.
+- org_type ∈ {UPSC, SSC, Banking, Railway, State, Insurance, Defence, Other}.
+
+EXTRACTION HEURISTICS (most extractions fail because these are skipped):
+
+Age — look for these phrases ANYWHERE in the text:
+  "age between X and Y years" · "minimum X, maximum Y" · "not less than X and not more than Y"
+  "X to Y years as on <date>" · "upper age limit: Y" · Category tables with General/OBC/SC/ST columns
+  → Use the GENERAL / unreserved row for min_age and max_age. The engine
+     applies category-wise relaxation separately (do NOT pre-relax).
+  If only "upper age limit" is given and no lower bound is stated, min_age=null.
+
+Education — look for "Educational Qualification", "Essential Qualification",
+  "Minimum Qualification". Phrases: "Bachelor's degree", "Graduate from a
+  recognised university", "Post-graduate degree in X", "Diploma in Engineering",
+  "10+2 pass", "Matriculation", "Class X", "B.E./B.Tech", "CA/CMA", "LLB".
+  Put the RAW phrase into education_required. If disciplines are listed, put
+  them into the disciplines array.
+
+Posts — one notification often has many posts with different criteria (e.g.
+  "Assistant Manager", "Chief Manager", "PO"). Extract each separately. If all
+  posts share the same age/education, REPEAT those values on each post rather
+  than leaving null. Missing post-level criteria is the #1 cause of eligibility
+  false-negatives downstream.`
 const REQUEST_TIMEOUT = 18_000
 const CLAUDE_TIMEOUT  = 32_000
 
@@ -357,32 +390,48 @@ function toBase64(bytes: Uint8Array): string {
 function makeExtractionPrompt(sourceUrl: string, sourceName: string, year: number): string {
   return `Extract ALL recruitment notifications from this content from ${sourceName} (${sourceUrl}).
 
-There may be multiple separate notifications. Extract EACH one separately.
+A single page often lists multiple distinct notifications. Extract EACH one as
+its own item in the "recruitments" array. A single notification with multiple
+posts (e.g. "Assistant Manager" + "Chief Manager") is ONE recruitment with
+multiple entries in the "posts" array — NOT multiple recruitments.
 
 Return a JSON object with a "recruitments" array:
 {
   "recruitments": [
     {
-      "title": "full recruitment name",
-      "organization_name": "string",
-      "org_type": "UPSC|SSC|Banking|Railway|State|Insurance|Defence|Other",
-      "notification_date": "YYYY-MM-DD or null",
-      "apply_start_date": "YYYY-MM-DD or null",
-      "apply_end_date": "YYYY-MM-DD or null",
-      "total_vacancies": number or null,
-      "year": ${year},
-      "source_pdf_url": "string or null",
+      "title":                     "full recruitment name exactly as printed",
+      "organization_name":         "issuing body, e.g. 'Union Public Service Commission'",
+      "org_type":                  "UPSC|SSC|Banking|Railway|State|Insurance|Defence|Other",
+      "notification_date":         "YYYY-MM-DD or null",
+      "apply_start_date":          "YYYY-MM-DD or null",
+      "apply_end_date":            "YYYY-MM-DD or null",
+      "total_vacancies":           number or null,
+      "year":                      ${year},
+      "source_pdf_url":            "string or null (direct PDF link if present)",
       "official_notification_url": "direct URL or ${sourceUrl}",
-      "confidence": 0.0-1.0,
-      "posts": [{"post_name":"","group_type":"A|B|C|D or null","vacancies":null,"min_age":null,"max_age":null,"education_required":null,"disciplines":null}]
+      "confidence":                0.0-1.0,
+      "posts": [{
+        "post_name":          "exact post title",
+        "group_type":         "A|B|C|D or null",
+        "pay_level":          "string or null (e.g. 'Level-7', 'Pay Matrix 10', '56100-177500')",
+        "vacancies":          number or null,
+        "min_age":            number or null,  // UNRESERVED/GENERAL category, years
+        "max_age":            number or null,  // UNRESERVED/GENERAL category, years
+        "education_required": "raw phrase or null (e.g. 'Bachelor\\'s degree from a recognised university')",
+        "disciplines":        ["string"] or null
+      }]
     }
   ]
 }
 
-Rules:
-- confidence=1.0 only when title, org, dates, vacancies AND post-level age/education are all present.
-- If no recruitments found, return {"recruitments": []}.
-- Return ONLY valid JSON, never markdown or explanation.`
+CONFIDENCE CALIBRATION:
+  1.0 — title, org, all three dates, total_vacancies AND every post has min_age/max_age/education_required.
+  0.7 — title, org, dates, vacancies, but some posts missing age or education.
+  0.5 — only title/org/dates — post-level data missing or ambiguous.
+  <0.3 — listing/index page, not an actual notification.
+
+If no recruitments found, return {"recruitments": []}.
+Return ONLY valid JSON, never markdown or explanation.`
 }
 
 // ─── Parse Claude's recruitment JSON response ─────────────────────────────────

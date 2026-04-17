@@ -251,21 +251,34 @@ export async function promoteToRecruitments(
   // ExtractedRecruitment also carries total_vacancies, official_notification_url
   // and source_pdf_url — write them so /dashboard/exams and the "Open official
   // notification" link work. Columns added by migration 010.
+  //
+  // Note the `as unknown as ... & { extras }` cast: the generated types/supabase.ts
+  // is UTF-16-encoded and was last regenerated before migration 010 added the two
+  // URL columns. The columns DO exist in the DB; the cast bypasses the stale
+  // generated Insert type until the next `supabase gen types` run.
   const dataAny = data as Record<string, unknown>
+  type RecruitmentInsertWithUrls =
+    Database["public"]["Tables"]["recruitments"]["Insert"] & {
+      official_notification_url?: string | null
+      source_pdf_url?:            string | null
+    }
+  const recruitmentInsert: RecruitmentInsertWithUrls = {
+    organization_id:           org.id,
+    name:                      data.title,
+    year:                      typeof data.year === "string" ? parseInt(data.year, 10) : data.year,
+    notification_date:         data.notification_date ?? null,
+    apply_start_date:          data.apply_start_date  ?? null,
+    apply_end_date:            data.apply_end_date     ?? null,
+    status:                    deriveStatus(data.apply_start_date, data.apply_end_date),
+    total_vacancies:           (dataAny.total_vacancies as number | null) ?? null,
+    official_notification_url: (dataAny.official_notification_url as string | null) ?? null,
+    source_pdf_url:            (dataAny.source_pdf_url as string | null) ?? null,
+  }
   const { data: recruitment, error: recErr } = await supabase
     .from("recruitments")
-    .insert({
-      organization_id:           org.id,
-      name:                      data.title,
-      year:                      typeof data.year === "string" ? parseInt(data.year, 10) : data.year,
-      notification_date:         data.notification_date ?? null,
-      apply_start_date:          data.apply_start_date  ?? null,
-      apply_end_date:            data.apply_end_date     ?? null,
-      status:                    deriveStatus(data.apply_start_date, data.apply_end_date),
-      total_vacancies:           (dataAny.total_vacancies as number | null) ?? null,
-      official_notification_url: (dataAny.official_notification_url as string | null) ?? null,
-      source_pdf_url:            (dataAny.source_pdf_url as string | null) ?? null,
-    })
+    .insert(
+      recruitmentInsert as unknown as Database["public"]["Tables"]["recruitments"]["Insert"]
+    )
     .select("id")
     .single()
 

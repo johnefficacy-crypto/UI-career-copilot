@@ -7,6 +7,7 @@ import { NotificationsFeed }              from "./NotificationsFeed"
 import { StatsBar }                       from "./StatsBar"
 import { StudyPlanWidget }                from "./StudyPlanWidget"
 import { SkillTestWidget }                from "./SkillTestWidget"
+import { EligibleRecruitmentsWidget }     from "./EligibleRecruitmentsWidget"
 import { AiChatWidget }                   from "@/components/chat/AiChatWidget"
 import type { getUserPlans }              from "@/lib/db/study-planner"
 import type { getEligibleRecruitments }   from "@/lib/eligibility/runner"
@@ -119,6 +120,13 @@ export function DashboardShell({
           {/* Left + centre — 2 cols */}
           <div className="lg:col-span-2 flex flex-col gap-5">
             <ExamTargetCard targets={targets} attempts={attempts} />
+
+            {/* Eligible recruitments — closes the UX gap where the eligibility
+                engine's output had no surface on the main dashboard. */}
+            <EligibleRecruitmentsWidget
+              rows={Array.isArray(eligibleRecruitments) ? eligibleRecruitments : []}
+            />
+
             <NotificationsFeed
               alerts={userAlerts}
               unreadCount={unreadCount}
