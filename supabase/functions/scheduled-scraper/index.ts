@@ -393,15 +393,31 @@ function toBase64(bytes: Uint8Array): string {
   return btoa(binary)
 }
 
+// ─── Validate PDF magic bytes ────────────────────────────────────────────────
+// Servers sometimes return 200 OK with an HTML error page for missing PDFs.
+// Sending that HTML as base64 to Anthropic's PDF API produces a 400
+// "PDF specified was not valid" which then wastes our Gemini fallback quota.
+// Real PDFs start with the ASCII string "%PDF-" — verify before base64 encoding.
+
+function looksLikePdf(bytes: Uint8Array): boolean {
+  if (bytes.length < 5) return false
+  // "%PDF-"  =  0x25 0x50 0x44 0x46 0x2D
+  return bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 &&
+         bytes[3] === 0x46 && bytes[4] === 0x2D
+}
+
 // ─── Shared extraction prompt ─────────────────────────────────────────────────
 
 function makeExtractionPrompt(sourceUrl: string, sourceName: string, year: number): string {
-  return `Extract ALL recruitment notifications from this content from ${sourceName} (${sourceUrl}).
+  const minYear = year - 1
+  return `Extract CURRENT recruitment notifications (job openings) from this content from ${sourceName} (${sourceUrl}).
 
-A single page often lists multiple distinct notifications. Extract EACH one as
-its own item in the "recruitments" array. A single notification with multiple
-posts (e.g. "Assistant Manager" + "Chief Manager") is ONE recruitment with
-multiple entries in the "posts" array — NOT multiple recruitments.
+Current year is ${year}. Extract ONLY notifications where:
+  • year is ${minYear} or ${year} (skip anything older), AND
+  • the recruitment is a NEW job opening — NOT a shortlist, admit card, result,
+    answer key, cut-off, interview letter, appointment order, or medical list.
+
+There may be multiple separate notifications on this page. Extract EACH one.
 
 Return a JSON object with a "recruitments" array:
 {
@@ -432,14 +448,11 @@ Return a JSON object with a "recruitments" array:
   ]
 }
 
-CONFIDENCE CALIBRATION:
-  1.0 — title, org, all three dates, total_vacancies AND every post has min_age/max_age/education_required.
-  0.7 — title, org, dates, vacancies, but some posts missing age or education.
-  0.5 — only title/org/dates — post-level data missing or ambiguous.
-  <0.3 — listing/index page, not an actual notification.
-
-If no recruitments found, return {"recruitments": []}.
-Return ONLY valid JSON, never markdown or explanation.`
+Rules:
+- confidence=1.0 only when title, org, dates, vacancies AND post-level age/education are all present.
+- Set year to the actual year of the recruitment (extract from title/dates) — NOT always ${year}.
+- If no current-year recruitments found, return {"recruitments": []}.
+- Return ONLY valid JSON, never markdown or explanation.`
 }
 
 // ─── Parse Claude's recruitment JSON response ─────────────────────────────────
@@ -474,7 +487,9 @@ function parseClaudeRecruitmentResponse(raw: string): ExtractedRecruitment[] {
 // and scanned pages that naive BT/ET regex completely misses.
 
 // Returns null on API error (caller should try Gemini fallback).
-// Returns [] if the model ran OK but found no recruitments.
+// Returns [] if the model ran OK but found no recruitments, OR if the bytes
+// aren't a valid PDF (returning [] here avoids burning the Gemini fallback
+// quota on a data error that would also fail at Gemini).
 async function callClaudeOnPdf(
   pdfBytes:   Uint8Array,
   sourceUrl:  string,
@@ -485,6 +500,10 @@ async function callClaudeOnPdf(
   if (pdfBytes.length > 20_000_000) {
     console.log(`[${sourceName}] PDF too large (${(pdfBytes.length / 1e6).toFixed(1)} MB) — skipping`)
     return []
+  }
+  if (!looksLikePdf(pdfBytes)) {
+    console.log(`[${sourceName}] fetched bytes are not a valid PDF (first bytes: ${[...pdfBytes.slice(0, 5)].map(b => b.toString(16)).join(" ")}) — skipping`)
+    return []  // not null — don't trigger Gemini fallback for a data error
   }
 
   const base64 = toBase64(pdfBytes)
@@ -573,10 +592,13 @@ function htmlToLlmText(html: string, baseUrl: string): string {
     .replace(/<aside\b[\s\S]*?<\/aside>/gi, " ")
     .replace(/<form\b[\s\S]*?<\/form>/gi, " ")
 
-    // Preserve anchors with absolute href — single most important signal
+    // Preserve anchors with absolute href — single most important signal.
+    // Drops javascript:/mailto:/tel: pseudo-anchors (common on JS-heavy govt
+    // portals like MPPSC) which carry no extraction value and just burn tokens.
     .replace(/<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi, (_m, href: string, inner: string) => {
       const text = inner.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()
       if (!text) return " "
+      if (/^\s*(javascript:|mailto:|tel:|#)/i.test(href)) return ` ${text} `
       let abs: string
       try { abs = new URL(href, base.href).href } catch { return ` ${text} ` }
       const isPdfLike =
@@ -626,27 +648,44 @@ function htmlToLlmText(html: string, baseUrl: string): string {
 function findPdfLinksInHtml(html: string, baseUrl: string): string[] {
   const base = new URL(baseUrl)
 
-  // Words in a URL/filename that signal a recruitment PDF
+  // Signals a NEW recruitment notification (job opening) — not a post-recruitment
+  // artefact like shortlists, admit cards, or results. Extracting the latter wastes
+  // LLM calls and pollutes the queue with non-actionable items.
   const URL_POSITIVE = [
-    "notification", "recruitment", "advt", "advertisement", "vacancy",
-    "circular", "career", "employment", "job", "exam", "result",
-    "admit", "cutoff", "merit", "selection", "application", "opening",
-    "notice", "hiring", "post", "joining", "interview", "shortlist",
+    "notification", "recruitment", "advt", "advertisement", "vacancy", "vacancies",
+    "circular", "career", "employment", "opening", "hiring", "invite",
+    "invitation", "application_invited", "call_for_applications", "appointment_of",
   ]
-  // Words in anchor link text that signal a recruitment PDF
   const TEXT_POSITIVE = [
-    "notification", "recruitment", "vacancy", "advertisement", "advt",
-    "career", "employment", "job", "exam", "result", "admit card",
-    "apply", "application", "opening", "post", "hiring", "notice",
-    "circular", "shortlist", "interview", "joining",
+    "notification", "recruitment", "vacancy", "vacancies", "advertisement", "advt",
+    "career", "employment", "opening", "invitation", "invited", "hiring",
+    "applications are invited", "apply online", "post of", "appointment of",
   ]
-  // URL substrings that definitively mark a non-recruitment PDF — skip always
+  // Hard exclude — skip these PDFs even if they match positive signals.
+  // Shortlists/results/admit-cards are UPDATES to existing recruitments; we
+  // haven't even extracted the original recruitment yet, so they're useless
+  // at this stage and just burn API budget (as seen with New India Assurance).
   const URL_NEGATIVE = [
+    // Non-recruitment govt documents
     "annual_report", "best_practice", "citizen_charter", "citizen_char",
     "product", "tender", "vendor", "price_list", "rate_contract",
     "manual", "guideline", "policy", "brochure", "ar_", "_ar_",
     "dar.pdf", "rti", "award", "grievance", "press_release", "tariff",
     "schedule_of_charges", "form_", "_form", "proforma", "norms",
+    // Post-recruitment artefacts (track later as status updates, not here)
+    "shortlist", "shortlisted", "provisionally", "provisional_list",
+    "interview_schedule", "interview_call", "interview_letter",
+    "merit_list", "final_list", "select_list", "selected_candidates",
+    "answer_key", "answerkey", "answer-key",
+    "admit_card", "admitcard", "admit-card", "hall_ticket", "hallticket",
+    "result", "cutoff", "cut_off", "cut-off",
+    "allotment", "allotted", "appointment_order", "joining_letter",
+    "medical_examination", "medical-examination", "medical_test",
+    "document_verification", "doc_verification", "dv_notice",
+    "roll_number", "rollnumber", "roll-number",
+    "pre-employment", "preemployment",
+    // Accessibility/theme anchors that sometimes have href patterns matching PDF regex
+    "#main", "#content", "skiptocontent",
   ]
 
   interface ScoredLink { url: string; score: number }
@@ -692,6 +731,45 @@ function findPdfLinksInHtml(html: string, baseUrl: string): string[] {
     .sort((a, b) => b.score - a.score)
     .slice(0, 3)
     .map(c => c.url)
+}
+
+// ─── Freshness filter ────────────────────────────────────────────────────────
+// Drops closed/historical recruitments post-extraction. The LLM sometimes
+// returns 2023/2024 items from archived sections even when the prompt asks
+// for current-year only — this is the deterministic backstop.
+
+function isFreshRecruitment(item: ExtractedRecruitment, currentYear: number): boolean {
+  // Rule 1: apply_end_date in the past → closed, skip
+  if (item.apply_end_date) {
+    const end = new Date(item.apply_end_date)
+    if (!isNaN(end.getTime())) {
+      const now = new Date()
+      // Give 3-day grace in case timezone/parsing skew marks today as closed
+      const threshold = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000)
+      if (end < threshold) return false
+    }
+  }
+  // Rule 2: year older than currentYear - 1 → historical
+  // (currentYear-1 is kept because many notifications issued in Dec span into
+  //  the next calendar year for exams/application windows.)
+  if (item.year && item.year < currentYear - 1) return false
+
+  // Rule 3: title contains obvious post-recruitment artefact words → skip
+  const t = (item.title ?? "").toLowerCase()
+  const staleMarkers = [
+    "shortlist", "shortlisted", "provisionally shortlisted",
+    "answer key", "answer-key",
+    "result of", "final result", "cut-off", "cut off", "cutoff",
+    "admit card", "hall ticket",
+    "merit list", "final list", "select list", "selected candidates",
+    "interview schedule", "interview letter", "interview call",
+    "appointment order", "joining letter",
+    "medical examination", "document verification",
+    "roll number", "allotted",
+  ]
+  if (staleMarkers.some(w => t.includes(w))) return false
+
+  return true
 }
 
 // ─── Data quality scoring ─────────────────────────────────────────────────────
@@ -875,16 +953,30 @@ async function acquireContent(
     if (src.adapter_type !== "pdf") {
       const pdfLinks = findPdfLinksInHtml(rawHtml, targetUrl)
       console.log(`[${src.source_name}] PDF links detected: ${pdfLinks.length} (text=${stripped.length}ch)`)
-      for (const pdfUrl of pdfLinks) {
+      // Cap at 2 PDFs/source (down from 3) to preserve the 42s time budget —
+      // each PDF round-trip is 2-4s fetch + 8-15s LLM. With 2 PDFs we still
+      // get the primary notification + one supplementary, and processing fits.
+      for (const pdfUrl of pdfLinks.slice(0, 2)) {
         try {
           const pdfRes = await fetch(pdfUrl, { signal: AbortSignal.timeout(REQUEST_TIMEOUT) })
-          if (pdfRes.ok) {
-            const buf = await pdfRes.arrayBuffer()
-            if (buf.byteLength < 20_000_000) {  // skip PDFs > 20 MB
-              linkedPdfs.push(new Uint8Array(buf))
-              console.log(`[${src.source_name}] Fetched linked PDF: ${pdfUrl} (${(buf.byteLength / 1024).toFixed(0)} KB)`)
-            }
+          if (!pdfRes.ok) continue
+          // Content-Type sanity: servers sometimes serve HTML error pages with
+          // .pdf URLs and 200 OK. Trust the magic-byte check below over the header
+          // (some govt servers send application/octet-stream for valid PDFs).
+          const ct = pdfRes.headers.get("content-type")?.toLowerCase() ?? ""
+          if (ct.includes("text/html")) {
+            console.log(`[${src.source_name}] Skipped HTML-typed response masquerading as PDF: ${pdfUrl}`)
+            continue
           }
+          const buf = await pdfRes.arrayBuffer()
+          if (buf.byteLength >= 20_000_000) continue  // skip PDFs > 20 MB
+          const bytes = new Uint8Array(buf)
+          if (!looksLikePdf(bytes)) {
+            console.log(`[${src.source_name}] Skipped invalid PDF (missing %PDF- header): ${pdfUrl}`)
+            continue
+          }
+          linkedPdfs.push(bytes)
+          console.log(`[${src.source_name}] Fetched linked PDF: ${pdfUrl} (${(buf.byteLength / 1024).toFixed(0)} KB)`)
         } catch { /* non-fatal — HTML text still goes to Claude */ }
       }
     }
@@ -1272,8 +1364,17 @@ Deno.serve(async (req) => {
         }
       }
 
+      // Apply freshness filter BEFORE confidence filter so stale-but-high-confidence
+      // items (e.g. 2024 shortlists) don't waste slots in the approval queue.
+      const beforeFresh = extractedList.length
+      const freshItems  = extractedList.filter(r => isFreshRecruitment(r, year))
+      const droppedStale = beforeFresh - freshItems.length
+      if (droppedStale > 0) {
+        console.log(`[${src.source_name}] Freshness filter dropped ${droppedStale} stale/closed item(s)`)
+      }
+
       // Health metric: now includes actual item count and avg confidence
-      const validItems = extractedList.filter(r => r.title && (r.confidence ?? 0) >= 0.30)
+      const validItems = freshItems.filter(r => r.title && (r.confidence ?? 0) >= 0.30)
       await supabase.from("source_health_metrics").insert({
         source_registry_id: src.id,
         source_id:          src.id,  // legacy FK — kept until migration fully applied
