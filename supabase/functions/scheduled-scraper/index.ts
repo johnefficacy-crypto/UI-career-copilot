@@ -27,7 +27,10 @@ const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
 // Architecture: Gemini 2.0 Flash (free, 1500/day) PRIMARY for LLM extraction.
 // Anthropic claude-3-5-haiku (paid, cheap) is FALLBACK only.
 // RSS sources bypass LLM entirely — direct structured extraction, zero cost.
-const CLAUDE_MODEL    = "claude-3-haiku-20240307"    // Tier-1 universal access, ~$0.00025/source
+// claude-3-haiku-20240307 was retired by Anthropic in late 2025 (returns 404).
+// claude-3-5-haiku-20241022 is the direct replacement — same price tier, 200K
+// context, supports the pdfs-2024-09-25 beta header we use in callClaudeOnPdf.
+const CLAUDE_MODEL    = "claude-3-5-haiku-20241022"  // Tier-1 universal access, ~$0.0004/source
 const GEMINI_MODEL    = "gemini-2.0-flash"
 const GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`
 const SYSTEM_PROMPT   = "You are a specialist data extraction agent for Indian government recruitment notifications. Return ONLY valid JSON with a top-level 'recruitments' array. Never return markdown or explanation."
