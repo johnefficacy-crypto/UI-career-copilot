@@ -113,8 +113,40 @@ function eduLevelRank(level: string): number {
 //   SC/ST + PwBD   : 15 yrs total  (NOT 5 + 15 = 20)
 // Use Math.max so PwBD replaces (rather than stacks on) category relaxation.
 
+/**
+ * Map any onboarding category value to the engine's canonical bucket.
+ * Central categories: general | obc | sc | st | ews
+ * State-specific OBC variants: obc_ncl, vjnt, sebc, sbc, mbc, bc, mbc_dnc, bcm,
+ *   cat_2a, cat_2b, cat_3a, cat_3b — all map to "obc"
+ * Compound PwBD categories (pwd_obc, pwd_sc_st, pwd_general) — extract the
+ *   base reservation bucket; PwBD relaxation is handled separately via pwbd_status.
+ */
+function normalizeCategory(raw: string | null): "general" | "obc" | "sc" | "st" | "ews" {
+  const cat = (raw ?? "general").toLowerCase().trim()
+
+  // OBC variants (central + all mapped states)
+  const OBC_VARIANTS = new Set([
+    "obc", "obc_ncl",
+    // State OBC equivalents
+    "vjnt", "sebc", "sbc", "mbc",
+    "bc", "mbc_dnc", "bcm",           // Tamil Nadu
+    "cat_2a", "cat_2b", "cat_3a", "cat_3b",  // Karnataka
+    // Compound PwBD+OBC
+    "pwd_obc",
+  ])
+  if (OBC_VARIANTS.has(cat)) return "obc"
+
+  if (cat === "sc" || cat === "pwd_sc_st") return "sc"
+  if (cat === "st")  return "st"
+  if (cat === "ews") return "ews"
+
+  // ex_serviceman category value: the ex-serviceman flag is handled separately
+  // in the age check (ex_serviceman boolean + service_years). Treat as general here.
+  return "general"
+}
+
 function getCategoryRelaxationYears(profile: UserProfile): number {
-  const cat = profile.category?.toLowerCase() ?? "general"
+  const cat = normalizeCategory(profile.category)
   let relaxation = 0
 
   if (cat === "obc")                    relaxation = 3
