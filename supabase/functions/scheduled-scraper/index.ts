@@ -28,6 +28,10 @@ const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
 // Architecture: Gemini 2.0 Flash (free, 1500/day) PRIMARY for LLM extraction.
 // Anthropic claude-3-5-haiku (paid, cheap) is FALLBACK only.
 // RSS sources bypass LLM entirely — direct structured extraction, zero cost.
+// claude-3-haiku-20240307 was retired by Anthropic in late 2025 (returns 404).
+// claude-3-5-haiku-20241022 is the direct replacement — same price tier, 200K
+// context, supports the pdfs-2024-09-25 beta header we use in callClaudeOnPdf.
+const CLAUDE_MODEL    = "claude-3-5-haiku-20241022"  // Tier-1 universal access, ~$0.0004/source
 const CLAUDE_MODEL    = "claude-haiku-4-5-20251001"    // Tier-1 universal access, ~$0.00025/source
 const GEMINI_MODEL    = "gemini-2.0-flash"
 const GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`
@@ -89,6 +93,20 @@ async function geminiRateLimit(): Promise<void> {
   const elapsed = Date.now() - _geminiLastCallMs
   if (elapsed < GEMINI_MIN_GAP_MS) await sleep(GEMINI_MIN_GAP_MS - elapsed)
   _geminiLastCallMs = Date.now()
+}
+
+// ── Anthropic rate limiter ────────────────────────────────────────────────────
+// Claude Haiku tier-1 paid allows ~5 req/sec. We enforce 800ms min gap between
+// ALL Anthropic calls (text + PDF) to avoid 429 cascades when processing
+// sources with multiple linked PDFs. Cheaper than retrying and prevents the
+// Gemini-fallback cascade that burned our daily quota.
+const ANTHROPIC_MIN_GAP_MS = 800
+let   _anthropicLastCallMs = 0
+
+async function anthropicRateLimit(): Promise<void> {
+  const elapsed = Date.now() - _anthropicLastCallMs
+  if (elapsed < ANTHROPIC_MIN_GAP_MS) await sleep(ANTHROPIC_MIN_GAP_MS - elapsed)
+  _anthropicLastCallMs = Date.now()
 }
 // TASK 6: time budget — 42s of the ~50s Edge Function wall-clock limit
 const RUN_BUDGET_MS     = 42_000
@@ -188,11 +206,18 @@ function validateEnv(): { ok: boolean; warnings: string[] } {
 // ─── Idempotency guard ────────────────────────────────────────────────────────
 
 async function isAlreadyRunning(): Promise<boolean> {
+  // Edge Function wall-clock limit is ~50s, so any row still marked 'running'
+  // after 2 minutes is definitionally dead (the function was killed before
+  // it could mark status='failed'). Using a 10-minute window previously
+  // meant a single crashed run blocked scheduling for 10 minutes — and
+  // wedged rows from retired-model 404 runs blocked indefinitely until
+  // manually cleaned up in SQL. Tighten to 2 minutes: real overlaps are
+  // impossible (function dies at 50s), zombie rows age out automatically.
   const { data } = await db()
     .from("scrape_runs")
     .select("id")
     .eq("status", "running")
-    .gte("started_at", new Date(Date.now() - 10 * 60 * 1000).toISOString())
+    .gte("started_at", new Date(Date.now() - 2 * 60 * 1000).toISOString())
     .limit(1)
   return (data?.length ?? 0) > 0
 }
@@ -509,6 +534,7 @@ async function callClaudeOnPdf(
   const base64 = toBase64(pdfBytes)
 
   try {
+    await anthropicRateLimit()
     const res = await fetch("https://api.anthropic.com/v1/messages", {
       method:  "POST",
       headers: {
@@ -537,12 +563,20 @@ async function callClaudeOnPdf(
       const wait = Math.min(retryAfter, 10) * 1000
       console.warn(`[${sourceName}] Anthropic PDF 429 rate limit — retrying in ${wait / 1000}s`)
       await sleep(wait)
+      await anthropicRateLimit()
       const res2 = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-api-key": ANTHROPIC_KEY, "anthropic-version": "2023-06-01", "anthropic-beta": "pdfs-2024-09-25" },
         body: JSON.stringify({ model: CLAUDE_MODEL, max_tokens: 4000, system: SYSTEM_PROMPT, messages: [{ role: "user", content: [{ type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 } }, { type: "text", text: makeExtractionPrompt(sourceUrl, sourceName, year) }] }] }),
         signal: AbortSignal.timeout(CLAUDE_TIMEOUT),
       })
+      // If still rate-limited on retry, return [] (not null) so the cross-provider
+      // Gemini fallback does NOT trigger — Gemini has a much tighter daily quota
+      // and cascading rate-limits from Anthropic to Gemini will exhaust it fast.
+      if (res2.status === 429) {
+        console.warn(`[${sourceName}] Anthropic PDF still 429 after retry — dropping source (not cascading to Gemini)`)
+        return []
+      }
       if (!res2.ok) { console.error(`[${sourceName}] Anthropic PDF retry ${res2.status}`); return null }
       const data2 = await res2.json() as { content?: Array<{ type: string; text: string }> }
       return parseClaudeRecruitmentResponse(data2.content?.find(b => b.type === "text")?.text ?? "")
@@ -564,6 +598,56 @@ async function callClaudeOnPdf(
     console.error(`[${sourceName}] callClaudeOnPdf error:`, err)
     return null
   }
+}
+
+// ─── Isolate main content zone BEFORE tag stripping ─────────────────────────
+// On listing sites like sarkariresult.com (~500KB raw HTML) the first 25KB
+// of stripped text is dominated by the header menu + syllabus/answer-key/admit
+// sidebar. The actual recruitment list is past that window. This helper finds
+// the densest content container (main/article/div#content/etc) and returns
+// just that subtree so the truncation budget is spent on notifications.
+//
+// Strategy: find the first recognised content-start marker + the nearest
+// content-end marker, and slice between them. If the slice is too small to be
+// meaningful (< 500 chars), fall back to the full HTML.
+
+function extractContentZone(html: string): string {
+  // Drop <head>...</head> unconditionally — it has no recruitment content
+  // but does consume chars and can leak meta-description text that looks
+  // like a notification to the LLM.
+  html = html.replace(/<head\b[\s\S]*?<\/head>/i, " ")
+
+  const startMarkers: RegExp[] = [
+    /<main\b[^>]*>/i,
+    /<article\b[^>]*>/i,
+    /<section\b[^>]*\b(?:id|class)=["'][^"']*(?:notifications?|recruit|vacanc|career|content|main)[^"']*["'][^>]*>/i,
+    /<div\b[^>]*\b(?:id|class)=["'][^"']*(?:main[-_]?content|maincontent|primary[-_]?content|content[-_]?wrapper|page[-_]?content|content-area|site-content)[^"']*["'][^>]*>/i,
+    /<div\b[^>]*role=["']main["'][^>]*>/i,
+    /<div\b[^>]*\bid=["'](?:content|main|primary|body|page-content|middle)["'][^>]*>/i,
+    /<body\b[^>]*>/i,   // fallback — at minimum skip <head>
+  ]
+  let start = -1
+  for (const re of startMarkers) {
+    const m = html.match(re)
+    if (m && m.index !== undefined) { start = m.index; break }
+  }
+  if (start === -1) return html
+
+  // Find the NEAREST end marker after start. This is a best-effort boundary —
+  // HTML doesn't need balanced tags in practice on govt sites, so we use
+  // pragmatic landmarks: the next <footer>, </main>, </article>, or </body>.
+  const afterStart = html.slice(start + 50)
+  const endMarkers: RegExp[] = [/<footer\b/i, /<\/main>/i, /<\/article>/i, /<\/body>/i]
+  let end = html.length
+  for (const re of endMarkers) {
+    const m = afterStart.match(re)
+    if (m && m.index !== undefined) {
+      end = Math.min(end, start + 50 + m.index)
+    }
+  }
+
+  const slice = html.slice(start, end)
+  return slice.length > 500 ? slice : html
 }
 
 // ─── Smart HTML → LLM-ready text ─────────────────────────────────────────────
@@ -621,9 +705,16 @@ function htmlToLlmText(html: string, baseUrl: string): string {
       return text ? `\n• ${text}` : " "
     })
 
-    // Preserve table rows — many govt sites tabulate notifications
+    // Preserve table rows — many govt sites tabulate notifications.
+    // Split cells with " | " then strip any remaining inner tags.
     .replace(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi, (_m, inner: string) => {
-      const text = inner.replace(/<[^>]+>/g, " | ").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()
+      const text = inner
+        .replace(/<\/?(?:td|th)[^>]*>/gi, " | ")   // cell boundaries
+        .replace(/<[^>]+>/g, " ")                  // strip remaining tags
+        .replace(/\s+/g, " ")
+        .replace(/\s*\|\s*\|\s*/g, " | ")          // collapse empty cells
+        .replace(/^\s*\|\s*|\s*\|\s*$/g, "")       // trim leading/trailing pipes
+        .trim()
       return text ? `\n${text}` : " "
     })
 
@@ -940,10 +1031,24 @@ async function acquireContent(
       }
     }
 
+    // Isolate main content first so the truncation budget is spent on
+    // notifications, not on site chrome / sidebars. Sarkari Result was the
+    // canonical failure case: 494KB raw HTML, first 25K was nav only.
+    const contentZone = extractContentZone(rawHtml)
     // Convert HTML → LLM-ready text preserving anchors, headings, list items.
     // This replaces naive tag stripping which destroyed the semantic signals
     // (anchor text + href) that are the highest-value content on govt pages.
-    const stripped = htmlToLlmText(rawHtml, targetUrl)
+    let stripped = htmlToLlmText(contentZone, targetUrl)
+
+    // Skip LLM call if the stripped output is clearly an unrendered JS shell.
+    // Angular-style {{expr}} placeholders or sub-200-char pages carry no
+    // extractable content and just burn Anthropic spend until the source is
+    // upgraded to Playwright. Flag it in last_error so admin can see the queue.
+    const jsTemplateMatches = (stripped.match(/\{\{[^}]+\}\}/g) ?? []).length
+    if (stripped.length < 200 || (stripped.length < 2000 && jsTemplateMatches >= 3)) {
+      console.log(`[${src.source_name}] HTML appears unrendered (len=${stripped.length}, {{expr}}=${jsTemplateMatches}) — skipping LLM call`)
+      stripped = ""   // main loop treats empty text + no pdfs as "skip"
+    }
 
     // ── Stage 2: PDF link detection ───────────────────────────────────────────
     // Many govt pages (UPSC, SSC, IBPS) show only a summary in HTML and put the
@@ -1024,15 +1129,24 @@ async function geminiFetch(body: object, sourceName: string, label: string): Pro
   }
 
   if (res.status === 429) {
-    // Check whether it's a daily quota exhaustion or just persistent per-minute throttle.
-    // Gemini returns {"error":{"status":"RESOURCE_EXHAUSTED","message":"..."}} for daily quota.
+    // Distinguish genuine daily quota from a persistent per-minute throttle.
+    // Gemini emits both as 429 + RESOURCE_EXHAUSTED — the difference is in the
+    // quotaMetric / quotaId field inside the error body. Daily metrics contain
+    // "PerDay"; per-minute metrics contain "PerMinute". Matching bare "quota"
+    // (the previous heuristic) was a false positive because every 429 body
+    // mentions the word "quota", which disabled Gemini for the whole run after
+    // one per-minute hiccup.
     const errBody = await res.clone().text().catch(() => "")
-    const isDaily = errBody.includes("RESOURCE_EXHAUSTED") || errBody.includes("quota")
+    const isDaily =
+      /PerDay/i.test(errBody) ||
+      /per[\s-]?day/i.test(errBody) ||
+      /daily[\s_-]?limit/i.test(errBody) ||
+      /daily[\s_-]?quota/i.test(errBody)
     if (isDaily) {
       _geminiDailyQuotaExhausted = true
       console.warn(`[${sourceName}] Gemini ${label} DAILY quota exhausted — disabling Gemini for this run. Wait until midnight Pacific for reset.`)
     } else {
-      console.warn(`[${sourceName}] Gemini ${label} persistent rate limit — skipping source`)
+      console.warn(`[${sourceName}] Gemini ${label} persistent per-minute rate limit — skipping source (Gemini remains enabled for other sources)`)
     }
     return null
   }
@@ -1171,6 +1285,7 @@ async function callClaude(
   const truncated = text.slice(0, MAX_LLM_INPUT_CHARS)
 
   try {
+    await anthropicRateLimit()
     const res = await fetch("https://api.anthropic.com/v1/messages", {
       method:  "POST",
       headers: {
@@ -1193,6 +1308,7 @@ async function callClaude(
       const wait = Math.min(retryAfter, 10) * 1000
       console.warn(`[${sourceName}] Anthropic text 429 rate limit — retrying in ${wait / 1000}s`)
       await sleep(wait)
+      await anthropicRateLimit()
       // single retry
       const res2 = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
@@ -1200,6 +1316,13 @@ async function callClaude(
         body: JSON.stringify({ model: CLAUDE_MODEL, max_tokens: 4000, system: SYSTEM_PROMPT, messages: [{ role: "user", content: `${makeExtractionPrompt(sourceUrl, sourceName, year)}\n\nTEXT:\n${text.slice(0, MAX_LLM_INPUT_CHARS)}` }] }),
         signal: AbortSignal.timeout(CLAUDE_TIMEOUT),
       })
+      // If still rate-limited on retry, return [] (not null) so the cross-provider
+      // Gemini fallback does NOT trigger — the cascading 429 → Gemini path is
+      // exactly what burned our daily quota in earlier runs.
+      if (res2.status === 429) {
+        console.warn(`[${sourceName}] Anthropic text still 429 after retry — dropping source (not cascading to Gemini)`)
+        return []
+      }
       if (!res2.ok) { console.error(`[${sourceName}] Anthropic text retry ${res2.status}`); return null }
       const data2 = await res2.json() as { content?: Array<{ type: string; text: string }> }
       return parseClaudeRecruitmentResponse(data2.content?.find(b => b.type === "text")?.text ?? "")
@@ -1332,6 +1455,13 @@ Deno.serve(async (req) => {
 
       if (!text.trim() && !pdfBytes && !rssItems && (!linkedPdfs || linkedPdfs.length === 0)) {
         totalSkipped++
+        // Still update the timestamp so the source isn't retried immediately on
+        // every run. An empty-extractable source is a data-shape issue, not a
+        // fetch failure — don't increment consecutive_fails here.
+        await supabase.from("source_registry").update({
+          last_scraped_at: now.toISOString(),
+          last_error:      "Empty content after stripping — likely JS-rendered, needs Playwright",
+        }).eq("id", src.id)
         continue
       }
 
