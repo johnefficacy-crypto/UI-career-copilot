@@ -11,7 +11,7 @@ import { getRecruitmentById, getAllOrganizations } from "@/lib/db/admin"
 import { adminUpdateRecruitment, adminSavePost, adminDeletePost } from "@/actions/admin"
 import { RecruitmentForm } from "@/components/admin/RecruitmentForm"
 import { PostForm } from "@/components/admin/PostForm"
-import { DeleteConfirmButton } from "@/components/admin/Deleteconfirmbutton"
+import { DeleteConfirmButton } from "@/components/admin/DeleteConfirmButton"
 import Link from "next/link"
 
 export default async function RecruitmentDetailPage({

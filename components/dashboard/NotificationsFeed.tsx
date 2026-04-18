@@ -416,11 +416,30 @@ export function NotificationsFeed({
       {displayed.length === 0 ? (
         <div className="text-center py-8">
           <p className="text-2xl mb-2 opacity-30">🔔</p>
-          <p className="text-sm" style={{ color: "var(--text-dim)" }}>
-            {filter === "unread"
-              ? "All caught up!"
-              : "No notifications yet. Complete your profile to get matched."}
-          </p>
+          {filter === "unread" ? (
+            <p className="text-sm" style={{ color: "var(--text-dim)" }}>All caught up!</p>
+          ) : (
+            <>
+              <p className="text-sm mb-1" style={{ color: "var(--text-dim)" }}>
+                No notifications yet
+              </p>
+              <p className="text-xs mb-3" style={{ color: "var(--text-ghost)" }}>
+                Notifications are sent when new exams open that match your profile.
+                The system runs every 6 hours.
+              </p>
+              <Link
+                href="/dashboard/exams"
+                className="inline-block px-3 py-1.5 rounded-xl text-xs font-medium transition-colors"
+                style={{
+                  background: "var(--gold-faint)",
+                  border: "1px solid var(--gold-border)",
+                  color: "var(--gold)",
+                }}
+              >
+                Browse open exams →
+              </Link>
+            </>
+          )}
         </div>
       ) : (
         <div className="flex flex-col gap-2">

@@ -13,6 +13,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 
+const insecureClient = Deno.createHttpClient({ unsafelyIgnoreCertificateErrors: true })
 // ─── Env ──────────────────────────────────────────────────────────────────────
 // SUPABASE_URL is a reserved Supabase system var — auto-injected at runtime.
 // SB_PROJECT_URL is a user-settable fallback for projects where auto-injection
@@ -31,9 +32,43 @@ const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
 // claude-3-5-haiku-20241022 is the direct replacement — same price tier, 200K
 // context, supports the pdfs-2024-09-25 beta header we use in callClaudeOnPdf.
 const CLAUDE_MODEL    = "claude-3-5-haiku-20241022"  // Tier-1 universal access, ~$0.0004/source
+const CLAUDE_MODEL    = "claude-haiku-4-5-20251001"    // Tier-1 universal access, ~$0.00025/source
 const GEMINI_MODEL    = "gemini-2.0-flash"
 const GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`
-const SYSTEM_PROMPT   = "You are a specialist data extraction agent for Indian government recruitment notifications. Return ONLY valid JSON with a top-level 'recruitments' array. Never return markdown or explanation."
+const SYSTEM_PROMPT   = `You are a specialist data extraction agent for Indian government recruitment notifications.
+Return ONLY valid JSON with a top-level 'recruitments' array. Never return markdown or explanation.
+
+HARD RULES:
+- Extract ONLY factual information present in the text. Never fabricate data.
+- Dates → ISO 8601 (YYYY-MM-DD). Month-only? Use the 1st.
+- If a field is genuinely not mentioned, set it to null. But SEARCH THE ENTIRE
+  document before returning null — eligibility details are often in a separate
+  "Eligibility Criteria" / "Age Limit" / "Educational Qualification" section far
+  from the post list.
+- Vacancies = total across categories unless the text clearly separates posts.
+- org_type ∈ {UPSC, SSC, Banking, Railway, State, Insurance, Defence, Other}.
+
+EXTRACTION HEURISTICS (most extractions fail because these are skipped):
+
+Age — look for these phrases ANYWHERE in the text:
+  "age between X and Y years" · "minimum X, maximum Y" · "not less than X and not more than Y"
+  "X to Y years as on <date>" · "upper age limit: Y" · Category tables with General/OBC/SC/ST columns
+  → Use the GENERAL / unreserved row for min_age and max_age. The engine
+     applies category-wise relaxation separately (do NOT pre-relax).
+  If only "upper age limit" is given and no lower bound is stated, min_age=null.
+
+Education — look for "Educational Qualification", "Essential Qualification",
+  "Minimum Qualification". Phrases: "Bachelor's degree", "Graduate from a
+  recognised university", "Post-graduate degree in X", "Diploma in Engineering",
+  "10+2 pass", "Matriculation", "Class X", "B.E./B.Tech", "CA/CMA", "LLB".
+  Put the RAW phrase into education_required. If disciplines are listed, put
+  them into the disciplines array.
+
+Posts — one notification often has many posts with different criteria (e.g.
+  "Assistant Manager", "Chief Manager", "PO"). Extract each separately. If all
+  posts share the same age/education, REPEAT those values on each post rather
+  than leaving null. Missing post-level criteria is the #1 cause of eligibility
+  false-negatives downstream.`
 const REQUEST_TIMEOUT = 18_000
 const CLAUDE_TIMEOUT  = 32_000
 
@@ -413,18 +448,27 @@ Return a JSON object with a "recruitments" array:
 {
   "recruitments": [
     {
-      "title": "full recruitment name",
-      "organization_name": "string",
-      "org_type": "UPSC|SSC|Banking|Railway|State|Insurance|Defence|Other",
-      "notification_date": "YYYY-MM-DD or null",
-      "apply_start_date": "YYYY-MM-DD or null",
-      "apply_end_date": "YYYY-MM-DD or null",
-      "total_vacancies": number or null,
-      "year": ${year},
-      "source_pdf_url": "string or null",
+      "title":                     "full recruitment name exactly as printed",
+      "organization_name":         "issuing body, e.g. 'Union Public Service Commission'",
+      "org_type":                  "UPSC|SSC|Banking|Railway|State|Insurance|Defence|Other",
+      "notification_date":         "YYYY-MM-DD or null",
+      "apply_start_date":          "YYYY-MM-DD or null",
+      "apply_end_date":            "YYYY-MM-DD or null",
+      "total_vacancies":           number or null,
+      "year":                      ${year},
+      "source_pdf_url":            "string or null (direct PDF link if present)",
       "official_notification_url": "direct URL or ${sourceUrl}",
-      "confidence": 0.0-1.0,
-      "posts": [{"post_name":"","group_type":"A|B|C|D or null","vacancies":null,"min_age":null,"max_age":null,"education_required":null,"disciplines":null}]
+      "confidence":                0.0-1.0,
+      "posts": [{
+        "post_name":          "exact post title",
+        "group_type":         "A|B|C|D or null",
+        "pay_level":          "string or null (e.g. 'Level-7', 'Pay Matrix 10', '56100-177500')",
+        "vacancies":          number or null,
+        "min_age":            number or null,  // UNRESERVED/GENERAL category, years
+        "max_age":            number or null,  // UNRESERVED/GENERAL category, years
+        "education_required": "raw phrase or null (e.g. 'Bachelor\\'s degree from a recognised university')",
+        "disciplines":        ["string"] or null
+      }]
     }
   ]
 }
@@ -874,7 +918,7 @@ async function acquireContent(
     if ((cached as ETagRecord | null)?.etag) headers["If-None-Match"] = (cached as ETagRecord).etag!
     if ((cached as ETagRecord | null)?.last_modified) headers["If-Modified-Since"] = (cached as ETagRecord).last_modified!
 
-    const res = await fetch(rssUrl, { headers, signal: AbortSignal.timeout(REQUEST_TIMEOUT) })
+    const res = await fetch(rssUrl, { headers, signal: AbortSignal.timeout(REQUEST_TIMEOUT),client: insecureClient, })
     if (res.status === 304) return { text: "", url: rssUrl, skipped: true, headers: {} }
 
     const xml  = await res.text()
@@ -909,6 +953,7 @@ async function acquireContent(
     const res  = await fetch(src.api_url, {
       headers:{ "User-Agent": "CareerCopilot/1.0", "Accept": "application/json" },
       signal: AbortSignal.timeout(REQUEST_TIMEOUT),
+      client: insecureClient
     })
     if (!res.ok) throw new Error(`JSON fetch ${res.status}`)
     const json = await res.json()
@@ -919,7 +964,7 @@ async function acquireContent(
   // Stage 2: replaced naive BT/ET regex with Anthropic PDF API.
   // Returns raw bytes so the main loop can call callClaudeOnPdf().
   if (src.adapter_type === "pdf" && src.pdf_bulletin_url) {
-    const res  = await fetch(src.pdf_bulletin_url, { signal: AbortSignal.timeout(REQUEST_TIMEOUT) })
+    const res  = await fetch(src.pdf_bulletin_url, { signal: AbortSignal.timeout(REQUEST_TIMEOUT), client: insecureClient })
     if (!res.ok) throw new Error(`PDF fetch ${res.status}`)
     const buf  = await res.arrayBuffer()
     return { text: "", url: src.pdf_bulletin_url, skipped: false, headers: {}, pdfBytes: new Uint8Array(buf) }
@@ -941,7 +986,7 @@ async function acquireContent(
     if ((cached as ETagRecord | null)?.etag) reqHeaders["If-None-Match"] = (cached as ETagRecord).etag!
     if ((cached as ETagRecord | null)?.last_modified) reqHeaders["If-Modified-Since"] = (cached as ETagRecord).last_modified!
 
-    const res = await fetch(targetUrl, { headers: reqHeaders, signal: AbortSignal.timeout(REQUEST_TIMEOUT) })
+    const res = await fetch(targetUrl, { headers: reqHeaders, signal: AbortSignal.timeout(REQUEST_TIMEOUT), client: insecureClient })
     if (res.status === 304) return { text: "", url: targetUrl, skipped: true, headers: {} }
     if (!res.ok) throw new Error(`HTML fetch ${res.status}`)
 
@@ -1079,6 +1124,7 @@ async function geminiFetch(body: object, sourceName: string, label: string): Pro
       headers: { "Content-Type": "application/json" },
       body:    JSON.stringify(body),
       signal:  AbortSignal.timeout(CLAUDE_TIMEOUT),
+      
     })
   }
 
@@ -1254,6 +1300,7 @@ async function callClaude(
         messages:   [{ role: "user", content: `${prompt}\n\nTEXT:\n${truncated}` }],
       }),
       signal: AbortSignal.timeout(CLAUDE_TIMEOUT),
+      
     })
 
     if (res.status === 429) {

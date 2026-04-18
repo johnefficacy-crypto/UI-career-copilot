@@ -14,6 +14,7 @@
  */
 
 import { useState, useTransition } from "react"
+import { useRouter } from "next/navigation"
 import Link from "next/link"
 import {
   adminTriggerScraper,
@@ -330,6 +331,7 @@ export function AdminScrapeDashboard({
   errorMessage,
   activeTab: initialTab,
 }: Props) {
+  const router                        = useRouter()
   const [isPending, startTransition] = useTransition()
   const [tab, setTab]                = useState(initialTab)
   const [queue, setQueue]            = useState(initialQueue)
@@ -350,6 +352,9 @@ export function AdminScrapeDashboard({
       const r = await adminTriggerScraper()
       if (r.success) setRunMsg(r.message)
       else setRunErr(r.message)
+      // Re-fetch server data so queue tab shows newly scraped items
+      // without requiring a manual browser refresh
+      router.refresh()
     })
   }
 

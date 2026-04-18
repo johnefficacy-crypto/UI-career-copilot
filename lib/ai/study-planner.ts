@@ -152,7 +152,7 @@ export async function generateStudyPlan(input: PlannerInput): Promise<GeneratedP
       "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify({
-      model: "claude-opus-4-5",
+      model: "claude-sonnet-4-6",
       max_tokens: 8000,
       system: buildSystemPrompt(),
       messages: [

@@ -1,4 +1,5 @@
 import type { DashboardData }            from "@/lib/db/dashboard"
+import type { NotificationAlert }         from "@/types/notifications"
 import { DashboardNav }                   from "./DashboardNav"
 import { ProfileCard }                    from "./ProfileCard"
 import { ExamTargetCard }                 from "./ExamTargetCard"
@@ -6,6 +7,7 @@ import { NotificationsFeed }              from "./NotificationsFeed"
 import { StatsBar }                       from "./StatsBar"
 import { StudyPlanWidget }                from "./StudyPlanWidget"
 import { SkillTestWidget }                from "./SkillTestWidget"
+import { EligibleRecruitmentsWidget }     from "./EligibleRecruitmentsWidget"
 import { AiChatWidget }                   from "@/components/chat/AiChatWidget"
 import type { getUserPlans }              from "@/lib/db/study-planner"
 import type { getEligibleRecruitments }   from "@/lib/eligibility/runner"
@@ -17,6 +19,9 @@ interface Props {
   data:                 DashboardData
   userId:               string
   eligibleRecruitments: EligibleRecruitmentsResult
+  userAlerts:           NotificationAlert[]
+  unreadCount:          number
+  isPaid:               boolean
   primaryPlan:          UserPlansResult[number] | null
   planStats:            null
   lastChatSessionId:    string | null
@@ -27,14 +32,16 @@ export function DashboardShell({
   data,
   userId,
   eligibleRecruitments,
+  userAlerts,
+  unreadCount,
+  isPaid,
   primaryPlan,
   planStats,
   lastChatSessionId,
 }: Props) {
-  const { profile, education, experience, preferences, targets, attempts, notifications } = data
+  const { profile, education, experience, preferences, targets, attempts } = data
 
   const firstName = profile?.full_name?.split(" ")[0] ?? "Aspirant"
-  const isPaid    = profile?.plan_id === "pro" || profile?.plan_id === "elite"
 
   // ── Derive eligibleExamIds for SkillTestWidget ─────────────────────────────
   // eligibleRecruitments comes from the eligibility runner — it's an array of
@@ -113,10 +120,18 @@ export function DashboardShell({
           {/* Left + centre — 2 cols */}
           <div className="lg:col-span-2 flex flex-col gap-5">
             <ExamTargetCard targets={targets} attempts={attempts} />
+
+            {/* Eligible recruitments — closes the UX gap where the eligibility
+                engine's output had no surface on the main dashboard. */}
+            <EligibleRecruitmentsWidget
+              rows={Array.isArray(eligibleRecruitments) ? eligibleRecruitments : []}
+            />
+
             <NotificationsFeed
-              notifications={notifications}
-              preferences={preferences}
-              eligibleRecruitments={eligibleRecruitments}
+              alerts={userAlerts}
+              unreadCount={unreadCount}
+              planId={profile?.plan_id ?? "free"}
+              userId={userId}
             />
 
             {/* SkillTestWidget — correct props ───────────────────────── */}

@@ -36,6 +36,7 @@ import {
 import { replaceEducation } from "@/lib/db/education"
 import { replaceExperience } from "@/lib/db/experience"
 import { upsertPreferences } from "@/lib/db/preferences"
+import { runEligibilityForUser } from "@/lib/eligibility/runner"
 import type { EducationRowInsert, ExperienceRowInsert } from "@/types/onboarding"
 
 async function requireUser() {
@@ -202,6 +203,25 @@ export async function finishOnboarding() {
     secure: process.env.NODE_ENV === "production",
     maxAge: 60 * 60 * 24 * 365, // 1 year
   })
+
+  // Run eligibility engine so the dashboard shows matched recruitments immediately.
+  // Non-fatal — if this fails the user still lands on the dashboard.
+  // In production this should be offloaded to a background job, but for an
+  // initial run (typically < 2 s against a small posts table) it's acceptable inline.
+  try {
+    await runEligibilityForUser(user.id)
+  } catch (e) {
+    console.error("[finishOnboarding] eligibility run failed (non-fatal):", e)
+  }
+
+  // Seed initial notifications so the dashboard isn't empty for new users.
+  // Non-fatal — if this fails the user still lands on the dashboard.
+  try {
+    const { seedNotificationsForNewUser } = await import("@/lib/db/notifications")
+    await seedNotificationsForNewUser(user.id)
+  } catch (e) {
+    console.error("[finishOnboarding] seed notifications failed (non-fatal):", e)
+  }
 
   redirect("/dashboard")
 }

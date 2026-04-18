@@ -94,29 +94,7 @@
 import Link from "next/link"
 import { redirect } from "next/navigation"
 import { createClient } from "@/utils/supabase/server"
-
-// Step labels for the progress indicator.
-// Index 0 = step 1 in the domain (onboarding_step).
-const STEPS = [
-  { label: "Profile",     path: "/onboarding"             },
-  { label: "Identity",    path: "/onboarding/identity"    },
-  { label: "Education",   path: "/onboarding/education"   },
-  { label: "Experience",  path: "/onboarding/experience"  },
-  { label: "Preferences", path: "/onboarding/preferences" },
-  { label: "Done",        path: "/onboarding/complete"    },
-]
-
-// Map path → 0-based index
-function pathToIndex(pathname: string): number {
-  const idx = STEPS.findIndex((s) => s.path === pathname)
-  return idx === -1 ? 0 : idx
-}
-
-// Map onboarding_step (1-5, 99) → 0-based completed-up-to index
-function stepToCompleted(step: number): number {
-  if (step >= 99) return STEPS.length
-  return Math.min(step, STEPS.length - 1)
-}
+import { OnboardingProgress } from "./OnboardingProgress"
 
 export default async function OnboardingLayout({
   children,
@@ -129,17 +107,12 @@ export default async function OnboardingLayout({
   // Auth guard — middleware also does this but belt-and-suspenders
   if (!user) redirect("/auth/login")
 
-  // If already completed, send to dashboard
+  // Fetch profile to check completion state (no redirect — users can re-visit)
   const { data: profile } = await supabase
     .from("profiles")
-    .select("onboarding_step, onboarding_completed")
+    .select("onboarding_completed")
     .eq("id", user.id)
     .maybeSingle()
-
-  if (profile?.onboarding_completed) redirect("/dashboard")
-
-  const dbStep       = profile?.onboarding_step ?? 0
-  const completedIdx = stepToCompleted(dbStep)
 
   return (
     <div className="min-h-screen bg-[#0c0c0c]">
@@ -148,65 +121,23 @@ export default async function OnboardingLayout({
         className="border-b h-14 flex items-center px-6 justify-between"
         style={{ borderColor: "var(--border)" }}
       >
-        <Link href="/" className="cc-logo">Career Copilot</Link>
+        <div className="flex items-center gap-4">
+          <Link href="/" className="cc-logo">Career Copilot</Link>
+          {profile?.onboarding_completed && (
+            <Link href="/dashboard" className="text-xs" style={{ color: "var(--text-dim)" }}>
+              ← Dashboard
+            </Link>
+          )}
+        </div>
         <p className="text-xs" style={{ color: "var(--text-dim)" }}>
-          Setting up your profile
+          {profile?.onboarding_completed ? "Edit your profile" : "Setting up your profile"}
         </p>
       </div>
 
-      {/* Step progress */}
+      {/* Step progress — client component reads usePathname() so it updates
+          on every navigation without the layout re-rendering from the server */}
       <div className="max-w-2xl mx-auto px-6 pt-8 pb-4">
-        <div className="flex items-center">
-          {STEPS.map((step, i) => {
-            const done   = i < completedIdx
-            const active = i === completedIdx
-
-            return (
-              <div key={step.path} className="flex items-center flex-1 last:flex-none">
-                <div className="flex flex-col items-center gap-1">
-                  <div
-                    className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-medium transition-colors"
-                    style={{
-                      background: done
-                        ? "var(--gold)"
-                        : active
-                        ? "transparent"
-                        : "transparent",
-                      border: done
-                        ? "none"
-                        : active
-                        ? "2px solid var(--gold)"
-                        : "1px solid var(--border-md)",
-                      color: done
-                        ? "#0c0c0c"
-                        : active
-                        ? "var(--gold)"
-                        : "var(--text-dim)",
-                    }}
-                  >
-                    {done ? "✓" : i + 1}
-                  </div>
-                  <span
-                    className="text-[10px] hidden sm:block"
-                    style={{ color: active ? "var(--gold-dim)" : "var(--text-ghost)" }}
-                  >
-                    {step.label}
-                  </span>
-                </div>
-                {i < STEPS.length - 1 && (
-                  <div
-                    className="flex-1 h-px mx-2 mb-4"
-                    style={{
-                      background: i < completedIdx
-                        ? "var(--gold-border)"
-                        : "var(--border)",
-                    }}
-                  />
-                )}
-              </div>
-            )
-          })}
-        </div>
+        <OnboardingProgress />
       </div>
 
       {/* Page content */}

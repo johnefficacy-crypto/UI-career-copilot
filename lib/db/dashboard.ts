@@ -73,8 +73,10 @@ export async function getDashboardData(userId: string) {
       .select("recruitment_id, attempts_used")
       .eq("user_id", userId),
 
-    // Active recruitments — for the notifications feed
-    // Will show all open/upcoming regardless of eligibility for now (Phase 3 adds matching)
+    // Active + recently closed recruitments — for the notifications feed.
+    // "closed" is included so that admin-approved items with past deadlines
+    // (e.g. deputation posts scraped weeks after notification) still appear
+    // on the dashboard instead of silently vanishing.
     supabase
       .from("recruitments")
       .select(`
@@ -87,9 +89,9 @@ export async function getDashboardData(userId: string) {
         status,
         organizations ( name, type )
       `)
-      .in("status", ["upcoming", "open"])
-      .order("apply_end_date", { ascending: true })
-      .limit(6),
+      .in("status", ["upcoming", "open", "closed"])
+      .order("notification_date", { ascending: false })
+      .limit(8),
   ])
 
   return {

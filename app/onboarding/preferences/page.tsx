@@ -85,22 +85,27 @@ export default async function PreferencesPage({
         </div>
 
         <div className="cc-field">
-          <label className="cc-label">Preferred job locations</label>
-          <select
-            name="preferred_states"
-            multiple
-            size={6}
-            className="cc-select"
-            style={{ height: "auto", paddingRight: "1rem" }}
-            defaultValue={prefs?.preferred_states ?? []}
+          <span className="cc-section-label">Preferred job locations</span>
+          <p className="text-xs mt-0.5 mb-2" style={{ color: "var(--text-ghost)" }}>
+            Select states where you want to work. Leave blank for all-India.
+          </p>
+          <div
+            className="flex flex-wrap gap-2 overflow-y-auto pr-1"
+            style={{ maxHeight: "240px" }}
           >
             {STATES_OF_INDIA.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
+              <label key={s} className="cc-radio-pill">
+                <input
+                  type="checkbox"
+                  name="preferred_states"
+                  value={s}
+                  defaultChecked={prefs?.preferred_states?.includes(s)}
+                  className="sr-only"
+                />
+                <span className="pill-body">{s}</span>
+              </label>
             ))}
-          </select>
-          <p className="text-white/20 text-xs mt-1">Hold Ctrl / Cmd to select multiple</p>
+          </div>
         </div>
 
         <div className="cc-field">

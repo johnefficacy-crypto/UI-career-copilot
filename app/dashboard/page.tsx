@@ -15,13 +15,15 @@
  *  2. DashboardShell.tsx              — add chatWidget to Props, render it
  */
 
-import { redirect }               from "next/navigation"
-import { createClient }           from "@/utils/supabase/server"
-import { getDashboardData }       from "@/lib/db/dashboard"
+import { redirect }                from "next/navigation"
+import { createClient }            from "@/utils/supabase/server"
+import { getDashboardData }        from "@/lib/db/dashboard"
 import { getEligibleRecruitments } from "@/lib/eligibility/runner"
-import { getUserPlans }           from "@/lib/db/study-planner"
-import { getUserChatSessions }    from "@/lib/db/chat"
-import { DashboardShell }         from "@/components/dashboard/DashboardShell"
+import { getUserNotifications, getUnreadCount } from "@/lib/db/notifications"
+import { getUserPlans }            from "@/lib/db/study-planner"
+import { getUserChatSessions }     from "@/lib/db/chat"
+import { DashboardShell }          from "@/components/dashboard/DashboardShell"
+
 export const dynamic  = "force-dynamic"
 export const metadata = { title: "Dashboard — Career Copilot" }
 
@@ -32,9 +34,21 @@ export default async function DashboardPage() {
   if (!user) redirect("/auth/login")
 
   // ── Parallel fetch ─────────────────────────────────────────────────────────
-  const [data, eligibleRecruitments, userPlans, chatSessions] = await Promise.all([
+  // getUserNotifications / getUnreadCount are non-fatal: if v_notification_feed
+  // view hasn't been applied yet, catch and return empty so the rest of the
+  // dashboard still renders.
+  const [
+    data,
+    eligibleRecruitments,
+    userNotifications,
+    unreadCount,
+    userPlans,
+    chatSessions,
+  ] = await Promise.all([
     getDashboardData(user.id),
     getEligibleRecruitments(user.id),
+    getUserNotifications(user.id, { limit: 20 }).catch(() => []),
+    getUnreadCount(user.id).catch(() => 0),
     getUserPlans(user.id),
     getUserChatSessions(user.id, 5),
   ])
@@ -51,16 +65,12 @@ export default async function DashboardPage() {
       data={data}
       userId={user.id}
       eligibleRecruitments={eligibleRecruitments}
+      userAlerts={userNotifications}
+      unreadCount={unreadCount}
       primaryPlan={primaryPlan}
       planStats={null}
       lastChatSessionId={lastSession?.id ?? null}
-      // Pass the three values AiChatWidget needs as a single prop object.
-      // DashboardShell renders <AiChatWidget> internally using these values.
-      chatWidget={{
-        isPaid,
-        sessionCount:  chatSessions.length,
-        lastSessionId: lastSession?.id ?? null,
-      }}
+      isPaid={isPaid}
     />
   )
 }

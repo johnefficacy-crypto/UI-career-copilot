@@ -10,7 +10,7 @@ import type { ChatMessage, ChatUserContext } from "@/types/chat"
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const MODEL         = "claude-sonnet-4-5"
+const MODEL         = "claude-sonnet-4-6"
 const MAX_TOKENS    = 2048
 const ANTHROPIC_API = "https://api.anthropic.com/v1/messages"
 const API_VERSION   = "2023-06-01"

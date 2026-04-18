@@ -100,6 +100,90 @@ export async function markAllAlertsRead(userId: string): Promise<void> {
   if (error) throw new Error(`markAllAlertsRead: ${error.message}`)
 }
 
+/**
+ * Seed initial notification_alerts for a newly onboarded user.
+ * Called once after finishOnboarding() so the user sees alerts immediately
+ * instead of waiting for the next fan-out cycle.
+ *
+ * Inserts `new_match` alerts for every open recruitment (apply_end_date >= today
+ * OR apply_end_date IS NULL) where an eligibility_results row marks them eligible.
+ * If no eligibility_results exist yet, inserts for ALL open recruitments so the
+ * feed is not empty (the user can always dismiss irrelevant ones).
+ */
+export async function seedNotificationsForNewUser(userId: string): Promise<number> {
+  const supabase = await createClient()
+  const today = new Date().toISOString().split("T")[0]
+
+  // Get open recruitments
+  const { data: recruitments } = await supabase
+    .from("recruitments")
+    .select("id, name, status, apply_end_date, apply_start_date, notification_date, year, total_vacancies, org_id")
+    .or(`apply_end_date.gte.${today},apply_end_date.is.null`)
+    .in("status", ["open", "upcoming", "published"])
+    .order("apply_end_date", { ascending: true })
+    .limit(30)
+
+  if (!recruitments || recruitments.length === 0) return 0
+
+  // Check if user has eligibility results already
+  const { data: eligibilityResults } = await supabase
+    .from("eligibility_results")
+    .select("recruitment_id, is_eligible, is_conditional")
+    .eq("user_id", userId)
+
+  const eligibleIds = new Set(
+    (eligibilityResults ?? [])
+      .filter(r => r.is_eligible || r.is_conditional)
+      .map(r => r.recruitment_id)
+  )
+  const hasEligibilityData = (eligibilityResults?.length ?? 0) > 0
+
+  // Decide which recruitments to notify about
+  const toNotify = hasEligibilityData
+    ? recruitments.filter(r => eligibleIds.has(r.id))
+    : recruitments // No eligibility data yet — show all open ones
+
+  if (toNotify.length === 0) return 0
+
+  // Fetch org info for the recruitments in one query
+  const orgIds = [...new Set(toNotify.map(r => r.org_id).filter(Boolean))]
+  const { data: orgs } = orgIds.length > 0
+    ? await supabase.from("organizations").select("id, name, type, state").in("id", orgIds as string[])
+    : { data: [] }
+  const orgMap = new Map((orgs ?? []).map(o => [o.id, o]))
+
+  // Build inserts — skip any that already exist (use upsert with ON CONFLICT DO NOTHING)
+  const now = new Date().toISOString()
+  const inserts = toNotify.map(r => {
+    const org = orgMap.get(r.org_id as string)
+    return {
+      user_id:             userId,
+      alert_type:          "new_match" as const,
+      is_read:             false,
+      sent_at:             now,
+      priority:            3 as const,
+      recruitment_id:      r.id,
+      alert_event_id:      null,
+      event_type:          "new_recruitment" as const,
+    }
+  })
+
+  const { data: inserted, error } = await supabase
+    .from("notification_alerts")
+    .upsert(inserts, {
+      onConflict: "user_id,recruitment_id,alert_type",
+      ignoreDuplicates: true,
+    })
+    .select("id")
+
+  if (error) {
+    console.error("[seedNotificationsForNewUser]", error.message)
+    return 0
+  }
+
+  return inserted?.length ?? 0
+}
+
 // =============================================================================
 // USER NOTIFICATION PREFERENCES
 // =============================================================================
@@ -174,16 +258,70 @@ export async function getScrapeQueue(
   limit = 50
 ): Promise<QueueReviewItem[]> {
   const supabase = await createClient()
-  // v_admin_queue_review is defined in sql/002_helper_functions.sql
+
+  // ── Try the enriched view first (v_admin_queue_review from migration 009) ──
+  // If the view doesn't exist yet (pre-migration DB), fall back to a direct
+  // scrape_queue query that extracts title/org from the extracted_data JSONB.
+  // Supabase returns code "42P01" (PGRST116/42P01) when relation does not exist.
+  {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let viewQuery = (supabase as any)
+      .from("v_admin_queue_review")
+      .select("*")
+      .order("scraped_at", { ascending: false })
+      .limit(limit)
+    if (status) viewQuery = viewQuery.eq("status", status)
+    const { data: viewData, error: viewErr } = await viewQuery
+    if (!viewErr) {
+      return (viewData ?? []) as QueueReviewItem[]
+    }
+    // If error.code is not a missing-relation error, rethrow so real errors surface
+    const code: string = viewErr?.code ?? ""
+    if (code !== "42P01" && code !== "PGRST116" && !viewErr.message?.includes("does not exist")) {
+      throw new Error(`getScrapeQueue (view): ${viewErr.message}`)
+    }
+    // Fall through to direct table query
+  }
+
+  // ── Fallback: query scrape_queue directly ────────────────────────────────
+  // Extracts title + org_name from the extracted_data JSONB.
+  // The view fields fingerprint / obs_status / canonical_id / canonical_name
+  // (from source_observations JOIN) are null in the fallback — UI handles nulls.
   let query = supabase
-    .from("v_admin_queue_review")
-    .select("*")
+    .from("scrape_queue")
+    .select("id,source_url,source_name,confidence_score,data_quality_score,status,scraped_at,reviewed_at,reviewer_notes,extracted_data")
     .order("scraped_at", { ascending: false })
     .limit(limit)
   if (status) query = query.eq("status", status)
+
   const { data, error } = await query
   if (error) throw new Error(`getScrapeQueue: ${error.message}`)
-  return (data ?? []) as QueueReviewItem[]
+
+  return (data ?? []).map((row) => {
+    const ext = (row.extracted_data ?? {}) as Record<string, unknown>
+    return {
+      id:                 row.id,
+      source_url:         row.source_url,
+      source_name:        row.source_name ?? "",
+      confidence_score:   row.confidence_score ?? 0,
+      data_quality_score: (row.data_quality_score as number | null) ?? null,
+      status:             row.status as ScrapeQueueItem["status"],
+      scraped_at:         row.scraped_at,
+      reviewed_at:        row.reviewed_at ?? null,
+      reviewer_notes:     row.reviewer_notes ?? null,
+      // Extracted from JSONB
+      title:              (ext.title as string | null)               ?? null,
+      org_name:           (ext.organization_name as string | null)   ?? null,
+      apply_end_date:     (ext.apply_end_date as string | null)      ?? null,
+      total_vacancies:    ext.total_vacancies != null ? String(ext.total_vacancies) : null,
+      // Fields from source_observations JOIN — not available in direct fallback
+      fingerprint:        null,
+      obs_status:         null,
+      canonical_id:       null,
+      canonical_name:     null,
+      run_started_at:     null,
+    } satisfies QueueReviewItem
+  })
 }
 
 export async function approveScrapeItem(
@@ -210,15 +348,38 @@ export async function approveScrapeItem(
   }
  
   // ── 4. Promote to canonical recruitments ──────────────────────────────────
+  // promoteToRecruitments now THROWS on real errors. We let those bubble to the
+  // admin UI so the reviewer sees the actual database error (e.g. missing
+  // unique constraint, CHECK violation, RLS denial) instead of a ghost approval.
   const { promoteToRecruitments } = await import("@/lib/scraping/runner")
   if (!item.extracted_data) throw new Error(`approveScrapeItem: no extracted_data on item ${itemId}`)
 
-  const recruitmentId = await promoteToRecruitments(
-    item.extracted_data as unknown as ExtractedRecruitment,
-    supabase
-  )
- 
-  // ── 5. Mark approved (+ store recruited_id in duplicate_of for idempotency) 
+  let recruitmentId: string | null = null
+  try {
+    recruitmentId = await promoteToRecruitments(
+      item.extracted_data as unknown as ExtractedRecruitment,
+      supabase
+    )
+  } catch (err) {
+    // Mark the row 'reviewing' with the error note, then re-throw so the admin
+    // UI shows the real error. DO NOT mark 'approved'.
+    await supabase
+      .from("scrape_queue")
+      .update({
+        status:         "reviewing",
+        reviewer_id:    reviewerId,
+        reviewer_notes: (notes ?? "") + ` [promotion failed: ${err instanceof Error ? err.message : String(err)}]`,
+        reviewed_at:    new Date().toISOString(),
+      })
+      .eq("id", itemId)
+    throw err
+  }
+
+  if (!recruitmentId) {
+    throw new Error(`approveScrapeItem: promotion returned no recruitment_id for item ${itemId}`)
+  }
+
+  // ── 5. Mark approved (+ store recruited_id in duplicate_of for idempotency)
   const { error: updateErr } = await supabase
     .from("scrape_queue")
     .update({
@@ -226,50 +387,128 @@ export async function approveScrapeItem(
       reviewer_id:    reviewerId,
       reviewer_notes: notes ?? null,
       reviewed_at:    new Date().toISOString(),
-      ...(recruitmentId ? { duplicate_of: recruitmentId } : {}),
+      duplicate_of:   recruitmentId,
     })
     .eq("id", itemId)
- 
+
   if (updateErr) throw new Error(`approveScrapeItem update: ${updateErr.message}`)
- 
-  // ── 6. alert_event + fanout (non-fatal after this point) ──────────────────
-  if (!recruitmentId) return // promotion failed silently — runner logged it
- 
+
+  // ── 6. Broadcast admin-reviewed notification to all onboarded users ──────────
+  //
+  // WHY we do this in TypeScript rather than via fn_fanout_alert_event RPC:
+  //   • fn_fanout_alert_event does not exist in any migration — was documented
+  //     in Phase 3A but never created. Every previous call silently failed.
+  //   • fn_notify_recruitment_opened trigger only fires for status='open'.
+  //     Scraped items with past deadlines get status='closed' → trigger skips them.
+  //   • The trigger's org_type matching table is incomplete (no Courts/Judiciary).
+  //
+  // A human admin has verified this item. That makes it trustworthy enough to
+  // notify ALL users who have completed onboarding, regardless of org_type or
+  // recruitment status. Users can filter/ignore in their notification feed.
+  //
+  // alert_type = 'new_match' (the only valid type for a new opening per the
+  // notification_alerts_alert_type_check constraint).
+  //
+  // recruitmentId is guaranteed non-null here because promoteToRecruitments()
+  // throws on any failure (see runner.ts), and approveScrapeItem re-throws
+  // above before reaching this point.
+
   try {
-    const { data: evt, error: evtErr } = await supabase
+    // Record the alert_event for audit trail
+    const { data: evt } = await supabase
       .from("alert_events")
       .insert({
         event_type:     "new_recruitment",
         recruitment_id: recruitmentId,
         priority:       2,
-        payload:        {
-          source_url:    item.source_url,
-          source_name:   item.source_name,
-          queue_item_id: itemId,
+        payload: {
+          source_url:      item.source_url,
+          source_name:     item.source_name,
+          queue_item_id:   itemId,
+          reviewer_id:     reviewerId,
+          confidence_score: item.confidence_score,
         },
         fanout_status: "pending",
       })
       .select("id")
       .single()
- 
-    if (evtErr || !evt) {
-      console.error("[approveScrapeItem] alert_event insert:", evtErr?.message)
-      return
-    }
- 
-    const { error: fanoutErr } = await supabase.rpc("fn_fanout_alert_event", {
-      p_event_id: evt.id,
-    })
- 
-    if (fanoutErr) {
-      console.error("[approveScrapeItem] fanout:", fanoutErr.message)
-      await supabase
-        .from("alert_events")
-        .update({ fanout_status: "failed" })
-        .eq("id", evt.id)
+
+    // Fetch all onboarded users
+    const { data: users } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("onboarding_completed", true)
+
+    if (users && users.length > 0) {
+      const now = new Date().toISOString()
+      const { error: notifErr } = await supabase
+        .from("notification_alerts")
+        .upsert(
+          users.map((u) => ({
+            user_id:        u.id,
+            recruitment_id: recruitmentId,
+            alert_type:     "new_match" as const,
+            is_read:        false,
+            priority:       3 as const,
+            sent_at:        now,
+            alert_event_id: evt?.id ?? null,
+            explanation: {
+              is_tracked:     false,
+              is_eligible:    false,
+              matched_exam:   false,
+              matched_sector: false,
+              matched_type:   false,
+            },
+          })),
+          { onConflict: "user_id,recruitment_id,alert_type", ignoreDuplicates: true }
+        )
+
+      if (notifErr) {
+        console.error("[approveScrapeItem] notification broadcast:", notifErr.message)
+      } else {
+        console.log(`[approveScrapeItem] broadcast to ${users.length} users for recruitment ${recruitmentId}`)
+        // Mark alert_event as completed
+        if (evt) {
+          await supabase
+            .from("alert_events")
+            .update({ fanout_status: "completed", users_notified: users.length })
+            .eq("id", evt.id)
+        }
+      }
     }
   } catch (e) {
-    console.error("[approveScrapeItem] alert/fanout non-fatal:", e)
+    console.error("[approveScrapeItem] notification broadcast non-fatal:", e)
+  }
+
+  // ── 7. Queue eligibility recompute for all users ───────────────────────────
+  // Each user who has completed onboarding needs to be re-evaluated against
+  // the new recruitment. We insert into eligibility_recompute_queue; the
+  // eligibility-consumer Edge Function drains this every 5 minutes.
+  // Non-fatal — a failure here doesn't affect the approval itself.
+  try {
+    const { data: userIds } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("onboarding_completed", true)
+
+    if (userIds && userIds.length > 0) {
+      await supabase
+        .from("eligibility_recompute_queue")
+        .upsert(
+          userIds.map((u) => ({
+            user_id:        u.id,
+            recruitment_id: recruitmentId,
+            status:         "pending",
+            reason:         "new_recruitment_approved",
+            queued_at:      new Date().toISOString(),
+          })),
+          // uq_recompute_queue is on (user_id, recruitment_id, status) — must include all 3
+          { onConflict: "user_id,recruitment_id,status", ignoreDuplicates: true }
+        )
+      console.log(`[approveScrapeItem] queued eligibility recompute for ${userIds.length} users`)
+    }
+  } catch (e) {
+    console.error("[approveScrapeItem] eligibility queue non-fatal:", e)
   }
 }
 
