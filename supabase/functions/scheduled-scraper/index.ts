@@ -13,7 +13,6 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 
-const insecureClient = Deno.createHttpClient({ unsafelyIgnoreCertificateErrors: true })
 // ─── Env ──────────────────────────────────────────────────────────────────────
 // SUPABASE_URL is a reserved Supabase system var — auto-injected at runtime.
 // SB_PROJECT_URL is a user-settable fallback for projects where auto-injection
@@ -25,14 +24,33 @@ const SUPABASE_URL     = Deno.env.get("SUPABASE_URL")              ||
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
 
 // ── Model config ──────────────────────────────────────────────────────────────
-// Architecture: Gemini 2.0 Flash (free, 1500/day) PRIMARY for LLM extraction.
-// Anthropic claude-3-5-haiku (paid, cheap) is FALLBACK only.
-// RSS sources bypass LLM entirely — direct structured extraction, zero cost.
-// claude-3-haiku-20240307 was retired by Anthropic in late 2025 (returns 404).
-// claude-3-5-haiku-20241022 is the direct replacement — same price tier, 200K
-// context, supports the pdfs-2024-09-25 beta header we use in callClaudeOnPdf.
-const CLAUDE_MODEL    = "claude-3-5-haiku-20241022"  // Tier-1 universal access, ~$0.0004/source
-const CLAUDE_MODEL    = "claude-haiku-4-5-20251001"    // Tier-1 universal access, ~$0.00025/source
+// LLM primary   = Anthropic Claude Haiku (paid, model-list fallback).
+// LLM secondary = Gemini 2.0 Flash (free-tier, rate-capped).
+// RSS direct extraction bypasses LLM entirely — zero cost.
+const CLAUDE_MODELS = [
+  "claude-haiku-4-5-20251001",   // current — Tier-1 universal access, ~$0.00025/source
+  "claude-haiku-3-5-20241022",   // last-known-good backup if current 404s/401s
+] as const
+
+// Module-scope state — resets per cold start. Tracks which model is active
+// and whether Anthropic has been fully disabled for this run.
+let _claudeModelIdx = 0
+let _claudeDisabled = false
+
+function currentClaudeModel(): string | null {
+  if (_claudeDisabled) return null
+  return CLAUDE_MODELS[_claudeModelIdx] ?? null
+}
+
+function markClaudeModelDead(reason: string, sourceName: string): void {
+  console.error(`[${sourceName}] Claude model ${CLAUDE_MODELS[_claudeModelIdx]} dead (${reason})`)
+  _claudeModelIdx++
+  if (_claudeModelIdx >= CLAUDE_MODELS.length) {
+    _claudeDisabled = true
+    console.error(`[anthropic] ALL models exhausted — Anthropic disabled for this run`)
+  }
+}
+
 const GEMINI_MODEL    = "gemini-2.0-flash"
 const GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`
 const SYSTEM_PROMPT   = `You are a specialist data extraction agent for Indian government recruitment notifications.
@@ -111,6 +129,21 @@ async function anthropicRateLimit(): Promise<void> {
 // TASK 6: time budget — 42s of the ~50s Edge Function wall-clock limit
 const RUN_BUDGET_MS     = 42_000
 
+// ── Deploy observability ──────────────────────────────────────────────────────
+// Stamp every run + every startup log line with the deployed SHA so logs can be
+// matched to a commit. Set via: supabase secrets set GIT_SHA=$(git rev-parse --short HEAD)
+const FUNCTION_VERSION = "scheduled-scraper@" + (Deno.env.get("GIT_SHA") ?? "dev")
+
+// ── Provider health (run-level circuit breaker) ───────────────────────────────
+type ProviderHealth = "available" | "degraded" | "down"
+
+function providersState(): { anthropic: ProviderHealth; gemini: ProviderHealth } {
+  return {
+    anthropic: !ANTHROPIC_KEY ? "down" : _claudeDisabled ? "down" : "available",
+    gemini:    !GEMINI_KEY    ? "down" : _geminiDailyQuotaExhausted ? "down" : "available",
+  }
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface SourceRecord {
@@ -135,6 +168,7 @@ interface SourceRecord {
   last_scraped_at:       string | null
   last_success_at:       string | null
   consecutive_fails:     number
+  insecure_tls?:         boolean
 }
 
 interface ETagRecord {
@@ -193,9 +227,9 @@ function validateEnv(): { ok: boolean; warnings: string[] } {
   if (!ANTHROPIC_KEY && !GEMINI_KEY) {
     warnings.push("Neither ANTHROPIC_API_KEY nor GEMINI_API_KEY is set — ALL extractions will return empty (items_found=0). Set at least one.")
   } else {
-    const primary  = ANTHROPIC_KEY ? "Claude 3 Haiku (Anthropic — paid)" : "—"
-    const fallback = GEMINI_KEY    ? "Gemini 2.0 Flash (free tier)"    : "none"
-    console.log(`[env] LLM: primary=${primary}  fallback=${fallback}`)
+    const primary  = ANTHROPIC_KEY ? `Anthropic (${CLAUDE_MODELS.join(" → ")}) — paid primary` : "—"
+    const fallback = GEMINI_KEY    ? `Gemini ${GEMINI_MODEL} (free tier) — secondary`        : "none"
+    console.log(`[env] LLM: primary=${primary}  secondary=${fallback}`)
   }
   warnings.forEach(w => console.error(`[env] ⚠ ${w}`))
   const ok = !!(SUPABASE_URL && SERVICE_ROLE_KEY && (GEMINI_KEY || ANTHROPIC_KEY))
@@ -522,6 +556,8 @@ async function callClaudeOnPdf(
   year:       number
 ): Promise<ExtractedRecruitment[] | null> {
   if (!ANTHROPIC_KEY) return null
+  const model = currentClaudeModel()
+  if (!model) return null
   if (pdfBytes.length > 20_000_000) {
     console.log(`[${sourceName}] PDF too large (${(pdfBytes.length / 1e6).toFixed(1)} MB) — skipping`)
     return []
@@ -544,7 +580,7 @@ async function callClaudeOnPdf(
         "anthropic-beta":    "pdfs-2024-09-25",
       },
       body: JSON.stringify({
-        model:      CLAUDE_MODEL,
+        model,
         max_tokens: 4000,
         system:     SYSTEM_PROMPT,
         messages: [{
@@ -567,7 +603,7 @@ async function callClaudeOnPdf(
       const res2 = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-api-key": ANTHROPIC_KEY, "anthropic-version": "2023-06-01", "anthropic-beta": "pdfs-2024-09-25" },
-        body: JSON.stringify({ model: CLAUDE_MODEL, max_tokens: 4000, system: SYSTEM_PROMPT, messages: [{ role: "user", content: [{ type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 } }, { type: "text", text: makeExtractionPrompt(sourceUrl, sourceName, year) }] }] }),
+        body: JSON.stringify({ model, max_tokens: 4000, system: SYSTEM_PROMPT, messages: [{ role: "user", content: [{ type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 } }, { type: "text", text: makeExtractionPrompt(sourceUrl, sourceName, year) }] }] }),
         signal: AbortSignal.timeout(CLAUDE_TIMEOUT),
       })
       // If still rate-limited on retry, return [] (not null) so the cross-provider
@@ -581,11 +617,16 @@ async function callClaudeOnPdf(
       const data2 = await res2.json() as { content?: Array<{ type: string; text: string }> }
       return parseClaudeRecruitmentResponse(data2.content?.find(b => b.type === "text")?.text ?? "")
     }
+    if (res.status === 404 || res.status === 401) {
+      const body = await res.text().catch(() => "")
+      console.error(`[${sourceName}] Anthropic PDF ${res.status} body=${body.slice(0, 300)}`)
+      markClaudeModelDead(String(res.status), sourceName)
+      // Retry once with the next model in the fallback list (same call).
+      return await callClaudeOnPdf(pdfBytes, sourceUrl, sourceName, year)
+    }
     if (!res.ok) {
       const body = await res.text().catch(() => "")
-      const hint = res.status === 404 ? " (model not found or API key revoked — use console.anthropic.com)"
-                 : res.status === 401 ? " (invalid API key)" : ""
-      console.error(`[${sourceName}] Anthropic PDF ${res.status}${hint} body=${body.slice(0, 300)}`)
+      console.error(`[${sourceName}] Anthropic PDF ${res.status} body=${body.slice(0, 300)}`)
       return null
     }
 
@@ -867,6 +908,25 @@ function isFreshRecruitment(item: ExtractedRecruitment, currentYear: number): bo
 // Scores extracted data 0–100 based on field completeness.
 // High score = admin can approve with confidence; low = needs manual review.
 
+// ─── Auto-approve gate ────────────────────────────────────────────────────────
+// Confidence alone isn't safe: a high-confidence extraction with a mis-parsed
+// end_date still becomes a wrong deadline in a user's alert feed. Require
+// source-trust, quality score, and basic field validity as well.
+function canAutoApprove(
+  r: ExtractedRecruitment,
+  quality: number,
+  src: SourceRecord,
+): boolean {
+  if (src.trust_score < 0.80)                                  return false
+  if ((r.confidence ?? 0) < 0.90)                              return false
+  if (quality < 70)                                            return false
+  if (!r.apply_end_date)                                       return false
+  if (!r.title || r.title.length < 10)                         return false
+  if (r.apply_start_date && r.apply_end_date &&
+      new Date(r.apply_end_date) < new Date(r.apply_start_date)) return false
+  return true
+}
+
 function computeDataQualityScore(item: ExtractedRecruitment): number {
   let score = 0
   if ((item.title?.trim().length ?? 0) > 5)                           score += 15
@@ -884,9 +944,16 @@ function computeDataQualityScore(item: ExtractedRecruitment): number {
 
 async function acquireContent(
   supabase: ReturnType<typeof db>,
-  src:      SourceRecord
+  src:      SourceRecord,
+  year:     number,
 ): Promise<AcquireResult> {
   const targetUrl = src.notification_url ?? src.rss_url ?? src.api_url ?? src.official_url
+
+  // Per-source TLS posture — only opt in to cert-ignore when the admin has
+  // flagged the source (e.g. NIC subdomains with expired certs).
+  const httpClient = src.insecure_tls
+    ? Deno.createHttpClient({ unsafelyIgnoreCertificateErrors: true })
+    : undefined
 
   // ── TASK 2: Playwright guard ───────────────────────────────────────────────
   // Playwright adapter is not yet implemented in Deno Edge Functions.
@@ -918,7 +985,7 @@ async function acquireContent(
     if ((cached as ETagRecord | null)?.etag) headers["If-None-Match"] = (cached as ETagRecord).etag!
     if ((cached as ETagRecord | null)?.last_modified) headers["If-Modified-Since"] = (cached as ETagRecord).last_modified!
 
-    const res = await fetch(rssUrl, { headers, signal: AbortSignal.timeout(REQUEST_TIMEOUT),client: insecureClient, })
+    const res = await fetch(rssUrl, { headers, signal: AbortSignal.timeout(REQUEST_TIMEOUT), client: httpClient })
     if (res.status === 304) return { text: "", url: rssUrl, skipped: true, headers: {} }
 
     const xml  = await res.text()
@@ -953,7 +1020,7 @@ async function acquireContent(
     const res  = await fetch(src.api_url, {
       headers:{ "User-Agent": "CareerCopilot/1.0", "Accept": "application/json" },
       signal: AbortSignal.timeout(REQUEST_TIMEOUT),
-      client: insecureClient
+      client: httpClient,
     })
     if (!res.ok) throw new Error(`JSON fetch ${res.status}`)
     const json = await res.json()
@@ -964,7 +1031,7 @@ async function acquireContent(
   // Stage 2: replaced naive BT/ET regex with Anthropic PDF API.
   // Returns raw bytes so the main loop can call callClaudeOnPdf().
   if (src.adapter_type === "pdf" && src.pdf_bulletin_url) {
-    const res  = await fetch(src.pdf_bulletin_url, { signal: AbortSignal.timeout(REQUEST_TIMEOUT), client: insecureClient })
+    const res  = await fetch(src.pdf_bulletin_url, { signal: AbortSignal.timeout(REQUEST_TIMEOUT), client: httpClient })
     if (!res.ok) throw new Error(`PDF fetch ${res.status}`)
     const buf  = await res.arrayBuffer()
     return { text: "", url: src.pdf_bulletin_url, skipped: false, headers: {}, pdfBytes: new Uint8Array(buf) }
@@ -986,7 +1053,7 @@ async function acquireContent(
     if ((cached as ETagRecord | null)?.etag) reqHeaders["If-None-Match"] = (cached as ETagRecord).etag!
     if ((cached as ETagRecord | null)?.last_modified) reqHeaders["If-Modified-Since"] = (cached as ETagRecord).last_modified!
 
-    const res = await fetch(targetUrl, { headers: reqHeaders, signal: AbortSignal.timeout(REQUEST_TIMEOUT), client: insecureClient })
+    const res = await fetch(targetUrl, { headers: reqHeaders, signal: AbortSignal.timeout(REQUEST_TIMEOUT), client: httpClient })
     if (res.status === 304) return { text: "", url: targetUrl, skipped: true, headers: {} }
     if (!res.ok) throw new Error(`HTML fetch ${res.status}`)
 
@@ -1280,6 +1347,8 @@ async function callClaude(
   year:       number
 ): Promise<ExtractedRecruitment[] | null> {
   if (!ANTHROPIC_KEY) return null  // no key → caller will try Gemini
+  const model = currentClaudeModel()
+  if (!model) return null
 
   const prompt    = makeExtractionPrompt(sourceUrl, sourceName, year)
   const truncated = text.slice(0, MAX_LLM_INPUT_CHARS)
@@ -1294,13 +1363,13 @@ async function callClaude(
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model:      CLAUDE_MODEL,
+        model,
         max_tokens: 4000,
         system:     SYSTEM_PROMPT,
         messages:   [{ role: "user", content: `${prompt}\n\nTEXT:\n${truncated}` }],
       }),
       signal: AbortSignal.timeout(CLAUDE_TIMEOUT),
-      
+
     })
 
     if (res.status === 429) {
@@ -1313,7 +1382,7 @@ async function callClaude(
       const res2 = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-api-key": ANTHROPIC_KEY, "anthropic-version": "2023-06-01" },
-        body: JSON.stringify({ model: CLAUDE_MODEL, max_tokens: 4000, system: SYSTEM_PROMPT, messages: [{ role: "user", content: `${makeExtractionPrompt(sourceUrl, sourceName, year)}\n\nTEXT:\n${text.slice(0, MAX_LLM_INPUT_CHARS)}` }] }),
+        body: JSON.stringify({ model, max_tokens: 4000, system: SYSTEM_PROMPT, messages: [{ role: "user", content: `${makeExtractionPrompt(sourceUrl, sourceName, year)}\n\nTEXT:\n${text.slice(0, MAX_LLM_INPUT_CHARS)}` }] }),
         signal: AbortSignal.timeout(CLAUDE_TIMEOUT),
       })
       // If still rate-limited on retry, return [] (not null) so the cross-provider
@@ -1327,11 +1396,16 @@ async function callClaude(
       const data2 = await res2.json() as { content?: Array<{ type: string; text: string }> }
       return parseClaudeRecruitmentResponse(data2.content?.find(b => b.type === "text")?.text ?? "")
     }
+    if (res.status === 404 || res.status === 401) {
+      const body = await res.text().catch(() => "")
+      console.error(`[${sourceName}] Anthropic text ${res.status} body=${body.slice(0, 300)}`)
+      markClaudeModelDead(String(res.status), sourceName)
+      // Retry once with the next model in the fallback list (same call).
+      return await callClaude(text, sourceUrl, sourceName, year)
+    }
     if (!res.ok) {
       const body = await res.text().catch(() => "")
-      const hint = res.status === 404 ? " (model not found or API key revoked — use console.anthropic.com)"
-                 : res.status === 401 ? " (invalid API key)" : ""
-      console.error(`[${sourceName}] Anthropic text ${res.status}${hint} body=${body.slice(0, 300)} — trying Gemini fallback`)
+      console.error(`[${sourceName}] Anthropic text ${res.status} body=${body.slice(0, 300)} — trying Gemini fallback`)
       return null
     }
 
@@ -1381,6 +1455,7 @@ Deno.serve(async (req) => {
   const supabase   = db()
   const now        = new Date()
   const year       = now.getFullYear()
+  console.log(`[run] version=${FUNCTION_VERSION} year=${year}`)
   const errors:    RunError[] = []
   let totalFound   = 0
   let totalNew     = 0
@@ -1392,7 +1467,7 @@ Deno.serve(async (req) => {
   // ── Create run record ──────────────────────────────────────────────────────
   const { data: run } = await supabase
     .from("scrape_runs")
-    .insert({ status: "running", triggered_by: triggeredBy })
+    .insert({ status: "running", triggered_by: triggeredBy, function_version: FUNCTION_VERSION })
     .select("id")
     .single()
   const runId = run?.id as string | null
@@ -1430,13 +1505,22 @@ Deno.serve(async (req) => {
       break
     }
 
+    // Abort-early: if both LLM providers are dead, stop grinding sources to
+    // zero output. This also flips the run into "failed" downstream.
+    if (_claudeDisabled && _geminiDailyQuotaExhausted) {
+      const remaining = dueSources.length - dueSources.indexOf(src)
+      console.error(`[scraper] Both LLMs down — aborting remaining ${remaining} source(s)`)
+      errors.push({ source: "*", error: "All LLM providers exhausted", at: now.toISOString() })
+      break
+    }
+
     const startMs = Date.now()
 
     try {
       // TASK 4: source-aware jitter
       await sleep(jitter(src))
 
-      const { text, url, skipped, pdfBytes, linkedPdfs, rssItems } = await acquireContent(supabase, src)
+      const { text, url, skipped, pdfBytes, linkedPdfs, rssItems } = await acquireContent(supabase, src, year)
 
       if (skipped) {
         totalSkipped++
@@ -1553,7 +1637,7 @@ Deno.serve(async (req) => {
         const dupId       = existingFps.get(fp) ?? null
         const isDup       = Boolean(dupId)
         const queueStatus = isDup ? "duplicate"
-          : extracted.confidence >= 0.90 ? "approved"
+          : canAutoApprove(extracted, qualityScore, src) ? "approved"
           : "pending"
 
         console.log(`[${src.source_name}] "${extracted.title.slice(0, 50)}" conf=${(extracted.confidence ?? 0).toFixed(2)} quality=${qualityScore} status=${queueStatus}`)
@@ -1634,19 +1718,24 @@ Deno.serve(async (req) => {
   }
 
   // ── Finalise run ───────────────────────────────────────────────────────────
-  const runStatus = errors.length >= dueSources.length && dueSources.length > 0
-    ? "failed"
-    : errors.length > 0 ? "partial"
-    : "completed"
+  const health    = providersState()
+  const bothDown  = health.anthropic === "down" && health.gemini === "down"
+  const runStatus =
+    bothDown && totalFound === 0                                           ? "failed"
+    : errors.length >= dueSources.length && dueSources.length > 0          ? "failed"
+    : errors.length > 0 || bothDown                                        ? "partial"
+    :                                                                        "completed"
 
   await supabase.from("scrape_runs").update({
-    finished_at:     now.toISOString(),
-    status:          runStatus,
-    sources_checked: dueSources.length,
-    items_found:     totalFound,
-    items_new:       totalNew,
-    items_duplicate: totalDup,
-    error_log:       errors,
+    finished_at:      now.toISOString(),
+    status:           runStatus,
+    sources_checked:  dueSources.length,
+    items_found:      totalFound,
+    items_new:        totalNew,
+    items_duplicate:  totalDup,
+    error_log:        errors,
+    providers_health: health,
+    function_version: FUNCTION_VERSION,
   }).eq("id", runId)
 
   // ── TASK 10: Webhook notification ─────────────────────────────────────────
