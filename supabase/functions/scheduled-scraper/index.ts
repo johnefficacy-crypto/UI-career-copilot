@@ -32,6 +32,11 @@ const CLAUDE_MODELS = [
   "claude-haiku-3-5-20241022",   // last-known-good backup if current 404s/401s
 ] as const
 
+const PROMPT_VERSION = "v1"
+
+const PLAYWRIGHT_WORKER_URL   = Deno.env.get("PLAYWRIGHT_WORKER_URL")   ?? ""
+const PLAYWRIGHT_WORKER_TOKEN = Deno.env.get("PLAYWRIGHT_WORKER_TOKEN") ?? ""
+
 // Module-scope state — resets per cold start. Tracks which model is active
 // and whether Anthropic has been fully disabled for this run.
 let _claudeModelIdx = 0
@@ -169,6 +174,7 @@ interface SourceRecord {
   last_success_at:       string | null
   consecutive_fails:     number
   insecure_tls?:         boolean
+  selectors?:            Record<string, unknown> | null
 }
 
 interface ETagRecord {
@@ -191,6 +197,8 @@ interface ExtractedRecruitment {
   source_pdf_url:            string | null
   posts:                     Record<string, unknown>[]
   confidence:                number
+  _provider?:                string   // anthropic | gemini | rss_direct | selectors
+  _model?:                   string | null
 }
 
 interface RunError {
@@ -207,6 +215,8 @@ interface AcquireResult {
   pdfBytes?:  Uint8Array       // set by pdf adapter; triggers PDF extraction
   linkedPdfs?: Uint8Array[]    // PDFs discovered in HTML pages
   rssItems?:  ExtractedRecruitment[]  // set when RSS direct extraction succeeds — bypasses LLM
+  rawHtml?:     string                // raw HTML kept for selector-based extraction
+  snapshotHash?: string               // SHA-256 of the raw fetched bytes (HTML/RSS/JSON/PDF)
 }
 
 // ─── Supabase client ──────────────────────────────────────────────────────────
@@ -305,8 +315,8 @@ function deriveStatus(start: string | null, end: string | null): string {
   return "upcoming"
 }
 
-async function sha256hex(data: string): Promise<string> {
-  const buf  = new TextEncoder().encode(data)
+async function sha256hex(data: string | Uint8Array): Promise<string> {
+  const buf  = typeof data === "string" ? new TextEncoder().encode(data) : data
   const hash = await crypto.subtle.digest("SHA-256", buf)
   return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, "0")).join("")
 }
@@ -408,6 +418,8 @@ function extractRssDirect(
       source_pdf_url:    null,
       posts:             [],
       confidence:        0.55,  // structural extraction: title+org+date but no post-level detail
+      _provider:         "rss_direct",
+      _model:            null,
     })
 
     if (results.length >= 20) break
@@ -516,6 +528,11 @@ Rules:
 
 // ─── Parse Claude's recruitment JSON response ─────────────────────────────────
 
+function stampProvenance(items: ExtractedRecruitment[], provider: string, model: string | null): ExtractedRecruitment[] {
+  for (const it of items) { it._provider = provider; it._model = model }
+  return items
+}
+
 function parseClaudeRecruitmentResponse(raw: string): ExtractedRecruitment[] {
   const clean = raw.replace(/^```json\s*/i, "").replace(/^```/, "").replace(/```$/, "").trim()
   const jsonStart = clean.indexOf("{")
@@ -615,7 +632,7 @@ async function callClaudeOnPdf(
       }
       if (!res2.ok) { console.error(`[${sourceName}] Anthropic PDF retry ${res2.status}`); return null }
       const data2 = await res2.json() as { content?: Array<{ type: string; text: string }> }
-      return parseClaudeRecruitmentResponse(data2.content?.find(b => b.type === "text")?.text ?? "")
+      return stampProvenance(parseClaudeRecruitmentResponse(data2.content?.find(b => b.type === "text")?.text ?? ""), "anthropic", model)
     }
     if (res.status === 404 || res.status === 401) {
       const body = await res.text().catch(() => "")
@@ -632,7 +649,7 @@ async function callClaudeOnPdf(
 
     const data    = await res.json() as { content?: Array<{ type: string; text: string }> }
     const raw     = data.content?.find(b => b.type === "text")?.text ?? ""
-    const results = parseClaudeRecruitmentResponse(raw)
+    const results = stampProvenance(parseClaudeRecruitmentResponse(raw), "anthropic", model)
     console.log(`[${sourceName}] Anthropic PDF: ${results.length} recruitment(s)`)
     return results
   } catch (err) {
@@ -772,6 +789,139 @@ function htmlToLlmText(html: string, baseUrl: string): string {
     .trim()
 }
 
+// ─── Selector-based extractor (zero-LLM, deterministic) ─────────────────────
+// Regex-based to avoid bundling a DOM library in Deno Edge Functions.
+// Opt-in per-source via source_registry.selectors (jsonb).
+
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+}
+
+// Parse a selector like "li.notification-item" or "div#content" into a tag + attr/value.
+function parseSelector(sel: string): { tag: string; attr: "class" | "id" | null; value: string | null } | null {
+  const m = sel.trim().match(/^([a-zA-Z][a-zA-Z0-9]*)(?:\.([A-Za-z0-9_-]+)|#([A-Za-z0-9_-]+))?$/)
+  if (!m) return null
+  return {
+    tag:   m[1].toLowerCase(),
+    attr:  m[2] ? "class" : m[3] ? "id" : null,
+    value: m[2] ?? m[3] ?? null,
+  }
+}
+
+// Find the first block matching parsed selector. Best-effort: uses a greedy
+// regex keyed on the tag name; good enough for listing markup on govt sites.
+function findFirstBlock(html: string, parsed: ReturnType<typeof parseSelector>): string | null {
+  if (!parsed) return null
+  const tag = parsed.tag
+  let open: RegExp
+  if (parsed.attr === "class" && parsed.value) {
+    open = new RegExp(`<${tag}\\b[^>]*\\bclass=["'][^"']*\\b${escapeRegex(parsed.value)}\\b[^"']*["'][^>]*>`, "i")
+  } else if (parsed.attr === "id" && parsed.value) {
+    open = new RegExp(`<${tag}\\b[^>]*\\bid=["']${escapeRegex(parsed.value)}["'][^>]*>`, "i")
+  } else {
+    open = new RegExp(`<${tag}\\b[^>]*>`, "i")
+  }
+  const m = html.match(open)
+  if (!m || m.index === undefined) return null
+  const after = html.slice(m.index + m[0].length)
+  const close = new RegExp(`</${tag}>`, "i")
+  const c = after.match(close)
+  return c && c.index !== undefined ? after.slice(0, c.index) : after
+}
+
+// Find all blocks matching parsed selector inside the given html.
+function findAllBlocks(html: string, parsed: ReturnType<typeof parseSelector>): string[] {
+  if (!parsed) return []
+  const tag = parsed.tag
+  let pattern: RegExp
+  if (parsed.attr === "class" && parsed.value) {
+    pattern = new RegExp(`<${tag}\\b[^>]*\\bclass=["'][^"']*\\b${escapeRegex(parsed.value)}\\b[^"']*["'][^>]*>([\\s\\S]*?)</${tag}>`, "gi")
+  } else if (parsed.attr === "id" && parsed.value) {
+    pattern = new RegExp(`<${tag}\\b[^>]*\\bid=["']${escapeRegex(parsed.value)}["'][^>]*>([\\s\\S]*?)</${tag}>`, "gi")
+  } else {
+    pattern = new RegExp(`<${tag}\\b[^>]*>([\\s\\S]*?)</${tag}>`, "gi")
+  }
+  const out: string[] = []
+  let m
+  while ((m = pattern.exec(html)) !== null) { out.push(m[1]); if (out.length >= 40) break }
+  return out
+}
+
+// Evaluate a selector spec against a block. Supports:
+//   "a"       → text content of first <a>
+//   "a@href"  → href attribute of first <a>
+//   { selector: "...", regex: "..." } → apply regex to extracted text
+function evalSelector(block: string, spec: unknown): string | null {
+  if (typeof spec === "string") {
+    const [selPart, attrPart] = spec.split("@")
+    const parsed = parseSelector(selPart)
+    if (!parsed) return null
+    if (attrPart) {
+      const open = new RegExp(`<${parsed.tag}\\b[^>]*\\b${escapeRegex(attrPart)}=["']([^"']+)["'][^>]*>`, "i")
+      const m = block.match(open)
+      return m?.[1] ?? null
+    }
+    const inner = findFirstBlock(block, parsed)
+    if (inner == null) return null
+    return inner.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() || null
+  }
+  if (spec && typeof spec === "object") {
+    const obj = spec as Record<string, unknown>
+    const sel = typeof obj.selector === "string" ? obj.selector : null
+    const re  = typeof obj.regex    === "string" ? obj.regex    : null
+    const text = sel ? evalSelector(block, sel) : block.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()
+    if (!text) return null
+    if (re) { try { const m = text.match(new RegExp(re)); return m?.[1] ?? m?.[0] ?? null } catch { return null } }
+    return text
+  }
+  return null
+}
+
+function extractFromSelectors(html: string, sourceUrl: string, src: SourceRecord, year: number): ExtractedRecruitment[] {
+  const cfg = src.selectors as Record<string, unknown> | null | undefined
+  if (!cfg || typeof cfg !== "object" || typeof cfg.item !== "string") return []
+  try {
+    const scope = typeof cfg.container === "string"
+      ? (findFirstBlock(html, parseSelector(cfg.container)) ?? html)
+      : html
+    const itemBlocks = findAllBlocks(scope, parseSelector(cfg.item))
+    if (itemBlocks.length === 0) return []
+
+    let base: URL
+    try { base = new URL(sourceUrl) } catch { return [] }
+
+    const results: ExtractedRecruitment[] = []
+    for (const block of itemBlocks) {
+      const title = cfg.title ? evalSelector(block, cfg.title) : null
+      if (!title) continue
+      let link = cfg.link ? evalSelector(block, cfg.link) : null
+      if (link) { try { link = new URL(link, base.href).href } catch { /* keep raw */ } }
+      const endDate = cfg.apply_end_date ? evalSelector(block, cfg.apply_end_date) : null
+      let parsedEnd: string | null = null
+      if (endDate) { const d = new Date(endDate); if (!isNaN(d.getTime())) parsedEnd = d.toISOString().slice(0, 10) }
+
+      results.push({
+        title,
+        organization_name: src.source_name,
+        org_type:          src.source_type ?? "Other",
+        notification_date: null,
+        apply_start_date:  null,
+        apply_end_date:    parsedEnd,
+        total_vacancies:   null,
+        year,
+        official_notification_url: link ?? sourceUrl,
+        source_pdf_url:    null,
+        posts:             [],
+        confidence:        0.75,
+        _provider:         "selectors",
+        _model:            null,
+      })
+      if (results.length >= 20) break
+    }
+    return results
+  } catch { return [] }
+}
+
 // ─── Find RECRUITMENT PDF links in HTML ──────────────────────────────────────
 // Scores each PDF link by how likely it is to be a recruitment notification.
 // Only returns PDFs with positive recruitment signals — avoids annual reports,
@@ -908,6 +1058,28 @@ function isFreshRecruitment(item: ExtractedRecruitment, currentYear: number): bo
 // Scores extracted data 0–100 based on field completeness.
 // High score = admin can approve with confidence; low = needs manual review.
 
+// ─── Deterministic field validators ──────────────────────────────────────────
+// Catches mis-parsed dates / out-of-range ages that slip past confidence + quality.
+function validateFields(r: ExtractedRecruitment, year: number): string[] {
+  const errs: string[] = []
+  if (r.apply_start_date && r.apply_end_date &&
+      new Date(r.apply_end_date) < new Date(r.apply_start_date)) errs.push("apply_end_date before apply_start_date")
+  if (r.apply_end_date) {
+    const endYear = new Date(r.apply_end_date).getFullYear()
+    if (endYear < year - 1 || endYear > year + 2) errs.push(`apply_end_date year ${endYear} outside plausible range`)
+  }
+  if (r.total_vacancies != null && r.total_vacancies < 0)       errs.push("negative vacancies")
+  if (r.total_vacancies != null && r.total_vacancies > 100_000) errs.push("implausible vacancy count")
+  for (const p of (r.posts ?? []) as Record<string, unknown>[]) {
+    const minA = p.min_age as number | null | undefined
+    const maxA = p.max_age as number | null | undefined
+    if (typeof minA === "number" && (minA < 16 || minA > 60)) errs.push(`min_age ${minA} out of [16,60]`)
+    if (typeof maxA === "number" && (maxA < 18 || maxA > 70)) errs.push(`max_age ${maxA} out of [18,70]`)
+    if (typeof minA === "number" && typeof maxA === "number" && minA > maxA) errs.push("min_age > max_age")
+  }
+  return errs
+}
+
 // ─── Auto-approve gate ────────────────────────────────────────────────────────
 // Confidence alone isn't safe: a high-confidence extraction with a mis-parsed
 // end_date still becomes a wrong deadline in a user's alert feed. Require
@@ -924,6 +1096,7 @@ function canAutoApprove(
   if (!r.title || r.title.length < 10)                         return false
   if (r.apply_start_date && r.apply_end_date &&
       new Date(r.apply_end_date) < new Date(r.apply_start_date)) return false
+  if (validateFields(r, new Date().getFullYear()).length > 0)     return false
   return true
 }
 
@@ -938,6 +1111,35 @@ function computeDataQualityScore(item: ExtractedRecruitment): number {
   if (item.posts?.some(p => (p as Record<string,unknown>).min_age || (p as Record<string,unknown>).max_age)) score += 10
   if (item.posts?.some(p => (p as Record<string,unknown>).education_required))                               score += 10
   return score   // 0–100
+}
+
+// ─── Playwright worker client ────────────────────────────────────────────────
+// External HTTP service renders JS-heavy pages (RBI, UPSC SPA, MPPSC, etc).
+// Contract: POST {url, wait_for, timeout_ms} → {html, status, final_url}.
+// Returns null on any failure so the caller can mark the source as skipped
+// rather than hanging the whole run.
+
+async function renderViaPlaywright(url: string, sourceName: string): Promise<string | null> {
+  if (!PLAYWRIGHT_WORKER_URL) return null
+  try {
+    const headers: Record<string, string> = { "Content-Type": "application/json" }
+    if (PLAYWRIGHT_WORKER_TOKEN) headers["x-worker-token"] = PLAYWRIGHT_WORKER_TOKEN
+    const res = await fetch(`${PLAYWRIGHT_WORKER_URL.replace(/\/$/, "")}/render`, {
+      method:  "POST",
+      headers,
+      body:    JSON.stringify({ url, wait_for: "networkidle", timeout_ms: 25_000 }),
+      signal:  AbortSignal.timeout(30_000),
+    })
+    if (!res.ok) {
+      console.error(`[${sourceName}] Playwright worker ${res.status}`)
+      return null
+    }
+    const body = await res.json() as { html?: string }
+    return typeof body.html === "string" && body.html.length > 0 ? body.html : null
+  } catch (err) {
+    console.error(`[${sourceName}] Playwright worker error:`, err instanceof Error ? err.message : err)
+    return null
+  }
 }
 
 // ─── Content acquisition ──────────────────────────────────────────────────────
@@ -956,18 +1158,25 @@ async function acquireContent(
     : undefined
 
   // ── TASK 2: Playwright guard ───────────────────────────────────────────────
-  // Playwright adapter is not yet implemented in Deno Edge Functions.
-  // Log and skip explicitly rather than silently falling through to HTML.
+  // Delegate to external Playwright worker (Fly.io / Browserless / etc).
+  // If the worker URL is unset or returns null, skip the source explicitly.
   if (src.adapter_type === "playwright" || src.requires_playwright) {
-    await supabase
-      .from("source_registry")
-      .update({
+    const rendered = await renderViaPlaywright(targetUrl, src.source_name)
+    if (!rendered) {
+      await supabase.from("source_registry").update({
         last_scraped_at: new Date().toISOString(),
-        last_error:      "Playwright adapter pending implementation — skipped",
-      })
-      .eq("id", src.id)
-    console.log(`[${src.source_name}] SKIP — Playwright adapter not yet implemented`)
-    return { text: "", url: targetUrl, skipped: true, headers: {} }
+        last_error:      PLAYWRIGHT_WORKER_URL
+          ? "Playwright worker returned null — source skipped"
+          : "Playwright worker not configured — source skipped",
+      }).eq("id", src.id)
+      console.log(`[${src.source_name}] SKIP — Playwright unavailable`)
+      return { text: "", url: targetUrl, skipped: true, headers: {} }
+    }
+    // Feed the rendered HTML through the normal HTML content-zone + strip pipeline.
+    const contentZone = extractContentZone(rendered)
+    const stripped    = htmlToLlmText(contentZone, targetUrl)
+    const snapshotHash = await sha256hex(rendered)
+    return { text: stripped, url: targetUrl, skipped: false, headers: {}, rawHtml: rendered, snapshotHash }
   }
 
   // ── RSS adapter ────────────────────────────────────────────────────────────
@@ -1008,11 +1217,11 @@ async function acquireContent(
     const direct = extractRssDirect(xml, rssUrl, src.source_name, src.source_type ?? "Other", year)
     if (direct.length > 0) {
       console.log(`[${src.source_name}] RSS direct: ${direct.length} item(s) (no LLM used)`)
-      return { text: "", url: rssUrl, skipped: false, headers: {}, rssItems: direct }
+      return { text: "", url: rssUrl, skipped: false, headers: {}, rssItems: direct, snapshotHash: hash }
     }
 
     // Direct extraction found nothing — fall through to LLM with formatted text
-    return { text: parseRssItems(xml), url: rssUrl, skipped: false, headers: {} }
+    return { text: parseRssItems(xml), url: rssUrl, skipped: false, headers: {}, snapshotHash: hash }
   }
 
   // ── JSON adapter ───────────────────────────────────────────────────────────
@@ -1024,7 +1233,8 @@ async function acquireContent(
     })
     if (!res.ok) throw new Error(`JSON fetch ${res.status}`)
     const json = await res.json()
-    return { text: flattenJson(json, src), url: src.api_url, skipped: false, headers: {} }
+    const jsonHash = await sha256hex(JSON.stringify(json))
+    return { text: flattenJson(json, src), url: src.api_url, skipped: false, headers: {}, snapshotHash: jsonHash }
   }
 
   // ── PDF adapter ────────────────────────────────────────────────────────────
@@ -1033,8 +1243,10 @@ async function acquireContent(
   if (src.adapter_type === "pdf" && src.pdf_bulletin_url) {
     const res  = await fetch(src.pdf_bulletin_url, { signal: AbortSignal.timeout(REQUEST_TIMEOUT), client: httpClient })
     if (!res.ok) throw new Error(`PDF fetch ${res.status}`)
-    const buf  = await res.arrayBuffer()
-    return { text: "", url: src.pdf_bulletin_url, skipped: false, headers: {}, pdfBytes: new Uint8Array(buf) }
+    const buf   = await res.arrayBuffer()
+    const bytes = new Uint8Array(buf)
+    const pdfHash = await sha256hex(bytes)
+    return { text: "", url: src.pdf_bulletin_url, skipped: false, headers: {}, pdfBytes: bytes, snapshotHash: pdfHash }
   }
 
   // ── HTML adapter ───────────────────────────────────────────────────────────
@@ -1153,7 +1365,7 @@ async function acquireContent(
       }
     }
 
-    return { text: stripped, url: targetUrl, skipped: false, headers: {}, linkedPdfs }
+    return { text: stripped, url: targetUrl, skipped: false, headers: {}, linkedPdfs, rawHtml, snapshotHash: hash }
   }
 }
 
@@ -1250,7 +1462,7 @@ async function callGemini(
 
     const data    = await res.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> }
     const raw     = data.candidates?.[0]?.content?.parts?.[0]?.text ?? ""
-    const results = parseClaudeRecruitmentResponse(raw)
+    const results = stampProvenance(parseClaudeRecruitmentResponse(raw), "gemini", GEMINI_MODEL)
     console.log(`[${sourceName}] Gemini text: ${results.length} recruitment(s) (in=${truncated.length}ch)`)
     if (results.length === 0) {
       console.log(`[${sourceName}] Gemini 0-result sample: ${truncated.slice(0, 300).replace(/\s+/g, " ")}`)
@@ -1293,7 +1505,7 @@ async function callGeminiOnPdf(
 
     const data    = await res.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> }
     const raw     = data.candidates?.[0]?.content?.parts?.[0]?.text ?? ""
-    const results = parseClaudeRecruitmentResponse(raw)
+    const results = stampProvenance(parseClaudeRecruitmentResponse(raw), "gemini", GEMINI_MODEL)
     console.log(`[${sourceName}] Gemini PDF: ${results.length} recruitment(s)`)
     return results
   } catch (err) {
@@ -1394,7 +1606,7 @@ async function callClaude(
       }
       if (!res2.ok) { console.error(`[${sourceName}] Anthropic text retry ${res2.status}`); return null }
       const data2 = await res2.json() as { content?: Array<{ type: string; text: string }> }
-      return parseClaudeRecruitmentResponse(data2.content?.find(b => b.type === "text")?.text ?? "")
+      return stampProvenance(parseClaudeRecruitmentResponse(data2.content?.find(b => b.type === "text")?.text ?? ""), "anthropic", model)
     }
     if (res.status === 404 || res.status === 401) {
       const body = await res.text().catch(() => "")
@@ -1411,7 +1623,7 @@ async function callClaude(
 
     const data    = await res.json() as { content?: Array<{ type: string; text: string }> }
     const raw     = data.content?.find(b => b.type === "text")?.text ?? ""
-    const results = parseClaudeRecruitmentResponse(raw)
+    const results = stampProvenance(parseClaudeRecruitmentResponse(raw), "anthropic", model)
     console.log(`[${sourceName}] Anthropic text: ${results.length} recruitment(s) (in=${truncated.length}ch)`)
     // Diagnostic: when extraction yields 0 and we sent meaningful content, log
     // a sample so we can tell whether the page is JS-empty vs content-present.
@@ -1520,7 +1732,7 @@ Deno.serve(async (req) => {
       // TASK 4: source-aware jitter
       await sleep(jitter(src))
 
-      const { text, url, skipped, pdfBytes, linkedPdfs, rssItems } = await acquireContent(supabase, src, year)
+      const { text, url, skipped, pdfBytes, linkedPdfs, rssItems, rawHtml, snapshotHash } = await acquireContent(supabase, src, year)
 
       if (skipped) {
         totalSkipped++
@@ -1562,8 +1774,15 @@ Deno.serve(async (req) => {
         // Dedicated PDF source — send bytes directly (Gemini → Anthropic fallback)
         extractedList = await extractFromPdf(pdfBytes, url, src.source_name, year)
       } else {
-        // HTML/RSS — extract from text first
-        if (text.trim()) {
+        // Try deterministic selectors first — zero LLM cost. Falls through to LLM on empty.
+        if (rawHtml && src.selectors) {
+          const viaSelectors = extractFromSelectors(rawHtml, url, src, year)
+          if (viaSelectors.length > 0) {
+            console.log(`[${src.source_name}] Selectors: ${viaSelectors.length} item(s) (no LLM used)`)
+            extractedList = viaSelectors
+          }
+        }
+        if (extractedList.length === 0 && text.trim()) {
           extractedList = await extractFromText(text, url, src.source_name, year)
         }
         // Also extract from any linked PDFs and merge (dedup by title fingerprint)
@@ -1650,18 +1869,22 @@ Deno.serve(async (req) => {
           existingFps.set(fp, "queued")
         }
 
-        const { confidence: _conf, ...dataWithoutConf } = extracted
-        void _conf
+        const { confidence: _conf, _provider: _p, _model: _m, ...dataWithoutConf } = extracted
+        void _conf; void _p; void _m
 
         await supabase.from("scrape_queue").insert({
-          source_url:        url,
-          source_name:       src.source_name,
-          extracted_data:    dataWithoutConf as unknown as Record<string, unknown>,
-          confidence_score:  extracted.confidence,
-          data_quality_score: qualityScore,
-          status:            queueStatus,
-          scrape_run_id:     runId,
-          duplicate_of:      dupId,
+          source_url:          url,
+          source_name:         src.source_name,
+          extracted_data:      dataWithoutConf as unknown as Record<string, unknown>,
+          confidence_score:    extracted.confidence,
+          data_quality_score:  qualityScore,
+          status:              queueStatus,
+          scrape_run_id:       runId,
+          duplicate_of:        dupId,
+          raw_snapshot_hash:   snapshotHash ?? null,
+          extraction_provider: extracted._provider ?? null,
+          extraction_model:    extracted._model    ?? null,
+          prompt_version:      (extracted._provider === "anthropic" || extracted._provider === "gemini") ? PROMPT_VERSION : null,
         })
 
         if (queueStatus === "approved") {
