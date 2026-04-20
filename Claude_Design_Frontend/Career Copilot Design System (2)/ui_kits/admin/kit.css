@@ -1,0 +1,56 @@
+@import url("../../colors_and_type.css");
+
+* { box-sizing: border-box; }
+html, body, #root { background: #0a0a0a; color: var(--text-primary); min-height: 100vh; }
+body { margin: 0; font-family: var(--font-sans); }
+
+/* ── Sidebar links ───────────────────────────────────────────────── */
+.a-nav-link { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 8px; font-size: 13px; color: var(--text-muted); cursor: pointer; transition: all var(--dur-fast) var(--ease); }
+.a-nav-link:hover { color: var(--text-body); background: rgba(255,255,255,0.03); }
+.a-nav-link.active { color: rgba(255,255,255,0.90); background: rgba(255,255,255,0.06); font-weight: 500; }
+.a-nav-link .i { color: inherit; opacity: 0.8; }
+
+/* ── Buttons ────────────────────────────────────────────────────── */
+.a-btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: var(--radius-md); font-size: 13px; font-weight: 500; border: 1px solid transparent; cursor: pointer; transition: all var(--dur-fast) var(--ease); font-family: var(--font-sans); }
+.a-btn:active { transform: scale(0.99); }
+.a-btn-primary { background: var(--gold); color: #0c0c0c; }
+.a-btn-primary:hover { background: var(--gold-hover); }
+.a-btn-ghost { background: transparent; color: var(--text-body); border-color: var(--border-md); }
+.a-btn-ghost:hover { color: var(--text-primary); border-color: var(--border-lg); background: rgba(255,255,255,0.02); }
+.a-btn-sm { padding: 4px 10px; font-size: 11px; border-radius: var(--radius-sm); }
+
+/* ── Pills ──────────────────────────────────────────────────────── */
+.a-pill { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: var(--radius-pill); font-size: 10px; border: 1px solid; text-transform: none; }
+.a-pill--success { background: var(--success-bg); border-color: var(--success-border); color: var(--success); }
+.a-pill--warning { background: var(--warning-bg); border-color: var(--warning-border); color: #fcd34d; }
+.a-pill--danger  { background: var(--danger-bg);  border-color: var(--danger-border);  color: #f87171; }
+.a-pill--info    { background: var(--info-bg);    border-color: var(--info-border);    color: var(--info); }
+.a-pill--gold    { background: var(--gold-faint); border-color: var(--gold-border);    color: var(--gold); }
+.a-pill--muted   { background: rgba(255,255,255,0.04); border-color: var(--border); color: var(--text-muted); }
+
+/* ── Stat tiles ─────────────────────────────────────────────────── */
+.a-stat { border-radius: var(--radius-xl); padding: 14px 16px; border: 1px solid var(--border); background: var(--bg-surface); }
+.a-stat.accent { background: rgba(232,213,163,0.04); border-color: var(--gold-border); }
+.a-stat .lbl { font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-muted); margin-bottom: 6px; }
+.a-stat .val { font-family: var(--font-serif); font-weight: 600; font-size: 26px; line-height: 1; color: var(--text-primary); }
+.a-stat.accent .val { color: var(--gold); }
+
+/* ── Tables ─────────────────────────────────────────────────────── */
+.a-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.a-table th { text-align: left; padding: 10px 16px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-muted); font-weight: 400; border-bottom: 1px solid var(--border); }
+.a-table td { padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.04); color: var(--text-body); vertical-align: top; }
+.a-table tr:hover td { background: rgba(255,255,255,0.02); }
+
+/* ── Cards ──────────────────────────────────────────────────────── */
+.a-card { background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-xl); padding: 20px; }
+.a-card.tight { padding: 16px; }
+
+/* ── Inputs ─────────────────────────────────────────────────────── */
+.a-input { width: 100%; background: var(--bg-surface); border: 1px solid var(--border-md); border-radius: var(--radius-md); padding: 8px 12px; color: var(--text-primary); font-size: 13px; font-family: var(--font-sans); outline: none; transition: all var(--dur-fast) var(--ease); }
+.a-input:focus { background: var(--bg-surface-md); border-color: var(--gold-border-md); }
+.a-input::placeholder { color: var(--text-dim); }
+
+.a-mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.a-serif { font-family: var(--font-serif); font-weight: 500; letter-spacing: -0.015em; }
+
+.lucide { width: 1em; height: 1em; stroke-width: 1.75; vertical-align: -0.15em; }

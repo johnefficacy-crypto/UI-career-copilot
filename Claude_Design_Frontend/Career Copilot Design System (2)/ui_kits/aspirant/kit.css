@@ -1,0 +1,79 @@
+/* scope styles to the aspirant kit to avoid cross-bleed */
+@import url("../../colors_and_type.css");
+
+* { box-sizing: border-box; }
+html, body, #root { background: var(--bg-root); color: var(--text-primary); min-height: 100vh; }
+body { margin: 0; }
+
+/* ── Nav links ─────────────────────────────────────────────────────────── */
+.cc-nav-link { color: var(--text-muted); transition: color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease); }
+.cc-nav-link:hover { color: var(--text-primary); background: rgba(255,255,255,0.04); }
+.cc-nav-link.active { color: var(--text-primary); background: rgba(255,255,255,0.06); font-weight: 500; }
+
+/* ── Buttons ───────────────────────────────────────────────────────────── */
+.cc-btn { display: inline-flex; align-items: center; gap: 8px; padding: 10px 20px; border-radius: var(--radius-xl); font-size: 14px; font-weight: 500; border: 1px solid transparent; cursor: pointer; transition: all var(--dur-fast) var(--ease); font-family: var(--font-sans); white-space: nowrap; }
+.cc-btn:active { transform: scale(0.99); }
+.cc-btn-primary { background: var(--gold); color: #0c0c0c; }
+.cc-btn-primary:hover { background: var(--gold-hover); }
+.cc-btn-ghost { background: transparent; color: var(--text-body); border-color: var(--border-md); }
+.cc-btn-ghost:hover { color: var(--text-primary); border-color: var(--border-lg); background: rgba(255,255,255,0.02); }
+.cc-btn-sm { padding: 6px 12px; font-size: 12px; border-radius: var(--radius-md); }
+
+/* ── Pills (status chips) ──────────────────────────────────────────────── */
+.cc-pill { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: var(--radius-pill); font-size: 11px; border: 1px solid; font-family: var(--font-sans); }
+.cc-pill--success { background: var(--success-bg); border-color: var(--success-border); color: var(--success); }
+.cc-pill--warning { background: var(--warning-bg); border-color: var(--warning-border); color: #fcd34d; }
+.cc-pill--danger  { background: var(--danger-bg);  border-color: var(--danger-border);  color: #f87171; }
+.cc-pill--gold    { background: var(--gold-faint); border-color: var(--gold-border); color: var(--gold); }
+.cc-pill--muted   { background: rgba(255,255,255,0.04); border-color: var(--border); color: var(--text-muted); }
+
+/* ── Inputs ────────────────────────────────────────────────────────────── */
+.cc-input { width: 100%; background: var(--bg-surface); border: 1px solid var(--border-md); border-radius: var(--radius-xl); padding: 12px 16px; color: var(--text-primary); font-size: 14px; font-family: var(--font-sans); outline: none; transition: all var(--dur-fast) var(--ease); }
+.cc-input:focus { background: var(--bg-surface-md); border-color: var(--gold-border-md); }
+.cc-input::placeholder { color: var(--text-dim); }
+
+/* ── Cards ─────────────────────────────────────────────────────────────── */
+.cc-card { background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-2xl); padding: 24px; transition: border-color var(--dur-fast) var(--ease); }
+.cc-card:hover { border-color: var(--border-md); }
+.cc-row-card { background: transparent; border: 1px solid var(--border); border-radius: var(--radius-md); padding: 14px 16px; }
+.cc-row-card:hover { border-color: var(--border-md); background: rgba(255,255,255,0.02); }
+
+/* ── Eyebrow ───────────────────────────────────────────────────────────── */
+.cc-eyebrow { font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-muted); font-weight: 400; }
+
+/* ── Progress bar ──────────────────────────────────────────────────────── */
+.cc-progress { height: 4px; background: rgba(255,255,255,0.07); border-radius: var(--radius-pill); overflow: hidden; }
+.cc-progress > i { display: block; height: 100%; background: var(--gold); border-radius: var(--radius-pill); }
+
+/* ── Grain overlay ─────────────────────────────────────────────────────── */
+.cc-grain { position: relative; }
+.cc-grain::after {
+  content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  opacity: 0.025;
+}
+.cc-grid-bg {
+  background-image:
+    linear-gradient(to right, rgba(255,255,255,0.03) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255,255,255,0.03) 1px, transparent 1px);
+  background-size: 80px 80px;
+}
+.cc-gold-glow { position: absolute; width: 600px; height: 600px; border-radius: 9999px; background: radial-gradient(circle, rgba(232,213,163,0.08), transparent 70%); filter: blur(60px); pointer-events: none; }
+
+/* ── Utility ───────────────────────────────────────────────────────────── */
+.cc-mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.cc-serif { font-family: var(--font-serif); font-weight: 500; letter-spacing: -0.015em; }
+.cc-serif-h1 { font-family: var(--font-serif); font-weight: 500; font-size: clamp(40px, 5vw, 64px); line-height: 1.08; letter-spacing: -0.02em; color: var(--text-primary); }
+.cc-serif-h2 { font-family: var(--font-serif); font-weight: 500; font-size: clamp(28px, 3.5vw, 42px); line-height: 1.15; letter-spacing: -0.015em; color: var(--text-primary); }
+.cc-serif-h3 { font-family: var(--font-serif); font-weight: 500; font-size: 20px; color: var(--text-primary); line-height: 1.3; }
+
+/* animations */
+@keyframes ccFadeUp { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
+.cc-fade-up { animation: ccFadeUp 0.5s var(--ease) both; }
+@keyframes ccBounce { 0%, 80%, 100% { transform: translateY(0); opacity: 0.4; } 40% { transform: translateY(-4px); opacity: 1; } }
+.cc-bounce > i { display: inline-block; width: 5px; height: 5px; border-radius: 9999px; background: var(--gold); margin: 0 2px; animation: ccBounce 1.2s infinite ease-in-out; }
+.cc-bounce > i:nth-child(2) { animation-delay: 0.18s; }
+.cc-bounce > i:nth-child(3) { animation-delay: 0.36s; }
+
+/* iconography via Lucide web-component */
+.lucide { width: 1em; height: 1em; stroke-width: 1.75; vertical-align: -0.15em; }
