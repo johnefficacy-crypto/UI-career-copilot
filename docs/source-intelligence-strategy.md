@@ -130,7 +130,45 @@ Items discovered from GovtJobsBlog should bias toward:
 
 ---
 
-## 4. OGD India / data.gov.in — Working Interpretation
+## 4. Sarkari Result (sarkariresult.com.cm) — Working Interpretation
+
+### Observed technical signals
+From the page head of `https://sarkariresult.com.cm/latest-jobs/`, the site exposes:
+- main RSS feed: `/feed/`
+- comments feed: `/comments/feed/`
+- WordPress API root: `/wp-json/`
+- page JSON endpoint via WordPress REST metadata
+- Yoast/WordPress publishing structure
+
+### Strategic interpretation
+Sarkari Result appears to be a WordPress-based aggregator / publisher, not an official issuing authority.
+
+### How to use it
+Use Sarkari Result as:
+- a secondary discovery source,
+- a coverage-gap detector,
+- a missed-notification detector,
+- a source-discovery aid.
+
+Do NOT use it as canonical truth when an official source is available.
+
+### Registry guidance
+Suggested posture:
+- `source_type`: aggregator / secondary
+- `adapter_type`: prefer `rss` first, `json` second, `html` fallback
+- trust score: low-to-medium relative to official sources
+- promotion policy: resolve to official source before canonical promotion whenever possible
+
+### Notification / eligibility implication
+Items discovered from Sarkari Result should bias toward:
+- review-first or pending workflows,
+- lower-confidence promotion,
+- official-link resolution before auto-alert fanout,
+- use as discovery, not final truth.
+
+---
+
+## 5. OGD India / data.gov.in — Working Interpretation
 
 ### What it is
 OGD India and `data.gov.in` are official data access/catalog platforms.
@@ -154,7 +192,7 @@ Treat OGD India as:
 
 ---
 
-## 5. Official Qualification Distribution Snapshot (Strategic Reference)
+## 6. Official Qualification Distribution Snapshot (Strategic Reference)
 
 ### Official snapshot captured
 Data source: official API-derived qualification summary
@@ -210,7 +248,7 @@ The platform should consider separate growth tracks for:
 
 ---
 
-## 6. Strategy Update for Scraper + Eligibility + Notification Engine
+## 7. Strategy Update for Scraper + Eligibility + Notification Engine
 
 ### Scraper strategy
 - keep official sources canonical,
@@ -233,7 +271,7 @@ The platform should consider separate growth tracks for:
 
 ---
 
-## 7. Operating Rule for Future Updates
+## 8. Operating Rule for Future Updates
 
 Whenever a new source-learning is found, capture:
 1. what the source technically exposes (HTML / RSS / JSON / PDF / WordPress / API),
