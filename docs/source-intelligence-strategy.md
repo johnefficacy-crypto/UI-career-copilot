@@ -64,6 +64,22 @@ Rules:
 - use for dashboards, TAM estimates, qualification segmentation, and strategy
 - can inform prioritization of onboarding, eligibility coverage, and marketplace cohorts
 
+### D. Opportunity / adjacent-opportunity sources
+These are not always direct job-notification feeds, but may carry valuable opportunities adjacent to the aspirant journey.
+
+Examples:
+- scholarships
+- internships
+- fellowships
+- education opportunities
+- sports and cultural opportunities
+- skill development / youth programs
+
+Rules:
+- these should feed an opportunities layer, not be mixed blindly into recruitments
+- use personalization based on profile stage, qualification, location, and preferences
+- keep separate opportunity types and alert channels from normal recruitment alerts
+
 ---
 
 ## 2. RSS / JSON Strategy
@@ -192,7 +208,46 @@ Treat OGD India as:
 
 ---
 
-## 6. Official Qualification Distribution Snapshot (Strategic Reference)
+## 6. Curated Feed Candidates to Track
+
+### A. Official / semi-official opportunity feeds
+1. `https://services.india.gov.in/feed/rss?cat_id=2&ln=en`
+   - Jobs category feed from National Government Services Portal / Services India
+   - use as official or semi-official discovery layer
+   - role: discovery / source expansion / opportunity feed
+
+2. `https://services.india.gov.in/feed/rss?cat_id=1&ln=en`
+   - Education and allied opportunities
+   - role: scholarships / education schemes / fellowships / admissions / learning opportunities
+   - do NOT mix blindly into job recruitments
+
+3. `https://services.india.gov.in/feed/rss?cat_id=13&ln=en`
+   - Sports and cultural opportunities
+   - role: sports quotas, cultural grants, competitions, youth opportunities, academies, scheme-type opportunities
+   - should feed a separate opportunities layer
+
+### B. Aggregator discovery feeds
+4. `https://www.govtjobsblog.in/feed/`
+5. `https://haryanajobs.in/category/latest-jobs/feed/`
+6. `https://www.careersingovernment.com/tools/blog/feed/`
+7. `https://www.govtjobsdiary.com/feed/`
+8. `https://ap.indgovtjobs.net/rss.xml`
+9. `https://mh.indgovtjobs.net/rss.xml`
+
+### Classification guidance
+- GovtJobsBlog / HaryanaJobs / GovtJobsDiary / IndGovtJobs regional feeds:
+  - discovery / gap-detection / missed-notification detection
+  - not canonical if official source exists
+- CareersInGovernment:
+  - global/public-sector careers context source, but may contain non-India relevance
+  - use only if filtered carefully for India-relevant public-sector or governance opportunities
+- Services India category feeds:
+  - more useful for structured opportunity discovery than pure recruitment truth
+  - should be processed into an opportunities layer, not merged directly into core recruitments
+
+---
+
+## 7. Official Qualification Distribution Snapshot (Strategic Reference)
 
 ### Official snapshot captured
 Data source: official API-derived qualification summary
@@ -248,34 +303,90 @@ The platform should consider separate growth tracks for:
 
 ---
 
-## 7. Strategy Update for Scraper + Eligibility + Notification Engine
+## 8. Personalization Logic for Opportunity Feeds
+
+### Profile-aware routing rules
+The dashboard should not show every feed item to every aspirant. It should route by profile stage and preferences.
+
+Examples:
+- Fresh graduate:
+  - internships
+  - apprenticeships
+  - fellowships
+  - entry-level skill programs
+  - scholarship / higher-education opportunities only if relevant to stated goals
+
+- Current student:
+  - scholarships
+  - internships
+  - fellowships
+  - competitions
+  - youth / sports / cultural programs
+  - education schemes and training opportunities
+
+- 10th / 12th aspirant:
+  - scholarships
+  - skilling programs
+  - apprenticeships
+  - 10th/12th-aligned government opportunities
+
+- ITI / diploma user:
+  - apprenticeships
+  - technical training
+  - diploma/ITI-aligned openings
+  - PSU / technician / vocational opportunities
+
+### Location-aware filtering
+Services India and similar feeds should be filtered by:
+- user state
+- district if available
+- preferred states
+- willingness to relocate
+- home-state preference / domicile preference
+
+### Notification channel rule
+Opportunity feeds should use a separate card group and notification type, for example:
+- `recruitment_alert`
+- `scholarship_alert`
+- `internship_alert`
+- `sports_culture_alert`
+- `education_opportunity_alert`
+
+This prevents the core job-alert channel from being diluted.
+
+---
+
+## 9. Strategy Update for Scraper + Eligibility + Notification Engine
 
 ### Scraper strategy
 - keep official sources canonical,
 - use aggregators for discovery and gap-detection,
 - prefer RSS / JSON over generic HTML when available,
 - use HTML / PDF enrichment to fill missing eligibility details,
-- retain manual review for low-confidence or aggregator-sourced discoveries.
+- retain manual review for low-confidence or aggregator-sourced discoveries,
+- add an opportunities ingestion lane separate from core recruitment ingestion.
 
 ### Eligibility strategy
 - expand onboarding and profile fields around qualification ladders,
 - model non-graduate cohorts explicitly,
 - treat qualification as a primary routing dimension,
-- use strategic datasets to decide which cohorts deserve earliest depth.
+- use strategic datasets to decide which cohorts deserve earliest depth,
+- include student / fresh graduate / internship / scholarship routing flags.
 
 ### Notification strategy
 - alert users from canonical official sources whenever possible,
 - avoid high-confidence user alerts based only on aggregator text,
 - allow aggregator-discovered notices to enter review / pending states,
-- resolve official URL / PDF before fanout when feasible.
+- resolve official URL / PDF before fanout when feasible,
+- keep opportunity notifications distinct from standard recruitment notifications.
 
 ---
 
-## 8. Operating Rule for Future Updates
+## 10. Operating Rule for Future Updates
 
 Whenever a new source-learning is found, capture:
 1. what the source technically exposes (HTML / RSS / JSON / PDF / WordPress / API),
-2. whether it is official, secondary, or research-only,
+2. whether it is official, secondary, research-only, or opportunity-only,
 3. whether it can be canonical,
 4. how it should affect trust score / adapter choice / promotion policy,
 5. whether it changes eligibility or notification strategy.
