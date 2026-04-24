@@ -343,13 +343,19 @@ function deriveStatus(start: string | null, end: string | null): string {
   return "upcoming"
 }
 
+// Keep the returned strings in sync with EDU_LEVEL_ORDER in
+// lib/eligibility/engine.ts — these go straight into education_criteria and
+// are compared string-equal against the user's declared level. Before the
+// April 19 review, this returned "class_12"/"class_10" while the engine
+// expected "12th"/"10th", so every 12th-pass / matric-pass eligibility
+// check silently evaluated as rank 0 ("unknown level, assume not met").
 function mapEducationLevel(raw: string): string {
   const lower = raw.toLowerCase()
   if (lower.includes("phd") || lower.includes("doctorate")) return "phd"
   if (lower.includes("postgraduate") || lower.includes("post graduate") || lower.includes("master")) return "postgraduate"
   if (lower.includes("graduate") || lower.includes("bachelor") || lower.includes("degree")) return "graduate"
   if (lower.includes("diploma")) return "diploma"
-  if (lower.includes("12") || lower.includes("xii") || lower.includes("senior secondary") || lower.includes("intermediate")) return "class_12"
-  if (lower.includes("10") || lower.includes("x") || lower.includes("matriculation") || lower.includes("secondary")) return "class_10"
+  if (lower.includes("12") || lower.includes("xii") || lower.includes("senior secondary") || lower.includes("intermediate")) return "12th"
+  if (lower.includes("10") || lower.includes("x") || lower.includes("matriculation") || lower.includes("secondary")) return "10th"
   return "graduate"
 }

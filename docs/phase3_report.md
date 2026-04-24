@@ -76,24 +76,32 @@ Actual function is `fn_fanout_alert_event(p_event_id)`. Fixed in fanOutNotificat
 
 ## 4. Current State
 
-### Working
+### Working (as of Phase 3B — April 19, 2026)
 - Scraper runs every 6h
 - Admin can trigger scraper manually
 - Admin CRUD for sources, queue review
-- Eligibility engine (age + education + attempts + nationality)
+- Eligibility engine — age, education, attempts, nationality, **domicile,
+  PwBD / ex-serviceman relaxation caps, appearing-candidate conditional**
+- Unified eligibility path — in-app Server Actions AND the Edge Function
+  consumer both go through `lib/eligibility/engine.ts`
+  (via `/api/eligibility/recompute`)
+- Notification trust — `new_match` alerts emerge from the engine's own
+  verdict, not from blind broadcast on approval
+- Recruitment detail page at `/dashboard/recruitments/[id]`
 - Billing (Razorpay subscriptions)
 - AI Career Chat (Pro/Elite)
 - Onboarding (5-step flow)
 
-### Broken / Incomplete (before Phase 3A)
-- Notifications feed — v_notification_feed view SQL not applied
-- User-facing recruitment feed — approved items not promoted
-- Eligibility recompute — queue populated but nothing consumes it
-- Email notifications — not built
-- Domicile check in eligibility engine ← **Phase 3B**
-- PwBD / ex-serviceman age relaxation bugs ← **Phase 3B**
-- 'Appearing' candidates ← **Phase 3B**
-- proxy.ts adds 15–48s latency in dev
+### Broken / Incomplete (remaining)
+- Email notifications — not built ← **Phase 3C**
+- WhatsApp notifications — not built ← **Phase 4**
+- `notification_preferences` migration — `getUserNotifPrefs`/`upsertUserNotifPrefs`
+  still stubs ← **Phase 3C prerequisite**
+- `explanation.matched_exam` / `matched_sector` / `matched_type` flags —
+  wiring from `preferences.target_exams` / `preferred_sectors` pending
+- proxy.ts adds 15–48s latency in dev ← **Phase 3D**
+- Full recruitment detail page (salary table, vacancies breakdown, syllabus,
+  apply tracker) — current page is the minimal version ← **Phase 4**
 
 ---
 
@@ -102,8 +110,8 @@ Actual function is `fn_fanout_alert_event(p_event_id)`. Fixed in fanOutNotificat
 ### Phase 3A: Close the scraper → user loop ✅ COMPLETE
 See `docs/phase3a_report.md`
 
-### Phase 3B: Complete the eligibility engine ← CURRENT
-See below.
+### Phase 3B: Complete the eligibility engine ✅ COMPLETE
+See `docs/phase3b_report.md`
 
 ### Phase 3C: Email notifications
 - Provider: Resend or AWS SES
