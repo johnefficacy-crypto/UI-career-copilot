@@ -102,71 +102,89 @@ export async function markAllAlertsRead(userId: string): Promise<void> {
 
 /**
  * Seed initial notification_alerts for a newly onboarded user.
- * Called once after finishOnboarding() so the user sees alerts immediately
- * instead of waiting for the next fan-out cycle.
  *
- * Inserts `new_match` alerts for every open recruitment (apply_end_date >= today
- * OR apply_end_date IS NULL) where an eligibility_results row marks them eligible.
- * If no eligibility_results exist yet, inserts for ALL open recruitments so the
- * feed is not empty (the user can always dismiss irrelevant ones).
+ * Called once after finishOnboarding(). The authoritative seeding happens
+ * inside `runEligibilityForUser`, which finishOnboarding() also calls — the
+ * engine writes eligibility_results AND emits `new_match` alerts for every
+ * recruitment it verifies as eligible or conditional, with explanation
+ * flags derived from tracked_recruitments and the engine's own verdict.
+ *
+ * This function exists as a defensive top-up: if the engine ran but missed
+ * any eligible/conditional recruitment (e.g. because the row was added
+ * between the engine's post scan and this call), we still insert `new_match`
+ * alerts for those. We NO LONGER fall back to "seed every open recruitment"
+ * when eligibility_results is empty — that was the P0 over-claim flagged by
+ * the April 19 code review (it showed users recruitments for UPSC posts they
+ * have no qualifications for, advertised as "new match for you").
+ *
+ * Returns the number of alerts inserted.
  */
 export async function seedNotificationsForNewUser(userId: string): Promise<number> {
   const supabase = await createClient()
-  const today = new Date().toISOString().split("T")[0]
 
-  // Get open recruitments
-  const { data: recruitments } = await supabase
-    .from("recruitments")
-    .select("id, name, status, apply_end_date, apply_start_date, notification_date, year, total_vacancies, org_id")
-    .or(`apply_end_date.gte.${today},apply_end_date.is.null`)
-    .in("status", ["open", "upcoming", "published"])
-    .order("apply_end_date", { ascending: true })
-    .limit(30)
-
-  if (!recruitments || recruitments.length === 0) return 0
-
-  // Check if user has eligibility results already
-  const { data: eligibilityResults } = await supabase
+  // Eligibility-first: only seed alerts for recruitments the engine has
+  // already verified as eligible or conditional for this user.
+  const { data: eligibilityResults, error: elErr } = await supabase
     .from("eligibility_results")
     .select("recruitment_id, is_eligible, is_conditional")
     .eq("user_id", userId)
 
-  const eligibleIds = new Set(
-    (eligibilityResults ?? [])
-      .filter(r => r.is_eligible || r.is_conditional)
-      .map(r => r.recruitment_id)
-  )
-  const hasEligibilityData = (eligibilityResults?.length ?? 0) > 0
+  if (elErr) {
+    console.error("[seedNotificationsForNewUser] eligibility read:", elErr.message)
+    return 0
+  }
 
-  // Decide which recruitments to notify about
-  const toNotify = hasEligibilityData
-    ? recruitments.filter(r => eligibleIds.has(r.id))
-    : recruitments // No eligibility data yet — show all open ones
-
-  if (toNotify.length === 0) return 0
-
-  // Fetch org info for the recruitments in one query
-  const orgIds = [...new Set(toNotify.map(r => r.org_id).filter(Boolean))]
-  const { data: orgs } = orgIds.length > 0
-    ? await supabase.from("organizations").select("id, name, type, state").in("id", orgIds as string[])
-    : { data: [] }
-  const orgMap = new Map((orgs ?? []).map(o => [o.id, o]))
-
-  // Build inserts — skip any that already exist (use upsert with ON CONFLICT DO NOTHING)
-  const now = new Date().toISOString()
-  const inserts = toNotify.map(r => {
-    const org = orgMap.get(r.org_id as string)
-    return {
-      user_id:             userId,
-      alert_type:          "new_match" as const,
-      is_read:             false,
-      sent_at:             now,
-      priority:            3 as const,
-      recruitment_id:      r.id,
-      alert_event_id:      null,
-      event_type:          "new_recruitment" as const,
+  // Dedupe: one alert per recruitment, strict eligibility wins over conditional.
+  const verdictByRec = new Map<string, boolean>() // true = eligible, false = conditional only
+  for (const r of eligibilityResults ?? []) {
+    const rid = r.recruitment_id as string | null
+    if (!rid) continue
+    if (r.is_eligible) {
+      verdictByRec.set(rid, true)
+    } else if (r.is_conditional && !verdictByRec.has(rid)) {
+      verdictByRec.set(rid, false)
     }
-  })
+  }
+
+  if (verdictByRec.size === 0) {
+    // No eligible/conditional recruitments — that's fine. The feed can be
+    // empty. It will fill up as the scraper approves new recruitments and
+    // the eligibility consumer re-runs the engine per user.
+    return 0
+  }
+
+  // Load tracked set so we can populate the is_tracked explanation flag.
+  const { data: trackedRows } = await supabase
+    .from("tracked_recruitments")
+    .select("recruitment_id")
+    .eq("user_id", userId)
+
+  const trackedSet = new Set(
+    (trackedRows ?? []).map((t) => t.recruitment_id as string),
+  )
+
+  const now = new Date().toISOString()
+  const inserts = Array.from(verdictByRec.entries()).map(
+    ([recruitmentId, isEligibleStrict]) => ({
+      user_id:        userId,
+      alert_type:     "new_match" as const,
+      is_read:        false,
+      sent_at:        now,
+      priority:       3 as const,
+      recruitment_id: recruitmentId,
+      alert_event_id: null,
+      // `event_type` is NOT a column on notification_alerts — it's exposed
+      // by v_notification_feed. Setting it here used to throw in some dev
+      // DBs that didn't have the stray column from an aborted migration.
+      explanation: {
+        is_tracked:     trackedSet.has(recruitmentId),
+        is_eligible:    isEligibleStrict === true,
+        matched_exam:   false,   // TODO (P1): wire from preferences.target_exams
+        matched_sector: false,   // TODO (P1): wire from preferences.preferred_sectors
+        matched_type:   false,
+      },
+    }),
+  )
 
   const { data: inserted, error } = await supabase
     .from("notification_alerts")
@@ -393,29 +411,30 @@ export async function approveScrapeItem(
 
   if (updateErr) throw new Error(`approveScrapeItem update: ${updateErr.message}`)
 
-  // ── 6. Broadcast admin-reviewed notification to all onboarded users ──────────
+  // ── 6. Record alert_event for audit trail ────────────────────────────────────
   //
-  // WHY we do this in TypeScript rather than via fn_fanout_alert_event RPC:
-  //   • fn_fanout_alert_event does not exist in any migration — was documented
-  //     in Phase 3A but never created. Every previous call silently failed.
-  //   • fn_notify_recruitment_opened trigger only fires for status='open'.
-  //     Scraped items with past deadlines get status='closed' → trigger skips them.
-  //   • The trigger's org_type matching table is incomplete (no Courts/Judiciary).
+  // Phase 3B follow-up (P0 — April 19 code review fix):
+  //   We no longer blind-broadcast a `new_match` notification_alert to every
+  //   onboarded user with every explanation flag set to false. That was the
+  //   "we over-claim that a new match is personalised" bug the reviewer
+  //   flagged — users saw "new match for you" rows that had nothing to do
+  //   with their profile.
   //
-  // A human admin has verified this item. That makes it trustworthy enough to
-  // notify ALL users who have completed onboarding, regardless of org_type or
-  // recruitment status. Users can filter/ignore in their notification feed.
+  //   The authoritative path is now:
+  //     approveScrapeItem → promote → enqueue eligibility recompute
+  //        → eligibility-consumer → POST /api/eligibility/recompute
+  //        → runEligibilityForUser(serviceClient)
+  //        → engine runs, writes eligibility_results,
+  //          AND emits notification_alerts ONLY for users the engine
+  //          verifies as eligible or conditional, with trustworthy
+  //          explanation flags (is_tracked, is_eligible).
   //
-  // alert_type = 'new_match' (the only valid type for a new opening per the
-  // notification_alerts_alert_type_check constraint).
-  //
-  // recruitmentId is guaranteed non-null here because promoteToRecruitments()
-  // throws on any failure (see runner.ts), and approveScrapeItem re-throws
-  // above before reaching this point.
+  //   So this block only records the audit row. Fan-out happens downstream
+  //   through the engine, not here.
 
+  let alertEventId: string | null = null
   try {
-    // Record the alert_event for audit trail
-    const { data: evt } = await supabase
+    const { data: evt, error: evtErr } = await supabase
       .from("alert_events")
       .insert({
         event_type:     "new_recruitment",
@@ -433,51 +452,13 @@ export async function approveScrapeItem(
       .select("id")
       .single()
 
-    // Fetch all onboarded users
-    const { data: users } = await supabase
-      .from("profiles")
-      .select("id")
-      .eq("onboarding_completed", true)
-
-    if (users && users.length > 0) {
-      const now = new Date().toISOString()
-      const { error: notifErr } = await supabase
-        .from("notification_alerts")
-        .upsert(
-          users.map((u) => ({
-            user_id:        u.id,
-            recruitment_id: recruitmentId,
-            alert_type:     "new_match" as const,
-            is_read:        false,
-            priority:       3 as const,
-            sent_at:        now,
-            alert_event_id: evt?.id ?? null,
-            explanation: {
-              is_tracked:     false,
-              is_eligible:    false,
-              matched_exam:   false,
-              matched_sector: false,
-              matched_type:   false,
-            },
-          })),
-          { onConflict: "user_id,recruitment_id,alert_type", ignoreDuplicates: true }
-        )
-
-      if (notifErr) {
-        console.error("[approveScrapeItem] notification broadcast:", notifErr.message)
-      } else {
-        console.log(`[approveScrapeItem] broadcast to ${users.length} users for recruitment ${recruitmentId}`)
-        // Mark alert_event as completed
-        if (evt) {
-          await supabase
-            .from("alert_events")
-            .update({ fanout_status: "completed", users_notified: users.length })
-            .eq("id", evt.id)
-        }
-      }
+    if (evtErr) {
+      console.error("[approveScrapeItem] alert_event insert:", evtErr.message)
+    } else {
+      alertEventId = evt?.id ?? null
     }
   } catch (e) {
-    console.error("[approveScrapeItem] notification broadcast non-fatal:", e)
+    console.error("[approveScrapeItem] alert_event non-fatal:", e)
   }
 
   // ── 7. Queue eligibility recompute for all users ───────────────────────────
@@ -506,6 +487,22 @@ export async function approveScrapeItem(
           { onConflict: "user_id,recruitment_id,status", ignoreDuplicates: true }
         )
       console.log(`[approveScrapeItem] queued eligibility recompute for ${userIds.length} users`)
+
+      // Mark the audit alert_event as completed — fan-out now happens through
+      // the engine when the consumer drains the queue. users_notified is a
+      // ceiling (not every queued user will end up eligible), so we store
+      // the number of candidates, not the number of inserted alerts.
+      if (alertEventId) {
+        await supabase
+          .from("alert_events")
+          .update({ fanout_status: "completed", users_notified: userIds.length })
+          .eq("id", alertEventId)
+      }
+    } else if (alertEventId) {
+      await supabase
+        .from("alert_events")
+        .update({ fanout_status: "completed", users_notified: 0 })
+        .eq("id", alertEventId)
     }
   } catch (e) {
     console.error("[approveScrapeItem] eligibility queue non-fatal:", e)

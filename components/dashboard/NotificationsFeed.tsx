@@ -271,14 +271,28 @@ export function NotificationsFeed({
   const [localAlerts, setLocalAlerts] = useState<NotificationAlert[]>(initialAlerts)
   const [filter, setFilter] = useState<"all" | "unread">("all")
 
-  // useEffect(() => {
-  //   setLocalAlerts(initialAlerts)
-  // }, [initialAlerts])
+  // Keep localAlerts in sync when the server component re-renders with fresh
+  // initialAlerts (e.g. after router.refresh() from track/untrack, or after
+  // the user completes onboarding and new rows land). Previously this was
+  // commented out, so the feed went stale on every server revalidation.
+  useEffect(() => {
+    setLocalAlerts(initialAlerts)
+  }, [initialAlerts])
 
   const isFree = planId === "free"
   const maxVisible = isFree ? 5 : localAlerts.length
 
   // ── Supabase Realtime — live unread updates ──
+  // Realtime fires on notification_alerts (the raw table). But the UI binds
+  // against `NotificationAlert`, which is the enriched shape from
+  // v_notification_feed (recruitment_name, org_name, days_to_deadline,
+  // explanation, is_tracked, etc.). Casting the raw INSERT row to
+  // NotificationAlert — as the previous version did — left most of those
+  // fields undefined and rendered as a broken placeholder row.
+  //
+  // Fix: when an INSERT fires, take the row id and refetch that one row
+  // from the view. We optimistically show a minimal placeholder in the
+  // meantime so the feed doesn't flicker.
   useEffect(() => {
     const client = createClient()
     const channel = client
@@ -291,11 +305,28 @@ export function NotificationsFeed({
           table: "notification_alerts",
           filter: `user_id=eq.${userId}`,
         },
-        (payload) => {
+        async (payload) => {
+          const rawId = (payload.new as { id?: string } | null)?.id
+          if (!rawId) return
+
+          const { data, error } = await client
+            .from("v_notification_feed")
+            .select("*")
+            .eq("id", rawId)
+            .maybeSingle()
+
+          if (error || !data) {
+            // View-side row not ready yet (view is non-materialized so this
+            // normally isn't an issue, but bail gracefully rather than show
+            // a half-populated card).
+            return
+          }
+
+          const enriched = data as unknown as NotificationAlert
+
           setLocalAlerts((prev) => {
-            const newAlert = payload.new as NotificationAlert
-            if (prev.some((a) => a.id === newAlert.id)) return prev
-            return [newAlert, ...prev]
+            if (prev.some((a) => a.id === enriched.id)) return prev
+            return [enriched, ...prev]
           })
         }
       )

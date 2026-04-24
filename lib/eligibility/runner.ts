@@ -6,19 +6,35 @@
  * and writes results to the eligibility_results cache table.
  *
  * Called:
- *  - After onboarding completes (first run)
- *  - When user updates their profile
- *  - On demand from the dashboard
- *  - By an admin when new recruitments are added
+ *  - After onboarding completes (first run)             → uses cookie-bound client
+ *  - When user updates their profile                    → uses cookie-bound client
+ *  - On demand from the dashboard                       → uses cookie-bound client
+ *  - By the eligibility-consumer Edge Function          → uses service-role client
+ *    (Phase 3B-follow-up: consumer POSTs to
+ *     /api/eligibility/recompute which injects a
+ *     service-role SupabaseClient into this runner.
+ *     That eliminates the duplicate Deno rule engine
+ *     and guarantees one source of truth.)
  *
  * Phase 3B changes:
  *  - Fetch organizations.state via posts → recruitments → organizations join
  *  - Map org_state into PostCriteria for domicile check
  *  - Store is_conditional in eligibility_results upsert
  *  - getEligibleRecruitments also returns conditional results
+ *
+ * Phase 3B follow-up (review fix — P0 eligibility unification):
+ *  - Accept an optional injected SupabaseClient so the same engine runs
+ *    whether the caller is a Server Action or an Edge Function proxy.
+ *  - After writing eligibility_results, also emit notification_alerts for
+ *    newly-matched recruitments with trustworthy `explanation` flags.
+ *    This replaces the old "broadcast new_match to every onboarded user
+ *    with is_eligible=false" behaviour in approveScrapeItem(), which the
+ *    code review correctly flagged as over-claiming personalisation.
  */
 
-import { createClient } from "@/utils/supabase/server"
+import type { SupabaseClient } from "@supabase/supabase-js"
+import { createClient as createCookieClient } from "@/utils/supabase/server"
+import type { Database } from "@/types/supabase"
 import {
   checkEligibilityBatch,
   type PostCriteria,
@@ -29,19 +45,29 @@ import {
 
 /**
  * Run eligibility check for a single user against all open/upcoming posts.
- * Writes results to eligibility_results table.
+ * Writes results to eligibility_results table AND inserts notification_alerts
+ * for recruitments where the user is newly eligible or conditional.
+ *
+ * @param userId            - user.id from auth.users
+ * @param supabaseOverride  - optional client (service-role) — when omitted a
+ *                            cookie-bound server client is created (the usual
+ *                            in-app path).
  */
-export async function runEligibilityForUser(userId: string): Promise<{
+export async function runEligibilityForUser(
+  userId: string,
+  supabaseOverride?: SupabaseClient<Database>,
+): Promise<{
   processed: number
   eligible: number
   conditional: number
+  alerts_inserted: number
   errors: string[]
 }> {
-  const supabase = await createClient()
+  const supabase = (supabaseOverride ?? (await createCookieClient())) as SupabaseClient<Database>
   const errors: string[] = []
 
   // ── 1. Load user data ──────────────────────────────────────────────────
-  const [profileRes, educationRes, attemptsRes] = await Promise.all([
+  const [profileRes, educationRes, attemptsRes, trackedRes] = await Promise.all([
     supabase.from("profiles").select("*").eq("id", userId).single(),
     supabase
       .from("aspirant_education")
@@ -51,15 +77,28 @@ export async function runEligibilityForUser(userId: string): Promise<{
       .from("user_exam_attempts")
       .select("recruitment_id, attempts_used")
       .eq("user_id", userId),
+    supabase
+      .from("tracked_recruitments")
+      .select("recruitment_id")
+      .eq("user_id", userId),
   ])
 
   if (!profileRes.data) {
-    return { processed: 0, eligible: 0, conditional: 0, errors: ["Profile not found"] }
+    return {
+      processed: 0,
+      eligible: 0,
+      conditional: 0,
+      alerts_inserted: 0,
+      errors: ["Profile not found"],
+    }
   }
 
-  const profile = profileRes.data as UserProfile
-  const education = (educationRes.data ?? []) as UserEducation[]
-  const examAttempts = (attemptsRes.data ?? []) as UserExamAttempts[]
+  const profile = profileRes.data as unknown as UserProfile
+  const education = (educationRes.data ?? []) as unknown as UserEducation[]
+  const examAttempts = (attemptsRes.data ?? []) as unknown as UserExamAttempts[]
+  const trackedSet = new Set(
+    (trackedRes.data ?? []).map((t) => t.recruitment_id as string),
+  )
 
   // ── 2. Load all active posts with their criteria + org state ──────────
   // Phase 3B: include organizations(state) so domicile check works.
@@ -81,26 +120,40 @@ export async function runEligibilityForUser(userId: string): Promise<{
 
   if (postsError || !posts) {
     return {
-      processed: 0, eligible: 0, conditional: 0,
+      processed: 0,
+      eligible: 0,
+      conditional: 0,
+      alerts_inserted: 0,
       errors: ["Failed to load posts: " + postsError?.message],
     }
   }
 
   // ── 3. Map to PostCriteria shape ──────────────────────────────────────
-  const postCriteriaList: PostCriteria[] = posts.map((p: any) => {
+  const postCriteriaList: PostCriteria[] = posts.map((p: unknown) => {
     // Supabase returns recruitments as array from !inner join
-    const recruitment = Array.isArray(p.recruitments) ? p.recruitments[0] : p.recruitments
-    const org = Array.isArray(recruitment?.organizations)
-      ? recruitment.organizations[0]
-      : recruitment?.organizations
+    const row = p as {
+      id: string
+      recruitment_id: string
+      recruitments: unknown
+      age_criteria: unknown
+      education_criteria: unknown
+      attempt_limits: unknown
+    }
+    const recruitment = Array.isArray(row.recruitments)
+      ? row.recruitments[0]
+      : row.recruitments
+    const org = Array.isArray((recruitment as { organizations?: unknown })?.organizations)
+      ? (recruitment as { organizations: unknown[] }).organizations[0]
+      : (recruitment as { organizations?: unknown })?.organizations
 
     return {
-      post_id: p.id,
-      recruitment_id: p.recruitment_id,
-      age_criteria: p.age_criteria?.[0] ?? null,
-      education_criteria: p.education_criteria?.[0] ?? null,
-      attempt_limits: p.attempt_limits ?? [],
-      org_state: org?.state ?? null,   // Phase 3B: null = central govt, string = state PSC
+      post_id: row.id,
+      recruitment_id: row.recruitment_id,
+      age_criteria: (row.age_criteria as PostCriteria["age_criteria"][])?.[0] ?? null,
+      education_criteria:
+        (row.education_criteria as PostCriteria["education_criteria"][])?.[0] ?? null,
+      attempt_limits: (row.attempt_limits as PostCriteria["attempt_limits"]) ?? [],
+      org_state: (org as { state?: string | null })?.state ?? null,
     }
   })
 
@@ -113,7 +166,7 @@ export async function runEligibilityForUser(userId: string): Promise<{
     post_id: r.post_id,
     recruitment_id: r.recruitment_id,
     is_eligible: r.result.is_eligible,
-    is_conditional: r.result.is_conditional,   // Phase 3B
+    is_conditional: r.result.is_conditional,
     fail_reasons: r.result.fail_reasons,
     computed_at: new Date().toISOString(),
   }))
@@ -128,10 +181,74 @@ export async function runEligibilityForUser(userId: string): Promise<{
     }
   }
 
+  // ── 6. Emit notification_alerts for matched recruitments (P0 fix) ─────
+  // A recruitment is "matched" if ANY of its posts is eligible or conditional
+  // for this user. We dedupe to one alert per (user, recruitment). The
+  // upsert is idempotent via the unique index on
+  // (user_id, recruitment_id, alert_type) so repeat runs don't spam the feed.
+  //
+  // This is the SINGLE path that produces `new_match` alerts. approveScrapeItem
+  // used to broadcast `new_match` to every onboarded user with explanation
+  // flags all false — that was the "new match ≠ actually relevant" bug the
+  // review flagged. The fix: only the engine's own verdict unlocks an alert.
+  const eligibleByRec = new Map<string, boolean>()   // true = eligible, false = conditional only
+  for (const r of results) {
+    if (r.result.is_eligible) {
+      eligibleByRec.set(r.recruitment_id, true)
+    } else if (r.result.is_conditional && !eligibleByRec.has(r.recruitment_id)) {
+      eligibleByRec.set(r.recruitment_id, false)
+    }
+  }
+
+  let alertsInserted = 0
+  if (eligibleByRec.size > 0) {
+    const now = new Date().toISOString()
+    const alertInserts = Array.from(eligibleByRec.entries()).map(
+      ([recruitmentId, isEligibleStrict]) => ({
+        user_id: userId,
+        recruitment_id: recruitmentId,
+        alert_type: "new_match" as const,
+        is_read: false,
+        priority: 3,
+        sent_at: now,
+        alert_event_id: null,
+        // `event_type` is not a column on notification_alerts — it lives on
+        // v_notification_feed. Don't set it here.
+        explanation: {
+          is_tracked: trackedSet.has(recruitmentId),
+          is_eligible: isEligibleStrict === true,
+          matched_exam: false,     // TODO (P1): wire from preferences.target_exams
+          matched_sector: false,   // TODO (P1): wire from preferences.preferred_sectors
+          matched_type: false,
+        },
+      }),
+    )
+
+    const { data: inserted, error: alertErr } = await supabase
+      .from("notification_alerts")
+      .upsert(alertInserts, {
+        onConflict: "user_id,recruitment_id,alert_type",
+        ignoreDuplicates: true,
+      })
+      .select("id")
+
+    if (alertErr) {
+      errors.push("Alert write failed: " + alertErr.message)
+    } else {
+      alertsInserted = inserted?.length ?? 0
+    }
+  }
+
   const eligible = results.filter((r) => r.result.is_eligible).length
   const conditional = results.filter((r) => r.result.is_conditional).length
 
-  return { processed: results.length, eligible, conditional, errors }
+  return {
+    processed: results.length,
+    eligible,
+    conditional,
+    alerts_inserted: alertsInserted,
+    errors,
+  }
 }
 
 /**
@@ -140,7 +257,7 @@ export async function runEligibilityForUser(userId: string): Promise<{
  * Ordered: eligible first, then conditional.
  */
 export async function getEligibleRecruitments(userId: string) {
-  const supabase = await createClient()
+  const supabase = await createCookieClient()
 
   const { data, error } = await supabase
     .from("eligibility_results")
@@ -182,7 +299,7 @@ export async function getEligibleRecruitments(userId: string) {
  * Used on the "All Exams" page to show why certain exams don't match.
  */
 export async function getAllEligibilityResults(userId: string) {
-  const supabase = await createClient()
+  const supabase = await createCookieClient()
 
   const { data, error } = await supabase
     .from("eligibility_results")
