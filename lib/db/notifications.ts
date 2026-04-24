@@ -206,17 +206,26 @@ export async function seedNotificationsForNewUser(userId: string): Promise<numbe
 // USER NOTIFICATION PREFERENCES
 // =============================================================================
 
-export async function getUserNotifPrefs(_userId: string): Promise<UserNotificationPrefs | null> {
-  // notification_preferences table not yet in DB schema.
-  // After running its migration + supabase gen types, restore to a real query.
-  return null
+export async function getUserNotifPrefs(userId: string): Promise<UserNotificationPrefs | null> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from("notification_preferences")
+    .select("*")
+    .eq("user_id", userId)
+    .maybeSingle()
+  if (error) throw new Error(`getUserNotifPrefs: ${error.message}`)
+  return data as UserNotificationPrefs | null
 }
 
 export async function upsertUserNotifPrefs(
-  _userId: string,
-  _prefs: Partial<Omit<UserNotificationPrefs, "user_id">>
+  userId: string,
+  prefs: Partial<Omit<UserNotificationPrefs, "user_id">>
 ): Promise<void> {
-  // notification_preferences table not yet in DB schema. No-op until migration runs.
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from("notification_preferences")
+    .upsert({ user_id: userId, ...prefs }, { onConflict: "user_id" })
+  if (error) throw new Error(`upsertUserNotifPrefs: ${error.message}`)
 }
 
 // =============================================================================
