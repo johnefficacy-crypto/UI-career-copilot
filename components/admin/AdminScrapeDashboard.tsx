@@ -23,11 +23,15 @@ import {
   adminRejectQueueItem,
   adminToggleScrapeSource,
   adminResetSourceFails,
+  adminSetExtractionStatus,
+  adminReviewEvidenceField,
+  adminGetEvidenceForItem,
 } from "@/actions/notifications"
 import type {
   ScrapeRun,
   ScraperStats,
   QueueReviewItem,
+  FieldEvidence,
   SourceHealthSnapshot,
 } from "@/types/notifications"
 import type { SourceRegistryEntry } from "@/lib/db/source-registry"
@@ -105,6 +109,35 @@ function qualityBar(score: number | null) {
         <div className="h-full rounded-full transition-all" style={{ width: `${score}%`, background: color }} />
       </div>
       <span className="text-[10px] tabular-nums text-center" style={{ color }}>{score} · {label}</span>
+    </div>
+  )
+}
+
+function extractionStatusBadge(status: string | null) {
+  const map: Record<string, [string, string]> = {
+    unverified:    ["var(--text-muted)",  "rgba(255,255,255,0.04)"],
+    needs_review:  ["var(--warning)",     "rgba(245,158,11,0.10)"],
+    verified:      ["var(--success)",     "rgba(34,197,94,0.10)"],
+    rejected:      ["var(--danger)",      "rgba(239,68,68,0.10)"],
+    stale:         ["var(--text-ghost)",  "rgba(255,255,255,0.04)"],
+    duplicate:     ["var(--text-ghost)",  "rgba(255,255,255,0.04)"],
+  }
+  if (!status) return null
+  const [color, bg] = map[status] ?? map.unverified
+  return badge(status, color, bg)
+}
+
+function evidenceBar(total: number | null, verified: number | null) {
+  if (total == null || total === 0) return null
+  const v = verified ?? 0
+  const pct = Math.round((v / total) * 100)
+  const color = pct >= 80 ? "var(--success)" : pct >= 50 ? "var(--warning)" : "var(--danger)"
+  return (
+    <div className="flex items-center gap-1.5" title={`${v}/${total} evidence verified`}>
+      <div className="h-1.5 w-16 rounded-full" style={{ background: "rgba(255,255,255,0.08)" }}>
+        <div className="h-full rounded-full" style={{ width: `${pct}%`, background: color }} />
+      </div>
+      <span className="text-[10px] tabular-nums" style={{ color }}>{v}/{total}</span>
     </div>
   )
 }
@@ -339,6 +372,11 @@ export function AdminScrapeDashboard({
   const [catFilter, setCatFilter]    = useState<string>("all")
   const [runMsg, setRunMsg]          = useState<string | null>(null)
   const [runErr, setRunErr]          = useState<string | null>(errorMessage ?? null)
+  // Evidence review state
+  const [selectedItemId, setSelectedItemId]  = useState<string | null>(null)
+  const [evidenceRows, setEvidenceRows]       = useState<FieldEvidence[]>([])
+  const [evidenceLoading, setEvidenceLoading] = useState(false)
+  const [evidenceErr, setEvidenceErr]         = useState<string | null>(null)
 
   const pendingCount    = queue.filter(q => q.status === "pending").length
   const categories      = [...new Set(registry.map(s => s.category))].sort()
@@ -399,6 +437,55 @@ export function AdminScrapeDashboard({
       await adminResetSourceFails(id)
     })
   }
+
+  async function handleSelectItem(id: string) {
+    if (selectedItemId === id) {
+      setSelectedItemId(null)
+      setEvidenceRows([])
+      return
+    }
+    setSelectedItemId(id)
+    setEvidenceLoading(true)
+    setEvidenceErr(null)
+    setEvidenceRows([])
+    const result = await adminGetEvidenceForItem(id)
+    setEvidenceLoading(false)
+    if (result.success) setEvidenceRows(result.data ?? [])
+    else setEvidenceErr(result.error ?? "Failed to load evidence")
+  }
+
+  function handleVerifyEvidence(evidenceId: string) {
+    setEvidenceRows(prev => prev.map(e => e.id === evidenceId ? { ...e, reviewer_status: "verified" as const } : e))
+    startTransition(async () => {
+      await adminReviewEvidenceField(evidenceId, "verified", selectedItemId ?? undefined)
+    })
+  }
+
+  function handleRejectEvidence(evidenceId: string) {
+    setEvidenceRows(prev => prev.map(e => e.id === evidenceId ? { ...e, reviewer_status: "rejected" as const } : e))
+    startTransition(async () => {
+      await adminReviewEvidenceField(evidenceId, "rejected", selectedItemId ?? undefined)
+    })
+  }
+
+  function handleMarkVerified(itemId: string) {
+    setQueue(prev => prev.map(q => q.id === itemId ? { ...q, extraction_status: "verified" } : q))
+    startTransition(async () => {
+      await adminSetExtractionStatus(itemId, "verified")
+    })
+  }
+
+  function handleMarkNeedsReview(itemId: string) {
+    setQueue(prev => prev.map(q => q.id === itemId ? { ...q, extraction_status: "needs_review" } : q))
+    startTransition(async () => {
+      await adminSetExtractionStatus(itemId, "needs_review")
+    })
+  }
+
+  const needsReviewCount = queue.filter(q =>
+    q.extraction_status === "needs_review" ||
+    (q.extraction_status === "unverified" && q.evidence_required)
+  ).length
 
   const lastRun = stats.lastRun
 
@@ -477,8 +564,9 @@ export function AdminScrapeDashboard({
 
       {/* Tabs */}
       <div className="flex items-center gap-2 flex-wrap">
-        <Tab label="Queue Review"   active={tab === "queue"}    count={pendingCount} onClick={() => setTab("queue")} />
-        <Tab label="Source Registry" active={tab === "registry"} count={registry.length} onClick={() => setTab("registry")} />
+        <Tab label="Queue Review"   active={tab === "queue"}    count={pendingCount}      onClick={() => setTab("queue")} />
+        <Tab label="Evidence Review" active={tab === "evidence"} count={needsReviewCount}  onClick={() => setTab("evidence")} />
+        <Tab label="Source Registry" active={tab === "registry"} count={registry.length}   onClick={() => setTab("registry")} />
         <Tab label="Source Health"  active={tab === "health"}   onClick={() => setTab("health")} />
         <Tab label="Run History"    active={tab === "runs"}     onClick={() => setTab("runs")} />
       </div>
@@ -502,6 +590,172 @@ export function AdminScrapeDashboard({
               onReject={handleReject}
               disabled={isPending}
             />
+          ))}
+        </div>
+      )}
+
+      {/* ── Evidence Review Tab ───────────────────────────────────────────────── */}
+      {tab === "evidence" && (
+        <div className="space-y-3">
+          <p className="text-xs uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
+            {needsReviewCount} items need evidence review · click a row to inspect field evidence
+          </p>
+          {queue.filter(q => q.extraction_status === "needs_review" || q.extraction_status === "unverified" || q.evidence_total_count != null).length === 0 ? (
+            <div className="rounded-xl px-4 py-8 text-center"
+              style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}>
+              <p className="text-sm" style={{ color: "var(--text-dim)" }}>No items with evidence data</p>
+              <p className="text-xs mt-1" style={{ color: "var(--text-ghost)" }}>
+                Evidence rows are generated when the scraper runs with migration 017 applied.
+              </p>
+            </div>
+          ) : queue.filter(q => q.extraction_status !== null || q.evidence_total_count != null).map(item => (
+            <div key={item.id}>
+              {/* Evidence row header */}
+              <button type="button" onClick={() => handleSelectItem(item.id)} className="w-full text-left"
+                style={{
+                  display: "flex", alignItems: "center", gap: 12,
+                  padding: "12px 16px", borderRadius: 12,
+                  background: selectedItemId === item.id ? "var(--bg-surface-md)" : "var(--bg-surface)",
+                  border: `1px solid ${selectedItemId === item.id ? "var(--border-md)" : "var(--border)"}`,
+                  cursor: "pointer",
+                }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <span className="text-sm font-medium truncate" style={{ color: "rgba(255,255,255,0.80)" }}>
+                      {item.title ?? "Unknown title"}
+                    </span>
+                    {extractionStatusBadge(item.extraction_status)}
+                    {item.extraction_provider && (
+                      <span className="text-xs px-1.5 py-px rounded"
+                        style={{ background: "rgba(255,255,255,0.04)", color: "var(--text-ghost)" }}>
+                        {item.extraction_provider}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs mt-0.5" style={{ color: "var(--text-ghost)" }}>
+                    {item.org_name ?? "—"} · {item.source_name}
+                  </p>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
+                  {evidenceBar(item.evidence_total_count, item.evidence_verified_count)}
+                  {statusBadge(item.status)}
+                  {item.extraction_status !== "verified" && item.extraction_status !== "rejected" && (
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <button type="button" disabled={isPending}
+                        onClick={(e) => { e.stopPropagation(); handleMarkVerified(item.id) }}
+                        className="text-xs px-2 py-1 rounded-lg"
+                        style={{ background: "rgba(34,197,94,0.10)", color: "var(--success)", border: "1px solid rgba(34,197,94,0.20)" }}>
+                        Mark Verified
+                      </button>
+                      <button type="button" disabled={isPending}
+                        onClick={(e) => { e.stopPropagation(); handleMarkNeedsReview(item.id) }}
+                        className="text-xs px-2 py-1 rounded-lg"
+                        style={{ background: "rgba(245,158,11,0.08)", color: "var(--warning)", border: "1px solid rgba(245,158,11,0.20)" }}>
+                        Needs Review
+                      </button>
+                    </div>
+                  )}
+                  <span className="text-xs" style={{ color: "var(--text-ghost)" }}>
+                    {selectedItemId === item.id ? "▲" : "▼"}
+                  </span>
+                </div>
+              </button>
+
+              {/* Expanded evidence detail */}
+              {selectedItemId === item.id && (
+                <div className="rounded-xl p-4 mt-1 space-y-3"
+                  style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                  {evidenceLoading && (
+                    <p className="text-xs text-center py-4" style={{ color: "var(--text-ghost)" }}>
+                      Loading evidence…
+                    </p>
+                  )}
+                  {evidenceErr && (
+                    <p className="text-xs py-2" style={{ color: "var(--danger)" }}>
+                      {evidenceErr}
+                    </p>
+                  )}
+                  {!evidenceLoading && !evidenceErr && evidenceRows.length === 0 && (
+                    <p className="text-xs py-2 text-center" style={{ color: "var(--text-ghost)" }}>
+                      No evidence rows found for this item.
+                    </p>
+                  )}
+                  {!evidenceLoading && evidenceRows.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-xs uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
+                        {evidenceRows.length} evidence fields · verify or reject each field
+                      </p>
+                      {evidenceRows.map(ev => (
+                        <div key={ev.id} className="flex items-start gap-3 px-3 py-2.5 rounded-lg"
+                          style={{
+                            background: ev.reviewer_status === "verified"
+                              ? "rgba(34,197,94,0.04)"
+                              : ev.reviewer_status === "rejected"
+                                ? "rgba(239,68,68,0.04)"
+                                : "var(--bg-surface)",
+                            border: `1px solid ${
+                              ev.reviewer_status === "verified" ? "rgba(34,197,94,0.15)"
+                              : ev.reviewer_status === "rejected" ? "rgba(239,68,68,0.15)"
+                              : "var(--border)"
+                            }`,
+                          }}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                              <span className="text-xs font-mono font-medium"
+                                style={{ color: "var(--gold)", minWidth: 140 }}>
+                                {ev.field_name}
+                              </span>
+                              <span className="text-xs truncate" style={{ color: "rgba(255,255,255,0.70)" }}>
+                                {ev.field_value ?? "—"}
+                              </span>
+                            </div>
+                            {ev.evidence_text && (
+                              <p className="text-xs mt-1 italic"
+                                style={{ color: "var(--text-ghost)", fontFamily: "monospace" }}>
+                                "{ev.evidence_text.slice(0, 120)}{ev.evidence_text.length > 120 ? "…" : ""}"
+                              </p>
+                            )}
+                            {ev.confidence != null && (
+                              <span className="text-[10px] mt-0.5 block" style={{ color: "var(--text-ghost)" }}>
+                                confidence: {Math.round(ev.confidence * 100)}%
+                                {ev.provider ? ` · ${ev.provider}` : ""}
+                              </span>
+                            )}
+                          </div>
+                          <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                            {ev.reviewer_status !== "verified" && (
+                              <button type="button" disabled={isPending}
+                                onClick={() => handleVerifyEvidence(ev.id)}
+                                className="text-xs px-2 py-1 rounded"
+                                style={{ background: "rgba(34,197,94,0.10)", color: "var(--success)", border: "1px solid rgba(34,197,94,0.20)" }}>
+                                ✓
+                              </button>
+                            )}
+                            {ev.reviewer_status !== "rejected" && (
+                              <button type="button" disabled={isPending}
+                                onClick={() => handleRejectEvidence(ev.id)}
+                                className="text-xs px-2 py-1 rounded"
+                                style={{ background: "rgba(239,68,68,0.08)", color: "var(--danger)", border: "1px solid rgba(239,68,68,0.20)" }}>
+                                ✗
+                              </button>
+                            )}
+                            <span className="text-xs px-1.5 py-1 rounded"
+                              style={{
+                                color: ev.reviewer_status === "verified" ? "var(--success)"
+                                  : ev.reviewer_status === "rejected" ? "var(--danger)"
+                                  : "var(--text-ghost)",
+                                background: "transparent",
+                              }}>
+                              {ev.reviewer_status}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           ))}
         </div>
       )}

@@ -32,8 +32,11 @@ import {
   upsertUserNotifPrefs,
   trackRecruitment,
   untrackRecruitment,
+  setExtractionStatus,
+  setEvidenceReviewerStatus,
 } from "@/lib/db/notifications"
-import type { UserNotificationPrefs } from "@/types/notifications"
+import { requireAdminRole, logAdminAction } from "@/lib/db/admin"
+import type { UserNotificationPrefs, FieldEvidence } from "@/types/notifications"
 
 // ─── Auth guards ──────────────────────────────────────────────────────────────
 
@@ -44,14 +47,14 @@ async function requireUser() {
   return user
 }
 
+// requireAdmin: accepts any admin role — delegates to lib/db/admin.ts
 async function requireAdmin() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect("/auth/login")
-  const { data: profile } = await supabase
-    .from("profiles").select("is_admin").eq("id", user.id).single()
-  if (!profile?.is_admin) redirect("/dashboard")
-  return user
+  try {
+    const ctx = await requireAdminRole()
+    return { id: ctx.userId, email: ctx.userEmail }
+  } catch {
+    redirect("/dashboard")
+  }
 }
 
 // =============================================================================
@@ -110,6 +113,14 @@ export async function adminApproveQueueItem(formData: FormData) {
   if (!itemId) redirect("/admin/scrape?error=Missing+item_id")
   try {
     await approveScrapeItem(itemId, admin.id, notes)
+    void logAdminAction({
+      actorId:    admin.id,
+      actorEmail: admin.email,
+      action:     "approve_scrape_item",
+      entityType: "scrape_queue",
+      entityId:   itemId,
+      newValue:   { status: "approved", notes },
+    })
     // Do NOT revalidatePath("/admin/scrape") — the client already applies an
     // optimistic update (status → "approved") in handleApprove(), and
     // revalidating the full page causes Next.js to recompile it in dev mode
@@ -129,9 +140,84 @@ export async function adminRejectQueueItem(formData: FormData) {
   if (!itemId) redirect("/admin/scrape?error=Missing+item_id")
   try {
     await rejectScrapeItem(itemId, admin.id, notes)
+    void logAdminAction({
+      actorId:    admin.id,
+      actorEmail: admin.email,
+      action:     "reject_scrape_item",
+      entityType: "scrape_queue",
+      entityId:   itemId,
+      newValue:   { status: "rejected", notes },
+    })
     revalidatePath("/admin/scrape")
   } catch (err) {
     redirect(`/admin/scrape?error=${encodeURIComponent(err instanceof Error ? err.message : "Error")}`)
+  }
+}
+
+// =============================================================================
+// ADMIN — EVIDENCE REVIEW
+// =============================================================================
+
+/** Set extraction_status on a scrape_queue item from the evidence review UI. */
+export async function adminSetExtractionStatus(
+  itemId: string,
+  status: "unverified" | "needs_review" | "verified" | "rejected" | "stale" | "duplicate",
+  notes?: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const admin = await requireAdmin()
+    await setExtractionStatus(itemId, status)
+    void logAdminAction({
+      actorId:    admin.id,
+      actorEmail: admin.email,
+      action:     "set_extraction_status",
+      entityType: "scrape_queue",
+      entityId:   itemId,
+      newValue:   { extraction_status: status },
+      notes,
+    })
+    revalidatePath("/admin/scrape")
+    return { success: true }
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : "Unknown error" }
+  }
+}
+
+/** Fetch evidence rows for a scrape_queue item (used by the review panel). */
+export async function adminGetEvidenceForItem(
+  queueItemId: string
+): Promise<{ success: boolean; data?: FieldEvidence[]; error?: string }> {
+  try {
+    await requireAdminRole("queue")
+    const { getEvidenceForQueueItem } = await import("@/lib/db/notifications")
+    const rows = await getEvidenceForQueueItem(queueItemId)
+    return { success: true, data: rows }
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : "Unknown error" }
+  }
+}
+
+/** Mark a single evidence field as verified or rejected. */
+export async function adminReviewEvidenceField(
+  evidenceId: string,
+  reviewerStatus: FieldEvidence["reviewer_status"],
+  queueItemId?: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const admin = await requireAdmin()
+    await setEvidenceReviewerStatus(evidenceId, reviewerStatus)
+    void logAdminAction({
+      actorId:    admin.id,
+      actorEmail: admin.email,
+      action:     "review_evidence_field",
+      entityType: "extracted_field_evidence",
+      entityId:   evidenceId,
+      newValue:   { reviewer_status: reviewerStatus, queue_item_id: queueItemId },
+    })
+    if (queueItemId) revalidatePath("/admin/scrape")
+    return { success: true }
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : "Unknown error" }
   }
 }
 

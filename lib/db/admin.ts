@@ -1,13 +1,63 @@
 import { createClient } from "@/utils/supabase/server"
 import type { Json } from "@/types/supabase"
 
-// ─── Guards ──────────────────────────────────────────────────────────────────
+// ─── Role types ───────────────────────────────────────────────────────────────
+
+export type AdminRole =
+  | "super_admin"
+  | "ops_admin"
+  | "content_admin"
+  | "scraper_admin"
+  | "support_admin"
+
+/** Permissions per role. '*' means unrestricted. */
+const ROLE_PERMISSIONS: Record<AdminRole, string[]> = {
+  super_admin:   ["*"],
+  ops_admin:     ["scrape", "sources", "queue", "recruitments", "orgs", "audit"],
+  content_admin: ["recruitments", "orgs", "posts"],
+  scraper_admin: ["scrape", "sources", "queue"],
+  support_admin: ["users", "notifications"],
+}
+
+// ─── Guards ───────────────────────────────────────────────────────────────────
+
+export interface AdminContext {
+  userId:     string
+  userEmail:  string | undefined
+  role:       AdminRole | null
+  isLegacyAdmin: boolean  // is_admin = true (pre-migration)
+}
 
 /**
- * Verify the current user is an admin. Throws if not.
- * Call at the top of every admin server action.
+ * requireAdmin — backward-compatible guard.
+ * Accepts any admin: is_admin=true OR any admin_role assigned.
+ * Returns userId. Throws UNAUTHENTICATED or UNAUTHORIZED.
  */
 export async function requireAdmin(): Promise<string> {
+  const ctx = await getAdminContext()
+  return ctx.userId
+}
+
+/**
+ * requireAdminRole — granular guard.
+ * Pass a permission string to enforce least-privilege.
+ * Example: requireAdminRole("scrape") blocks content_admin and support_admin.
+ */
+export async function requireAdminRole(permission?: string): Promise<AdminContext> {
+  const ctx = await getAdminContext()
+
+  if (permission && !ctx.isLegacyAdmin && ctx.role !== null) {
+    const allowed = ROLE_PERMISSIONS[ctx.role] ?? []
+    if (!allowed.includes("*") && !allowed.includes(permission)) {
+      throw new Error(`FORBIDDEN: role '${ctx.role}' cannot perform '${permission}'`)
+    }
+  }
+
+  return ctx
+}
+
+/** Internal: fetch profile and build AdminContext. Throws if not admin. */
+async function getAdminContext(): Promise<AdminContext> {
   const supabase = await createClient()
 
   const { data: { user } } = await supabase.auth.getUser()
@@ -15,12 +65,78 @@ export async function requireAdmin(): Promise<string> {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("is_admin")
+    .select("is_admin, admin_role")
     .eq("id", user.id)
     .single()
 
-  if (!profile?.is_admin) throw new Error("UNAUTHORIZED")
-  return user.id
+  const isLegacyAdmin = profile?.is_admin === true
+  const role = (profile?.admin_role ?? null) as AdminRole | null
+
+  if (!isLegacyAdmin && role === null) throw new Error("UNAUTHORIZED")
+
+  return {
+    userId:        user.id,
+    userEmail:     user.email,
+    role,
+    isLegacyAdmin,
+  }
+}
+
+// ─── Audit log ────────────────────────────────────────────────────────────────
+
+export interface AuditParams {
+  actorId:    string
+  actorEmail?: string
+  action:     string       // e.g. 'approve_scrape_item'
+  entityType: string       // e.g. 'scrape_queue'
+  entityId?:  string
+  oldValue?:  unknown
+  newValue?:  unknown
+  notes?:     string
+}
+
+/**
+ * logAdminAction — non-throwing audit log write.
+ * NEVER throws: audit failures must never break the primary operation.
+ */
+export async function logAdminAction(params: AuditParams): Promise<void> {
+  try {
+    const supabase = await createClient()
+    await supabase.from("admin_audit_logs").insert({
+      actor_id:    params.actorId,
+      actor_email: params.actorEmail ?? null,
+      action:      params.action,
+      entity_type: params.entityType,
+      entity_id:   params.entityId ?? null,
+      old_value:   params.oldValue != null
+        ? (typeof params.oldValue === "object"
+            ? params.oldValue
+            : { value: params.oldValue })
+        : null,
+      new_value:   params.newValue != null
+        ? (typeof params.newValue === "object"
+            ? params.newValue
+            : { value: params.newValue })
+        : null,
+      notes:       params.notes ?? null,
+    })
+  } catch {
+    // Intentionally swallowed — audit log failure is non-fatal
+  }
+}
+
+/**
+ * getAdminAuditLog — recent audit entries for admin overview.
+ * Returns at most `limit` rows, newest first.
+ */
+export async function getAdminAuditLog(limit = 50) {
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from("admin_audit_logs")
+    .select("id, actor_email, action, entity_type, entity_id, notes, created_at")
+    .order("created_at", { ascending: false })
+    .limit(limit)
+  return data ?? []
 }
 
 // ─── Organizations ────────────────────────────────────────────────────────────

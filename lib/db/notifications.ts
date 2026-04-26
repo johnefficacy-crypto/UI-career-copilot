@@ -28,6 +28,7 @@ import type {
   ScrapeQueueItem,
   ScrapeSource,
   QueueReviewItem,
+  FieldEvidence,
   ScraperStats,
   SourceHealthSnapshot,
   SourceTier,
@@ -347,6 +348,16 @@ export async function getScrapeQueue(
       canonical_id:       null,
       canonical_name:     null,
       run_started_at:     null,
+      // Trust pipeline — not available in direct table fallback
+      extraction_status:         null,
+      evidence_required:         true,
+      notification_document_id:  null,
+      extraction_provider:       null,
+      extraction_model:          null,
+      evidence_total_count:      null,
+      evidence_verified_count:   null,
+      evidence_rejected_count:   null,
+      evidence_missing_count:    null,
     } satisfies QueueReviewItem
   })
 }
@@ -780,6 +791,58 @@ export async function getSourceHealthSnapshots(): Promise<SourceHealthSnapshot[]
       items_7d:          items7d,
     }
   })
+}
+
+// =============================================================================
+// EVIDENCE REVIEW
+// =============================================================================
+
+/**
+ * Loads all extracted_field_evidence rows for a scrape_queue item.
+ * Used by the evidence review panel in the admin scrape dashboard.
+ */
+export async function getEvidenceForQueueItem(queueItemId: string): Promise<FieldEvidence[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from("extracted_field_evidence")
+    .select("id,scrape_queue_id,document_id,field_name,field_value,evidence_text,char_start,char_end,confidence,reviewer_status,provider,model_used,created_at")
+    .eq("scrape_queue_id", queueItemId)
+    .order("field_name")
+  if (error) throw new Error(`getEvidenceForQueueItem: ${error.message}`)
+  return (data ?? []) as unknown as FieldEvidence[]
+}
+
+/**
+ * Update reviewer_status on a single evidence row.
+ * Called by admin when verifying or rejecting individual field evidence.
+ */
+export async function setEvidenceReviewerStatus(
+  evidenceId: string,
+  status: FieldEvidence["reviewer_status"]
+): Promise<void> {
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from("extracted_field_evidence")
+    .update({ reviewer_status: status })
+    .eq("id", evidenceId)
+  if (error) throw new Error(`setEvidenceReviewerStatus: ${error.message}`)
+}
+
+/**
+ * Update extraction_status on a scrape_queue row.
+ * Called by admin to mark an item as verified/needs_review from the UI
+ * (independent of the full approval flow).
+ */
+export async function setExtractionStatus(
+  queueItemId: string,
+  status: "unverified" | "needs_review" | "verified" | "rejected" | "stale" | "duplicate"
+): Promise<void> {
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from("scrape_queue")
+    .update({ extraction_status: status })
+    .eq("id", queueItemId)
+  if (error) throw new Error(`setExtractionStatus: ${error.message}`)
 }
 
 // =============================================================================

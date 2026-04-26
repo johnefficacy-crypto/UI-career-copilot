@@ -197,7 +197,7 @@ export type QueueReviewItem = {
   source_url:         string
   source_name:        string
   confidence_score:   number
-  data_quality_score: number | null  // 0-100 completeness score (Stage 3)
+  data_quality_score: number | null  // 0-100 completeness score
   status:             ScrapeQueueItem["status"]
   scraped_at:         string
   reviewed_at:        string | null
@@ -211,6 +211,33 @@ export type QueueReviewItem = {
   canonical_id:       string | null
   canonical_name:     string | null
   run_started_at:     string | null
+  // ── Trust pipeline columns (migration 017 / 018) ──────────────────────────
+  extraction_status:         string | null   // unverified|needs_review|verified|rejected|stale|duplicate
+  evidence_required:         boolean
+  notification_document_id:  string | null
+  extraction_provider:       string | null   // rss_direct|llm|selector
+  extraction_model:          string | null
+  evidence_total_count:      number | null
+  evidence_verified_count:   number | null
+  evidence_rejected_count:   number | null
+  evidence_missing_count:    number | null
+}
+
+/** A single field-level evidence row from extracted_field_evidence */
+export type FieldEvidence = {
+  id:              string
+  queue_item_id:   string
+  document_id:     string | null
+  field_name:      string
+  field_value:     string | null
+  evidence_text:   string | null
+  char_start:      number | null
+  char_end:        number | null
+  confidence:      number | null
+  reviewer_status: "pending" | "verified" | "rejected" | "needs_clarification"
+  provider:        string | null
+  model_used:      string | null
+  created_at:      string
 }
 
 export type ScraperStats = {

@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation"
 import { revalidatePath } from "next/cache"
-import { requireAdmin, createOrganization, updateOrganization, createRecruitment, updateRecruitment, deleteRecruitment, createPost, updatePost, deletePost, upsertEducationCriteria, upsertAgeCriteria, replaceAttemptLimits, replaceVacancies, upsertSalaryDetails, replaceExamStages } from "@/lib/db/admin"
+import { requireAdmin, requireAdminRole, logAdminAction, createOrganization, updateOrganization, createRecruitment, updateRecruitment, deleteRecruitment, createPost, updatePost, deletePost, upsertEducationCriteria, upsertAgeCriteria, replaceAttemptLimits, replaceVacancies, upsertSalaryDetails, replaceExamStages } from "@/lib/db/admin"
 import { runEligibilityForUser } from "@/lib/eligibility/runner"
 import { createClient } from "@/utils/supabase/server"
 
@@ -52,8 +52,8 @@ export async function adminUpdateOrganization(formData: FormData) {
 
 export async function adminCreateRecruitment(formData: FormData) {
   try {
-    await requireAdmin()
-    const rec = await createRecruitment({
+    const ctx = await requireAdminRole("recruitments")
+    const input = {
       organization_id: formData.get("organization_id") as string,
       name: formData.get("name") as string,
       year: Number(formData.get("year")),
@@ -61,14 +61,23 @@ export async function adminCreateRecruitment(formData: FormData) {
       apply_start_date: (formData.get("apply_start_date") as string) || null,
       apply_end_date: (formData.get("apply_end_date") as string) || null,
       status: (formData.get("status") as string) || "upcoming",
-    })
+    }
+    const rec = await createRecruitment(input)
 
     // Add exam stages if provided
     const stagesJson = formData.get("stages_json") as string
     if (stagesJson) {
-      const stages = JSON.parse(stagesJson)
-      await replaceExamStages(rec.id, stages)
+      await replaceExamStages(rec.id, JSON.parse(stagesJson))
     }
+
+    void logAdminAction({
+      actorId:    ctx.userId,
+      actorEmail: ctx.userEmail,
+      action:     "create_recruitment",
+      entityType: "recruitment",
+      entityId:   rec.id,
+      newValue:   input,
+    })
 
     revalidatePath("/admin/recruitments")
     redirect(`/admin/recruitments/${rec.id}`)
@@ -80,20 +89,30 @@ export async function adminCreateRecruitment(formData: FormData) {
 export async function adminUpdateRecruitment(formData: FormData) {
   const id = formData.get("id") as string
   try {
-    await requireAdmin()
-    await updateRecruitment(id, {
+    const ctx = await requireAdminRole("recruitments")
+    const input = {
       name: formData.get("name") as string,
       year: Number(formData.get("year")),
       notification_date: (formData.get("notification_date") as string) || null,
       apply_start_date: (formData.get("apply_start_date") as string) || null,
       apply_end_date: (formData.get("apply_end_date") as string) || null,
       status: formData.get("status") as string,
-    })
+    }
+    await updateRecruitment(id, input)
 
     const stagesJson = formData.get("stages_json") as string
     if (stagesJson) {
       await replaceExamStages(id, JSON.parse(stagesJson))
     }
+
+    void logAdminAction({
+      actorId:    ctx.userId,
+      actorEmail: ctx.userEmail,
+      action:     "update_recruitment",
+      entityType: "recruitment",
+      entityId:   id,
+      newValue:   input,
+    })
 
     revalidatePath("/admin/recruitments")
     revalidatePath(`/admin/recruitments/${id}`)
@@ -106,8 +125,15 @@ export async function adminUpdateRecruitment(formData: FormData) {
 export async function adminDeleteRecruitment(formData: FormData) {
   const id = formData.get("id") as string
   try {
-    await requireAdmin()
+    const ctx = await requireAdminRole("recruitments")
     await deleteRecruitment(id)
+    void logAdminAction({
+      actorId:    ctx.userId,
+      actorEmail: ctx.userEmail,
+      action:     "delete_recruitment",
+      entityType: "recruitment",
+      entityId:   id,
+    })
     revalidatePath("/admin/recruitments")
   } catch (err) {
     adminRedirectOnError("/admin/recruitments", err)
