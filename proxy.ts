@@ -21,10 +21,15 @@
  *   /marketplace/*  Public course catalogue (unauthenticated browse)
  *   /forum/*        Semi-public (reads open, writes guarded in actions)
  *
- * ─── Performance fix ──────────────────────────────────────────────────────────
+ * ─── Phase 3D fix ────────────────────────────────────────────────────────────
+ * Removed the profiles.onboarding_completed DB call from the proxy.
+ * Previously every request made 2 Supabase round-trips (getUser + profiles SELECT).
+ * Now only getUser() runs here — JWT refresh is the only reason we need it.
+ * Onboarding redirect is handled in app/dashboard/layout.tsx (runs once on
+ * dashboard load, not on every static asset or API request).
+ *
  * Matcher excludes _next/static, _next/image, and static file extensions so
- * the proxy never runs on JS bundles, CSS, fonts, or images — eliminating the
- * ~4 s per-request overhead seen in the dev server logs.
+ * the proxy never runs on JS bundles, CSS, fonts, or images.
  */
 
 import { createServerClient } from "@supabase/ssr"
@@ -46,10 +51,6 @@ const PUBLIC_PREFIXES = [
 function isPublicPath(pathname: string): boolean {
   if (pathname === "/") return true
   return PUBLIC_PREFIXES.some((p) => pathname.startsWith(p))
-}
-
-function isOnboardingPath(pathname: string): boolean {
-  return pathname === "/onboarding" || pathname.startsWith("/onboarding/")
 }
 
 // ─── Named proxy export — required by Next.js 16 ─────────────────────────────
@@ -87,7 +88,9 @@ export async function proxy(request: NextRequest) {
     }
   )
 
-  // getUser() also refreshes near-expiry JWT — must run before any redirect
+  // getUser() also refreshes near-expiry JWT — must run before any redirect.
+  // This is the ONLY Supabase call in the proxy now (Phase 3D: removed
+  // the profiles.onboarding_completed DB lookup that was causing 15-48s dev latency).
   const { data: { user } } = await supabase.auth.getUser()
 
   // Rule 1: No session → redirect to login with return path
@@ -98,29 +101,10 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  // Onboarding routes need login (Rule 1 catches that above) but must NOT
-  // trigger Rule 2 — checking onboarding_completed on /onboarding itself
-  // creates: /onboarding → incomplete → redirect /onboarding → loop.
-  if (isOnboardingPath(pathname)) {
-    return response
-  }
-
-  // Rule 2: Authenticated but onboarding not complete → /onboarding
-  // Single indexed PK lookup on warm Supabase connection (~1–3 ms)
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("onboarding_completed")
-    .eq("id", user.id)
-    .maybeSingle()
-
-  if (!profile?.onboarding_completed) {
-    const url = request.nextUrl.clone()
-    url.pathname = "/onboarding"
-    url.searchParams.delete("redirect")
-    return NextResponse.redirect(url)
-  }
-
-  // Rule 3: All checks passed → allow
+  // Rule 2 (onboarding redirect) is now handled in app/dashboard/layout.tsx.
+  // The proxy no longer makes a DB call to check onboarding_completed —
+  // that was the source of the 15–48s per-request latency in dev.
+  // Allow all authenticated requests through from here.
   return response
 }
 
