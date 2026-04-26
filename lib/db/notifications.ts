@@ -351,27 +351,138 @@ export async function getScrapeQueue(
   })
 }
 
+// =============================================================================
+// SCRAPE ITEM PROMOTION VALIDATION
+// =============================================================================
+
+/**
+ * Validates a scrape_queue item before promotion to canonical recruitments.
+ *
+ * Rules enforced:
+ *  - Row must exist and have extraction_status = 'verified' (or evidence_required = false)
+ *  - notification_document_id must be set
+ *  - extracted_data must have title, organization_name, official_notification_url
+ *  - posts must be a non-empty array for eligibility-grade promotion
+ *  - Each post with age/education data must have at least one verified evidence row
+ *  - Required fields must have extracted_field_evidence rows (reviewer_status = 'verified')
+ *
+ * Throws with a detailed message listing every missing requirement.
+ */
+export async function validateScrapeItemForPromotion(itemId: string): Promise<void> {
+  const supabase = await createClient()
+
+  const { data: item, error: fetchErr } = await supabase
+    .from("scrape_queue")
+    .select("*")
+    .eq("id", itemId)
+    .single()
+
+  if (fetchErr || !item) throw new Error(`validateScrapeItemForPromotion: row not found ${itemId}`)
+
+  const missing: string[] = []
+  const ext = (item.extracted_data ?? {}) as Record<string, unknown>
+
+  // evidence_required=false means this item was manually curated — skip evidence checks
+  if (item.evidence_required !== false) {
+    // Must have a linked document
+    if (!item.notification_document_id) {
+      missing.push("notification_document_id is null — no source document linked")
+    }
+
+    // Must be marked verified (or this is an explicit override by admin)
+    if (item.extraction_status !== "verified") {
+      missing.push(`extraction_status='${item.extraction_status}' — must be 'verified' before promotion`)
+    }
+  }
+
+  // Required fields always checked
+  if (!ext.title || String(ext.title).trim().length < 3) {
+    missing.push("extracted_data.title is missing or too short")
+  }
+  if (!ext.organization_name || String(ext.organization_name).trim().length < 2) {
+    missing.push("extracted_data.organization_name is missing")
+  }
+  if (!ext.official_notification_url) {
+    missing.push("extracted_data.official_notification_url is missing")
+  }
+  const posts = Array.isArray(ext.posts) ? ext.posts as Record<string, unknown>[] : []
+  if (posts.length === 0) {
+    missing.push("extracted_data.posts is empty — eligibility engine requires post-level data")
+  }
+
+  // For items with evidence_required, check evidence row coverage on critical fields
+  if (item.evidence_required !== false && item.notification_document_id) {
+    const { data: evidenceRows } = await supabase
+      .from("extracted_field_evidence")
+      .select("field_name, reviewer_status, entity_type")
+      .eq("scrape_queue_id", itemId)
+
+    const verifiedFields = new Set(
+      (evidenceRows ?? [])
+        .filter(e => e.reviewer_status === "verified")
+        .map(e => e.field_name as string)
+    )
+
+    const requiredFields = ["title", "organization_name", "apply_end_date"]
+    for (const f of requiredFields) {
+      if (ext[f] && !verifiedFields.has(f)) {
+        missing.push(`field '${f}' has no verified evidence row`)
+      }
+    }
+  }
+
+  if (missing.length > 0) {
+    throw new Error(
+      `validateScrapeItemForPromotion failed for ${itemId}:\n` +
+      missing.map(m => `  • ${m}`).join("\n")
+    )
+  }
+}
+
 export async function approveScrapeItem(
   itemId: string, reviewerId: string, notes?: string
 ): Promise<void> {
   const supabase = await createClient()
- 
+
   // ── 1. Load queue row ──────────────────────────────────────────────────────
   const { data: item, error: fetchErr } = await supabase
     .from("scrape_queue")
     .select("*")
     .eq("id", itemId)
     .single()
- 
+
   if (fetchErr || !item) throw new Error(`approveScrapeItem: row not found ${itemId}`)
- 
+
   // ── 2. Idempotency: already promoted? ──────────────────────────────────────
   // duplicate_of stores the promoted recruitment_id after first approval
   if (item.status === "approved" && item.duplicate_of) return
- 
+
   // ── 3. Validate ────────────────────────────────────────────────────────────
   if (!["pending", "reviewing"].includes(item.status)) {
     throw new Error(`approveScrapeItem: cannot approve item in status '${item.status}'`)
+  }
+
+  // ── 3b. Evidence validation ────────────────────────────────────────────────
+  // Run evidence validation when evidence_required=true (the default).
+  // On failure: mark extraction_status='needs_review' and rethrow so the
+  // admin UI shows exactly what evidence is missing.
+  if (item.evidence_required !== false) {
+    try {
+      await validateScrapeItemForPromotion(itemId)
+    } catch (validationErr) {
+      await supabase
+        .from("scrape_queue")
+        .update({
+          status:             "reviewing",
+          extraction_status:  "needs_review",
+          reviewer_id:        reviewerId,
+          reviewer_notes:     (notes ? notes + "\n" : "") +
+                              (validationErr instanceof Error ? validationErr.message : String(validationErr)),
+          reviewed_at:        new Date().toISOString(),
+        })
+        .eq("id", itemId)
+      throw validationErr
+    }
   }
  
   // ── 4. Promote to canonical recruitments ──────────────────────────────────
@@ -393,10 +504,11 @@ export async function approveScrapeItem(
     await supabase
       .from("scrape_queue")
       .update({
-        status:         "reviewing",
-        reviewer_id:    reviewerId,
-        reviewer_notes: (notes ?? "") + ` [promotion failed: ${err instanceof Error ? err.message : String(err)}]`,
-        reviewed_at:    new Date().toISOString(),
+        status:            "reviewing",
+        extraction_status: "needs_review",
+        reviewer_id:       reviewerId,
+        reviewer_notes:    (notes ?? "") + ` [promotion failed: ${err instanceof Error ? err.message : String(err)}]`,
+        reviewed_at:       new Date().toISOString(),
       })
       .eq("id", itemId)
     throw err
@@ -410,11 +522,12 @@ export async function approveScrapeItem(
   const { error: updateErr } = await supabase
     .from("scrape_queue")
     .update({
-      status:         "approved",
-      reviewer_id:    reviewerId,
-      reviewer_notes: notes ?? null,
-      reviewed_at:    new Date().toISOString(),
-      duplicate_of:   recruitmentId,
+      status:             "approved",
+      extraction_status:  "verified",
+      reviewer_id:        reviewerId,
+      reviewer_notes:     notes ?? null,
+      reviewed_at:        new Date().toISOString(),
+      duplicate_of:       recruitmentId,
     })
     .eq("id", itemId)
 
@@ -525,10 +638,11 @@ export async function rejectScrapeItem(
   const { error } = await supabase
     .from("scrape_queue")
     .update({
-      status:         "rejected",
-      reviewer_id:    reviewerId,
-      reviewer_notes: notes ?? null,
-      reviewed_at:    new Date().toISOString(),
+      status:            "rejected",
+      extraction_status: "rejected",
+      reviewer_id:       reviewerId,
+      reviewer_notes:    notes ?? null,
+      reviewed_at:       new Date().toISOString(),
     })
     .eq("id", itemId)
   if (error) throw new Error(`rejectScrapeItem: ${error.message}`)

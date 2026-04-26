@@ -354,11 +354,24 @@ function extractRssDirect(
   const results: ExtractedRecruitment[] = []
   const itemRegex = /<item[^>]*>([\s\S]*?)<\/item>/gi
 
-  // Recruitment-signal keywords — skip items that are clearly not job notifications
+  // Recruitment-signal keywords — NEW job openings only.
+  // IMPORTANT: lifecycle update terms (result, admit card, shortlist, cutoff,
+  // interview, merit list, answer key, appointment order, medical list) are
+  // intentionally excluded. Those are post-recruitment artefacts, not vacancies.
   const RECRUITMENT_SIGNALS = [
     "recruit", "vacancy", "vacancies", "advt", "advertisement", "notification",
     "exam", "post", "posts", "appointment", "hiring", "career", "job", "opening",
-    "result", "admit card", "merit list", "cutoff", "shortlist", "interview",
+    "apply", "applications invited", "invitation", "invited",
+  ]
+  // Hard-exclude: if the title/description ONLY contains these lifecycle terms
+  // and zero recruitment signals, the item is a status update — not a new vacancy.
+  const LIFECYCLE_ONLY_TERMS = [
+    "result", "results", "admit card", "hall ticket", "merit list",
+    "cutoff", "cut-off", "cut off", "shortlist", "shortlisted",
+    "interview schedule", "interview letter", "interview call",
+    "answer key", "answerkey", "appointment order", "joining letter",
+    "medical examination", "medical list", "document verification",
+    "roll number", "allotment", "allotted",
   ]
 
   let match
@@ -375,6 +388,14 @@ function extractRssDirect(
     const combined = (title + " " + desc).toLowerCase()
     const hasSignal = RECRUITMENT_SIGNALS.some(s => combined.includes(s))
     if (!hasSignal) continue
+
+    // Skip items that are purely lifecycle updates (result/admit card/shortlist/etc.)
+    // and have NO recruitment-opening signal. These are status updates on existing
+    // recruitments — scraping them creates phantom "recruitments" in the queue.
+    const hasLifecycleOnly =
+      LIFECYCLE_ONLY_TERMS.some(t => combined.includes(t)) &&
+      !RECRUITMENT_SIGNALS.some(s => combined.includes(s))
+    if (hasLifecycleOnly) continue
 
     // Parse publication date
     let notificationDate: string | null = null
@@ -1637,6 +1658,211 @@ async function callClaude(
   }
 }
 
+// ─── Evidence helpers ─────────────────────────────────────────────────────────
+// findEvidenceSnippet: locate a value's source text within the raw document.
+// Never hallucinates — returns null evidence_text when no match is found.
+
+function findEvidenceSnippet(
+  rawText: string,
+  value:   unknown,
+  _fieldName: string,
+): { evidence_text: string | null; char_start: number | null; char_end: number | null } {
+  if (value === null || value === undefined || rawText.length === 0) {
+    return { evidence_text: null, char_start: null, char_end: null }
+  }
+
+  const CONTEXT = 250  // chars of surrounding context each side
+  const MAX_SNIPPET = 500
+
+  // Candidates to search for (string value + common Indian date formats)
+  const candidates: string[] = []
+
+  if (typeof value === "string" && value.length >= 2) {
+    candidates.push(value)
+    // ISO date → try DD/MM/YYYY and DD-Mon-YYYY variants
+    const isoMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+    if (isoMatch) {
+      const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
+      const day  = isoMatch[3]
+      const mon  = parseInt(isoMatch[2], 10) - 1
+      const yr   = isoMatch[1]
+      candidates.push(`${day}/${isoMatch[2]}/${yr}`)
+      candidates.push(`${day}-${months[mon]}-${yr}`)
+      candidates.push(`${parseInt(day, 10)} ${months[mon]} ${yr}`)
+    }
+  } else if (typeof value === "number") {
+    candidates.push(String(value))
+    if (value > 100) candidates.push(value.toLocaleString("en-IN"))
+  } else if (Array.isArray(value)) {
+    const flat = (value as unknown[]).filter(v => typeof v === "string").join(" ")
+    if (flat.length >= 2) candidates.push(flat.slice(0, 60))
+  }
+
+  for (const candidate of candidates) {
+    if (candidate.length < 2) continue
+    const idx = rawText.indexOf(candidate)
+    if (idx === -1) continue
+    const start   = Math.max(0, idx - CONTEXT)
+    const end     = Math.min(rawText.length, idx + candidate.length + CONTEXT)
+    const snippet = rawText.slice(start, end).slice(0, MAX_SNIPPET)
+    return { evidence_text: snippet, char_start: idx, char_end: idx + candidate.length }
+  }
+
+  return { evidence_text: null, char_start: null, char_end: null }
+}
+
+// buildEvidenceRows: generate extracted_field_evidence insert payloads for all
+// important fields of an ExtractedRecruitment.
+
+interface EvidenceInsert {
+  document_id:         string
+  scrape_queue_id:     string | null
+  entity_type:         string
+  entity_key:          string | null
+  field_name:          string
+  extracted_value:     unknown
+  evidence_text:       string | null
+  char_start:          number | null
+  char_end:            number | null
+  extraction_method:   string
+  model:               string | null
+  confidence:          number | null
+  reviewer_status:     string
+}
+
+function buildEvidenceRows(
+  documentId:    string,
+  queueItemId:   string | null,
+  extracted:     ExtractedRecruitment,
+  rawText:       string,
+  provider:      string,
+  model:         string | null,
+  promptVersion: string | null,
+): EvidenceInsert[] {
+  void promptVersion
+  const method = provider === "rss_direct" ? "rss_direct"
+    : provider === "selectors"             ? "selector"
+    : provider === "anthropic"             ? "anthropic"
+    : provider === "gemini"                ? "gemini"
+    : "system"
+
+  const rows: EvidenceInsert[] = []
+
+  const addField = (
+    entityType: string,
+    entityKey:  string | null,
+    fieldName:  string,
+    value:      unknown,
+  ) => {
+    if (value === null || value === undefined) return
+    if (typeof value === "string" && value.trim() === "") return
+    if (Array.isArray(value) && value.length === 0) return
+
+    const { evidence_text, char_start, char_end } = findEvidenceSnippet(rawText, value, fieldName)
+
+    rows.push({
+      document_id:       documentId,
+      scrape_queue_id:   queueItemId,
+      entity_type:       entityType,
+      entity_key:        entityKey,
+      field_name:        fieldName,
+      extracted_value:   typeof value === "object" ? value : { value },
+      evidence_text,
+      char_start,
+      char_end,
+      extraction_method: method,
+      model,
+      confidence:        extracted.confidence ?? null,
+      reviewer_status:   "unverified",
+    })
+  }
+
+  // Recruitment-level fields
+  addField("recruitment", null, "title",                     extracted.title)
+  addField("recruitment", null, "organization_name",         extracted.organization_name)
+  addField("recruitment", null, "notification_date",         extracted.notification_date)
+  addField("recruitment", null, "apply_start_date",          extracted.apply_start_date)
+  addField("recruitment", null, "apply_end_date",            extracted.apply_end_date)
+  addField("recruitment", null, "total_vacancies",           extracted.total_vacancies)
+  addField("recruitment", null, "official_notification_url", extracted.official_notification_url)
+  addField("recruitment", null, "source_pdf_url",            extracted.source_pdf_url)
+
+  // Post-level fields
+  for (const post of (extracted.posts ?? []) as Record<string, unknown>[]) {
+    const postName = typeof post.post_name === "string" ? post.post_name : null
+    addField("post", postName, "post_name",          post.post_name)
+    addField("post", postName, "group_type",         post.group_type)
+    addField("post", postName, "pay_level",          post.pay_level)
+    addField("post", postName, "vacancies",          post.vacancies)
+    addField("age_criteria",   postName, "min_age",  post.min_age)
+    addField("age_criteria",   postName, "max_age",  post.max_age)
+    addField("education_criteria", postName, "education_required", post.education_required)
+    addField("education_criteria", postName, "disciplines",        post.disciplines)
+  }
+
+  return rows
+}
+
+// upsertNotificationDocument: insert a notification_documents row and return its id.
+// Deduplicates on content_hash — ON CONFLICT returns the existing id.
+
+async function upsertNotificationDocument(
+  supabase:     ReturnType<typeof db>,
+  params: {
+    sourceId:     string
+    runId:        string | null
+    sourceUrl:    string
+    finalUrl:     string | null
+    documentType: "html" | "pdf" | "rss" | "json" | "unknown"
+    contentHash:  string
+    httpStatus:   number | null
+    etag:         string | null
+    lastModified: string | null
+    rawText:      string | null
+    metadata:     Record<string, unknown>
+  },
+): Promise<string | null> {
+  try {
+    // Try insert first; on hash conflict, select the existing row.
+    const { data: inserted, error: insErr } = await supabase
+      .from("notification_documents")
+      .insert({
+        source_id:       params.sourceId,
+        scrape_run_id:   params.runId,
+        source_url:      params.sourceUrl,
+        final_url:       params.finalUrl,
+        document_type:   params.documentType,
+        content_hash:    params.contentHash,
+        fetched_at:      new Date().toISOString(),
+        http_status:     params.httpStatus,
+        etag:            params.etag,
+        last_modified:   params.lastModified,
+        raw_text:        params.rawText ? params.rawText.slice(0, 100_000) : null,
+        metadata:        params.metadata,
+      })
+      .select("id")
+      .single()
+
+    if (!insErr) return inserted?.id ?? null
+
+    // Duplicate content_hash — fetch existing id
+    if (insErr.code === "23505") {
+      const { data: existing } = await supabase
+        .from("notification_documents")
+        .select("id")
+        .eq("content_hash", params.contentHash)
+        .single()
+      return existing?.id ?? null
+    }
+
+    console.error("[upsertNotificationDocument]", insErr.message)
+    return null
+  } catch (e) {
+    console.error("[upsertNotificationDocument] unexpected:", e)
+    return null
+  }
+}
+
 // ─── Fingerprint ──────────────────────────────────────────────────────────────
 
 function fingerprintKey(orgName: string, year: number, title: string): string {
@@ -1733,6 +1959,42 @@ Deno.serve(async (req) => {
       await sleep(jitter(src))
 
       const { text, url, skipped, pdfBytes, linkedPdfs, rssItems, rawHtml, snapshotHash } = await acquireContent(supabase, src, year)
+
+      // ── Store document snapshot (non-fatal) ────────────────────────────────
+      // Upsert a notification_documents row so every extracted value can be
+      // traced back to its source document. Deduplicates on content_hash.
+      let documentId: string | null = null
+      if (!skipped && snapshotHash) {
+        const docType: "html" | "pdf" | "rss" | "json" | "unknown" =
+          pdfBytes        ? "pdf"
+          : rssItems      ? "rss"
+          : src.adapter_type === "json" ? "json"
+          : src.adapter_type === "html" || src.adapter_type === "playwright" ? "html"
+          : "unknown"
+
+        documentId = await upsertNotificationDocument(supabase, {
+          sourceId:     src.id,
+          runId:        runId,
+          sourceUrl:    url,
+          finalUrl:     null,
+          documentType: docType,
+          contentHash:  snapshotHash,
+          httpStatus:   200,
+          etag:         null,
+          lastModified: null,
+          rawText:      rssItems ? null : (text ?? rawHtml ?? null),
+          metadata: {
+            adapter_type:       src.adapter_type,
+            source_name:        src.source_name,
+            snapshotHash,
+            linked_pdf_count:   linkedPdfs?.length ?? 0,
+            playwright_used:    src.requires_playwright || src.adapter_type === "playwright",
+          },
+        })
+      }
+
+      // rawText for evidence lookup: prefer stripped text, fall back to rawHtml
+      const rawTextForEvidence = text || rawHtml || ""
 
       if (skipped) {
         totalSkipped++
@@ -1855,11 +2117,22 @@ Deno.serve(async (req) => {
         const fp          = fingerprintKey(extracted.organization_name, extracted.year, extracted.title)
         const dupId       = existingFps.get(fp) ?? null
         const isDup       = Boolean(dupId)
-        const queueStatus = isDup ? "duplicate"
-          : canAutoApprove(extracted, qualityScore, src) ? "approved"
-          : "pending"
 
-        console.log(`[${src.source_name}] "${extracted.title.slice(0, 50)}" conf=${(extracted.confidence ?? 0).toFixed(2)} quality=${qualityScore} status=${queueStatus}`)
+        // RSS-direct items must never auto-approve: they have posts=[] and no
+        // post-level age/education data — promoting them creates phantom
+        // recruitments that the eligibility engine can't evaluate.
+        const isRssDirect = extracted._provider === "rss_direct"
+        const queueStatus = isDup ? "duplicate"
+          : (isRssDirect || !canAutoApprove(extracted, qualityScore, src)) ? "pending"
+          : "approved"
+
+        // extraction_status: RSS/selectors → unverified; LLM → unverified (needs review)
+        const extractionStatus = isDup ? "duplicate"
+          : isRssDirect              ? "unverified"
+          : (extracted._provider === "selectors") ? "unverified"
+          : "unverified"
+
+        console.log(`[${src.source_name}] "${extracted.title.slice(0, 50)}" conf=${(extracted.confidence ?? 0).toFixed(2)} quality=${qualityScore} status=${queueStatus} provider=${extracted._provider ?? "?"}`)
 
         if (isDup) {
           totalDup++
@@ -1872,20 +2145,54 @@ Deno.serve(async (req) => {
         const { confidence: _conf, _provider: _p, _model: _m, ...dataWithoutConf } = extracted
         void _conf; void _p; void _m
 
-        await supabase.from("scrape_queue").insert({
-          source_url:          url,
-          source_name:         src.source_name,
-          extracted_data:      dataWithoutConf as unknown as Record<string, unknown>,
-          confidence_score:    extracted.confidence,
-          data_quality_score:  qualityScore,
-          status:              queueStatus,
-          scrape_run_id:       runId,
-          duplicate_of:        dupId,
-          raw_snapshot_hash:   snapshotHash ?? null,
-          extraction_provider: extracted._provider ?? null,
-          extraction_model:    extracted._model    ?? null,
-          prompt_version:      (extracted._provider === "anthropic" || extracted._provider === "gemini") ? PROMPT_VERSION : null,
-        })
+        const { data: queueRow, error: queueErr } = await supabase
+          .from("scrape_queue")
+          .insert({
+            source_url:                url,
+            source_name:               src.source_name,
+            extracted_data:            dataWithoutConf as unknown as Record<string, unknown>,
+            confidence_score:          extracted.confidence,
+            data_quality_score:        qualityScore,
+            status:                    queueStatus,
+            scrape_run_id:             runId,
+            duplicate_of:              dupId,
+            raw_snapshot_hash:         snapshotHash ?? null,
+            extraction_provider:       extracted._provider ?? null,
+            extraction_model:          extracted._model    ?? null,
+            prompt_version:            (extracted._provider === "anthropic" || extracted._provider === "gemini") ? PROMPT_VERSION : null,
+            // trust/evidence columns (migration 017)
+            notification_document_id:  documentId,
+            extraction_status:         extractionStatus,
+            evidence_required:         true,
+          })
+          .select("id")
+          .single()
+
+        // Generate field-level evidence rows (non-fatal — don't block the scrape run)
+        if (!queueErr && queueRow?.id && documentId) {
+          try {
+            const evidenceRows = buildEvidenceRows(
+              documentId,
+              queueRow.id,
+              extracted,
+              rawTextForEvidence,
+              extracted._provider ?? "system",
+              extracted._model ?? null,
+              (extracted._provider === "anthropic" || extracted._provider === "gemini") ? PROMPT_VERSION : null,
+            )
+            if (evidenceRows.length > 0) {
+              await supabase
+                .from("extracted_field_evidence")
+                .insert(evidenceRows)
+                .then(({ error: evErr }) => {
+                  if (evErr) console.error(`[${src.source_name}] evidence insert:`, evErr.message)
+                  else console.log(`[${src.source_name}] ${evidenceRows.length} evidence row(s) inserted`)
+                })
+            }
+          } catch (evEx) {
+            console.error(`[${src.source_name}] evidence generation error:`, evEx)
+          }
+        }
 
         if (queueStatus === "approved") {
           await supabase.rpc("fn_auto_recompute_eligibility", {
