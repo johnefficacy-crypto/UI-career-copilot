@@ -71,6 +71,43 @@ export async function getUserNotifications(
 }
 
 // =============================================================================
+// ALERT UPSERT
+// =============================================================================
+
+export type AlertUpsertInput = {
+  user_id:        string
+  recruitment_id: string
+  alert_type:     "new_match" | "deadline" | "update" | "profile_blocker"
+  priority:       number
+  explanation:    string | null
+  sent_at?:       string | null
+}
+
+/**
+ * upsertNotificationAlerts — insert or update alert rows.
+ *
+ * Uses onConflict on (user_id, recruitment_id, alert_type) so that re-running
+ * eligibility for the same user updates the existing alert's priority and
+ * explanation rather than silently ignoring the duplicate.
+ *
+ * Requires migration 026 to have created the canonical constraint name
+ * "notification_alerts_user_recruitment_type_key".
+ */
+export async function upsertNotificationAlerts(
+  alerts: AlertUpsertInput[]
+): Promise<void> {
+  if (!alerts.length) return
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from("notification_alerts")
+    .upsert(alerts, {
+      onConflict:       "user_id,recruitment_id,alert_type",
+      ignoreDuplicates: false,
+    })
+  if (error) throw new Error(`upsertNotificationAlerts: ${error.message}`)
+}
+
+// =============================================================================
 // NOTIFICATION READINESS DIAGNOSTIC
 // =============================================================================
 
