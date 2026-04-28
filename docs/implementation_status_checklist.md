@@ -69,14 +69,16 @@ Legend:
     - `lib/db/admin.ts`
   - Suggested PR title: `fix(admin): use requireAdminRole for source actions`
 
-- [~] Ship mission-control dashboard v1 on top of a unified user_recruitment_state view
+- [x] Ship mission-control dashboard v1 on top of a unified user_recruitment_state view
   - Effort: L
   - Owner: frontend + backend
   - Paths:
     - `supabase/migrations/027_user_recruitment_state.sql` ✓ created
-    - `app/api/dashboard/mission-control/route.ts` ✓ created
-    - `components/dashboard/OpportunityCard.tsx` ✓ created
-    - `app/dashboard/page.tsx` — wire to mission-control API (pending)
+    - `lib/db/mission-control.ts` ✓ server-side data fetcher
+    - `app/api/dashboard/mission-control/route.ts` ✓ REST API
+    - `components/dashboard/MissionControlPanel.tsx` ✓ summary cards + tabs + opportunity feed
+    - `app/dashboard/page.tsx` ✓ wired — getMissionControlData in parallel fetch
+    - `components/dashboard/DashboardShell.tsx` ✓ EligibleRecruitmentsWidget replaced
   - Suggested PR title: `feat(dashboard): launch mission-control dashboard powered by user state view`
 
 - [x] Launch notification preferences page before broad email rollout
