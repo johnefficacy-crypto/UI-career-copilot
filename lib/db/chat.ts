@@ -194,7 +194,7 @@ export async function getChatUserContext(userId: string): Promise<ChatUserContex
   const [profileRes, eduRes] = await Promise.all([
     supabase
       .from("profiles")
-      .select("full_name, career_stage, target_exam, category, dob, domicile_state")
+      .select("full_name, career_stage, target_exam, category, dob, domicile_state, career_goal")
       .eq("id", userId)
       .single(),
     supabase
@@ -226,5 +226,6 @@ export async function getChatUserContext(userId: string): Promise<ChatUserContex
     dob:               profile?.dob            ?? null,
     domicile_state:    profile?.domicile_state ?? null,
     education_summary: educationSummary,
+    career_goal:       (profile as { career_goal?: string | null })?.career_goal ?? null,
   }
 }

@@ -42,4 +42,6 @@ export type ChatUserContext = {
   dob:               string | null
   domicile_state:    string | null
   education_summary: string | null
+  /** Free-text career ambition the aspirant wrote during onboarding. */
+  career_goal:       string | null
 }
