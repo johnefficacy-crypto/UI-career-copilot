@@ -63,21 +63,22 @@ to service_role
 using (true)
 with check (true);
 
--- ── admin_audit_log ───────────────────────────────────────────────────────────
+-- ── admin_audit_logs ──────────────────────────────────────────────────────────
+-- Table name is admin_audit_logs (with 's') — created by migration 019.
 
-alter table if exists public.admin_audit_log enable row level security;
+alter table if exists public.admin_audit_logs enable row level security;
 
-drop policy if exists "Service role insert audit log" on public.admin_audit_log;
-drop policy if exists "Admins read audit log"         on public.admin_audit_log;
+drop policy if exists "Service role insert audit log" on public.admin_audit_logs;
+drop policy if exists "Admins read audit log"         on public.admin_audit_logs;
 
 create policy "Service role insert audit log"
-on public.admin_audit_log
+on public.admin_audit_logs
 for insert
 to service_role
 with check (true);
 
 create policy "Admins read audit log"
-on public.admin_audit_log
+on public.admin_audit_logs
 for select
 to authenticated
 using (

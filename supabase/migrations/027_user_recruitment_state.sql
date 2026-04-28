@@ -23,9 +23,9 @@ with latest_alert as (
     recruitment_id,
     alert_type,
     priority,
-    created_at
+    sent_at
   from public.notification_alerts
-  order by user_id, recruitment_id, created_at desc
+  order by user_id, recruitment_id, sent_at desc nulls last
 ),
 event_rollup as (
   select
