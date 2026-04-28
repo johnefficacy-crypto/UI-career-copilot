@@ -22,6 +22,8 @@ import { getEligibleRecruitments } from "@/lib/eligibility/runner"
 import { getUserNotifications, getUnreadCount } from "@/lib/db/notifications"
 import { getUserPlans }            from "@/lib/db/study-planner"
 import { getUserChatSessions }     from "@/lib/db/chat"
+import { getOrGenerateNextActions } from "@/lib/db/next-actions"
+import { getTodaysTasks }          from "@/lib/db/study-tasks"
 import { DashboardShell }          from "@/components/dashboard/DashboardShell"
 
 export const dynamic  = "force-dynamic"
@@ -44,6 +46,7 @@ export default async function DashboardPage() {
     unreadCount,
     userPlans,
     chatSessions,
+    nextActions,
   ] = await Promise.all([
     getDashboardData(user.id),
     getEligibleRecruitments(user.id),
@@ -51,14 +54,21 @@ export default async function DashboardPage() {
     getUnreadCount(user.id).catch(() => 0),
     getUserPlans(user.id),
     getUserChatSessions(user.id, 5),
+    getOrGenerateNextActions(user.id).catch(() => []),
   ])
+
+  // Derive active plan before fetching tasks
+  const primaryPlanCandidate = userPlans.find(p => p.status === "active") ?? userPlans[0] ?? null
+  const todaysTasks = primaryPlanCandidate
+    ? await getTodaysTasks(user.id, primaryPlanCandidate.id).catch(() => [])
+    : []
 
   if (!data.profile?.onboarding_completed) redirect("/onboarding")
 
   // ── Derived values ─────────────────────────────────────────────────────────
   const isPaid      = data.profile?.plan_id === "pro" || data.profile?.plan_id === "elite"
   const lastSession = chatSessions[0] ?? null
-  const primaryPlan = userPlans.find((p) => p.status === "active") ?? userPlans[0] ?? null
+  const primaryPlan = primaryPlanCandidate
 
   return (
     <DashboardShell
@@ -71,6 +81,8 @@ export default async function DashboardPage() {
       planStats={null}
       lastChatSessionId={lastSession?.id ?? null}
       isPaid={isPaid}
+      nextActions={nextActions}
+      todaysTasks={todaysTasks}
     />
   )
 }

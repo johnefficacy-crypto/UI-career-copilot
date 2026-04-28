@@ -15,8 +15,9 @@
 import Link          from "next/link"
 import { redirect }  from "next/navigation"
 import { createClient } from "@/utils/supabase/server"
-import { getUserNotifications } from "@/lib/db/notifications"
+import { getUserNotifications, getNotificationReadiness } from "@/lib/db/notifications"
 import type { NotificationAlert } from "@/types/notifications"
+import type { NotificationReadiness } from "@/lib/db/notifications"
 import { markAllNotificationsRead } from "@/actions/notifications"
 
 // Phase 2 report recommendation: revalidate=30 instead of force-dynamic
@@ -54,6 +55,89 @@ const ALERT_LABELS: Record<string, string> = {
   status_change:        "Status changed",
 }
 
+function NotificationsEmptyState({ readiness }: { readiness: NotificationReadiness | null }) {
+  if (!readiness) {
+    return (
+      <div className="rounded-2xl border border-white/[0.07] bg-white/[0.02] p-12 text-center">
+        <p className="text-3xl mb-3 opacity-20">🔔</p>
+        <p className="text-white/40 text-sm">No notifications yet.</p>
+      </div>
+    )
+  }
+
+  const { blockers, recommendedActions } = readiness
+
+  // No blockers at all → eligibility is clean but no open matches
+  if (blockers.length === 0) {
+    return (
+      <div className="rounded-2xl border border-white/[0.07] bg-white/[0.02] p-10 text-center">
+        <p className="text-3xl mb-3 opacity-20">✅</p>
+        <p className="text-white/60 text-sm font-medium mb-1">Your profile is fully set up.</p>
+        <p className="text-white/30 text-xs">
+          Notifications will appear here as new official recruitments are verified and matched to your profile.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="rounded-2xl border border-white/[0.07] bg-white/[0.02] p-8 space-y-5">
+      <div className="flex items-start gap-3">
+        <span className="text-xl mt-0.5 opacity-50">🔔</span>
+        <div>
+          <p className="text-white/70 text-sm font-medium mb-0.5">No notifications yet</p>
+          <p className="text-white/30 text-xs">
+            Here is why you are not receiving exam match alerts:
+          </p>
+        </div>
+      </div>
+
+      {/* Blockers */}
+      <div className="space-y-2">
+        {blockers.map((b, i) => (
+          <div key={i} className="flex items-start gap-2.5 rounded-xl px-4 py-3"
+            style={{ background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.15)" }}>
+            <span className="text-red-400/70 text-sm mt-px shrink-0">✗</span>
+            <p className="text-white/55 text-xs leading-relaxed">{b}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Recommended actions */}
+      {recommendedActions.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-white/25 text-xs font-medium uppercase tracking-wider px-1">
+            What to do
+          </p>
+          {recommendedActions.map((a, i) => (
+            <div key={i} className="flex items-start gap-2.5 rounded-xl px-4 py-3"
+              style={{ background: "rgba(232,213,163,0.04)", border: "1px solid rgba(232,213,163,0.12)" }}>
+              <span className="text-[#e8d5a3]/50 text-sm mt-px shrink-0">→</span>
+              <p className="text-white/50 text-xs leading-relaxed">{a}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Profile CTA if onboarding incomplete */}
+      {!readiness.onboardingCompleted && (
+        <Link href="/onboarding"
+          className="inline-block px-4 py-2 rounded-xl text-sm mt-2"
+          style={{ background: "rgba(232,213,163,0.12)", color: "#e8d5a3", border: "1px solid rgba(232,213,163,0.25)" }}>
+          Complete profile →
+        </Link>
+      )}
+      {readiness.onboardingCompleted && (
+        <Link href="/dashboard"
+          className="inline-block px-4 py-2 rounded-xl text-xs mt-2"
+          style={{ background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.40)", border: "1px solid rgba(255,255,255,0.08)" }}>
+          ← Back to dashboard
+        </Link>
+      )}
+    </div>
+  )
+}
+
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime()
   const mins  = Math.floor(diff / 60_000)
@@ -73,9 +157,11 @@ export default async function NotificationsPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect("/auth/login")
 
-  // Single data fetch — no parallel needed here (one query)
-  const alerts = await getUserNotifications(user.id, { limit: 50 })
-  const unread  = alerts.filter(a => !a.is_read)
+  const [alerts, readiness] = await Promise.all([
+    getUserNotifications(user.id, { limit: 50 }),
+    getNotificationReadiness(user.id).catch(() => null),
+  ])
+  const unread = alerts.filter(a => !a.is_read)
 
   return (
     <div className="min-h-screen bg-[#0f0f0f]">
@@ -115,18 +201,7 @@ export default async function NotificationsPage() {
         </div>
 
         {alerts.length === 0 ? (
-          <div className="rounded-2xl border border-white/[0.07] bg-white/[0.02] p-12 text-center">
-            <p className="text-3xl mb-3 opacity-20">🔔</p>
-            <p className="text-white/40 text-sm mb-1">No notifications yet</p>
-            <p className="text-white/20 text-xs">
-              Complete your profile to start receiving exam match notifications.
-            </p>
-            <Link href="/onboarding"
-              className="inline-block mt-4 px-4 py-2 rounded-xl text-sm"
-              style={{ background: "rgba(232,213,163,0.12)", color: "#e8d5a3", border: "1px solid rgba(232,213,163,0.25)" }}>
-              Complete profile →
-            </Link>
-          </div>
+          <NotificationsEmptyState readiness={readiness} />
         ) : (
           <div className="space-y-2">
             {alerts.map((alert: NotificationAlert) => (

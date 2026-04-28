@@ -1,5 +1,7 @@
 import type { DashboardData }            from "@/lib/db/dashboard"
 import type { NotificationAlert }         from "@/types/notifications"
+import type { NextAction }               from "@/lib/db/next-actions"
+import type { StudyTask }               from "@/lib/db/study-tasks"
 import { DashboardNav }                   from "./DashboardNav"
 import { ProfileCard }                    from "./ProfileCard"
 import { ExamTargetCard }                 from "./ExamTargetCard"
@@ -8,6 +10,8 @@ import { StatsBar }                       from "./StatsBar"
 import { StudyPlanWidget }                from "./StudyPlanWidget"
 import { SkillTestWidget }                from "./SkillTestWidget"
 import { EligibleRecruitmentsWidget }     from "./EligibleRecruitmentsWidget"
+import { NextBestActionPanel }            from "./NextBestActionPanel"
+import { DailyTasksWidget }              from "./DailyTasksWidget"
 import { AiChatWidget }                   from "@/components/chat/AiChatWidget"
 import type { getUserPlans }              from "@/lib/db/study-planner"
 import type { getEligibleRecruitments }   from "@/lib/eligibility/runner"
@@ -25,6 +29,8 @@ interface Props {
   primaryPlan:          UserPlansResult[number] | null
   planStats:            null
   lastChatSessionId:    string | null
+  nextActions:          NextAction[]
+  todaysTasks:          StudyTask[]
   children?:            React.ReactNode
 }
 
@@ -38,6 +44,8 @@ export function DashboardShell({
   primaryPlan,
   planStats,
   lastChatSessionId,
+  nextActions,
+  todaysTasks,
 }: Props) {
   const { profile, education, experience, preferences, targets, attempts } = data
 
@@ -119,6 +127,9 @@ export function DashboardShell({
 
           {/* Left + centre — 2 cols */}
           <div className="lg:col-span-2 flex flex-col gap-5">
+            {/* Next-best-action panel — shown only when there are actions */}
+            <NextBestActionPanel actions={nextActions} />
+
             <ExamTargetCard targets={targets} attempts={attempts} />
 
             {/* Eligible recruitments — closes the UX gap where the eligibility
@@ -126,6 +137,16 @@ export function DashboardShell({
             <EligibleRecruitmentsWidget
               rows={Array.isArray(eligibleRecruitments) ? eligibleRecruitments : []}
             />
+
+            {/* Daily tasks — shown when user has an active plan */}
+            {primaryPlan && (
+              <DailyTasksWidget
+                tasks={todaysTasks}
+                planId={primaryPlan.id}
+                examName={primaryPlan.exam_name}
+                planPageUrl={`/dashboard/study-plan/${primaryPlan.id}`}
+              />
+            )}
 
             <NotificationsFeed
               alerts={userAlerts}

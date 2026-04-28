@@ -132,19 +132,22 @@ import { redirect } from "next/navigation"
 import { createClient } from "@/utils/supabase/server"
 import { dbGetActiveSources } from "@/lib/db/source-registry"
 import {
-  getScrapeRuns,
-  getScrapeQueue,
   getScraperStats,
   getSourceHealthSnapshots,
+  getScrapeQueuePaginated,
+  getScrapeRunsPaginated,
 } from "@/lib/db/notifications"
 
 export const dynamic = "force-dynamic"
 export const metadata = { title: "Scrape Dashboard — Admin" }
 
+const QUEUE_PAGE_SIZE = 25
+const RUNS_PAGE_SIZE  = 20
+
 export default async function AdminScrapePage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; tab?: string }>
+  searchParams: Promise<{ error?: string; tab?: string; page?: string; pageSize?: string }>
 }) {
   const supabase = await createClient()
 
@@ -159,32 +162,36 @@ export default async function AdminScrapePage({
     .single()
   if (!profile?.is_admin) redirect("/dashboard")
 
-  // All data + searchParams resolved in parallel.
+  // Resolve URL params first so we know which page to fetch
+  const resolvedParams = await searchParams.catch(() => ({}))
+  const activeTab  = resolvedParams.tab      ?? "queue"
+  const pageNum    = Math.max(1, parseInt(resolvedParams.page ?? "1", 10) || 1)
+
+  // All data resolved in parallel.
   // Promise.allSettled — a single failed fetch does NOT crash the whole page.
-  // Was sequential before — caused 13s load (each 1.3s Supabase RTT adds up).
   const [
-    params,
     statsResult,
-    runsResult,
     queueResult,
+    runsResult,
     healthResult,
     registryResult,
   ] = await Promise.allSettled([
-    searchParams,
     getScraperStats(),
-    getScrapeRuns(10),
-    getScrapeQueue("pending", 30),
+    getScrapeQueuePaginated("pending", pageNum, QUEUE_PAGE_SIZE),
+    getScrapeRunsPaginated(activeTab === "runs" ? pageNum : 1, RUNS_PAGE_SIZE),
     getSourceHealthSnapshots(),
     dbGetActiveSources(),
   ])
 
-  const stats         = statsResult.status === "fulfilled"    ? statsResult.value    : { lastRun: null, pendingReview: 0, approvedTotal: 0, failedSources: 0, healthySources: 0 }
-  const recentRuns    = runsResult.status === "fulfilled"     ? runsResult.value     : []
-  const pendingQueue  = queueResult.status === "fulfilled"    ? queueResult.value    : []
-  const sourceHealth  = healthResult.status === "fulfilled"   ? healthResult.value   : []
+  const EMPTY_QUEUE_PAGE = { rows: [], total: 0, page: 1, pageSize: QUEUE_PAGE_SIZE, totalPages: 1 }
+  const EMPTY_RUNS_PAGE  = { rows: [], total: 0, page: 1, pageSize: RUNS_PAGE_SIZE,  totalPages: 1 }
+
+  const stats          = statsResult.status    === "fulfilled" ? statsResult.value    : { lastRun: null, pendingReview: 0, approvedTotal: 0, failedSources: 0, healthySources: 0 }
+  const pendingQueue   = queueResult.status    === "fulfilled" ? queueResult.value    : EMPTY_QUEUE_PAGE
+  const runsPage       = runsResult.status     === "fulfilled" ? runsResult.value     : EMPTY_RUNS_PAGE
+  const sourceHealth   = healthResult.status   === "fulfilled" ? healthResult.value   : []
   const sourceRegistry = registryResult.status === "fulfilled" ? registryResult.value : []
 
-  // Surface a data-fetch error in the dashboard's error banner
   const fetchError =
     queueResult.status === "rejected"
       ? `Queue load failed: ${queueResult.reason instanceof Error ? queueResult.reason.message : String(queueResult.reason)}`
@@ -192,17 +199,15 @@ export default async function AdminScrapePage({
         ? `Stats load failed: ${statsResult.reason instanceof Error ? statsResult.reason.message : String(statsResult.reason)}`
         : undefined
 
-  const resolvedParams = params.status === "fulfilled" ? params.value : {}
-
   return (
     <AdminScrapeDashboardClient
       stats={stats}
-      recentRuns={recentRuns}
       pendingQueue={pendingQueue}
+      runsPage={runsPage}
       sourceHealth={sourceHealth}
       sourceRegistry={sourceRegistry}
       errorMessage={fetchError ?? resolvedParams.error}
-      activeTab={resolvedParams.tab ?? "queue"}
+      activeTab={activeTab}
     />
   )
 }
