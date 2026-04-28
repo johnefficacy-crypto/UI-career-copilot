@@ -35,6 +35,7 @@ import type {
   SourceHealthSnapshot,
 } from "@/types/notifications"
 import type { SourceRegistryEntry } from "@/lib/db/source-registry"
+import type { PaginatedResult } from "@/lib/db/notifications"
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -138,6 +139,48 @@ function evidenceBar(total: number | null, verified: number | null) {
         <div className="h-full rounded-full" style={{ width: `${pct}%`, background: color }} />
       </div>
       <span className="text-[10px] tabular-nums" style={{ color }}>{v}/{total}</span>
+    </div>
+  )
+}
+
+// ─── Pagination control ───────────────────────────────────────────────────────
+
+function Paginator({ page, totalPages, tab, baseUrl = "/admin/scrape" }: {
+  page:       number
+  totalPages: number
+  tab:        string
+  baseUrl?:   string
+}) {
+  if (totalPages <= 1) return null
+  const prev = page > 1         ? `${baseUrl}?tab=${tab}&page=${page - 1}` : null
+  const next = page < totalPages ? `${baseUrl}?tab=${tab}&page=${page + 1}` : null
+  return (
+    <div className="flex items-center justify-between pt-2">
+      <span className="text-xs" style={{ color: "var(--text-ghost)" }}>
+        Page {page} of {totalPages}
+      </span>
+      <div className="flex gap-2">
+        {prev
+          ? <Link href={prev} className="text-xs px-3 py-1.5 rounded-lg transition-colors"
+              style={{ background: "var(--bg-surface)", color: "rgba(255,255,255,0.60)", border: "1px solid var(--border)" }}>
+              ← Prev
+            </Link>
+          : <span className="text-xs px-3 py-1.5 rounded-lg opacity-30 cursor-not-allowed"
+              style={{ background: "var(--bg-surface)", color: "rgba(255,255,255,0.60)", border: "1px solid var(--border)" }}>
+              ← Prev
+            </span>
+        }
+        {next
+          ? <Link href={next} className="text-xs px-3 py-1.5 rounded-lg transition-colors"
+              style={{ background: "var(--bg-surface)", color: "rgba(255,255,255,0.60)", border: "1px solid var(--border)" }}>
+              Next →
+            </Link>
+          : <span className="text-xs px-3 py-1.5 rounded-lg opacity-30 cursor-not-allowed"
+              style={{ background: "var(--bg-surface)", color: "rgba(255,255,255,0.60)", border: "1px solid var(--border)" }}>
+              Next →
+            </span>
+        }
+      </div>
     </div>
   )
 }
@@ -347,8 +390,8 @@ function RegistryRow({ src, onToggle, disabled }: {
 
 interface Props {
   stats:          ScraperStats
-  recentRuns:     ScrapeRun[]
-  pendingQueue:   QueueReviewItem[]
+  pendingQueue:   PaginatedResult<QueueReviewItem>
+  runsPage:       PaginatedResult<ScrapeRun>
   sourceHealth:   SourceHealthSnapshot[]
   sourceRegistry: SourceRegistryEntry[]
   errorMessage?:  string
@@ -357,8 +400,8 @@ interface Props {
 
 export function AdminScrapeDashboard({
   stats,
-  recentRuns: initialRuns,
-  pendingQueue: initialQueue,
+  pendingQueue:   initialQueuePage,
+  runsPage:       initialRunsPage,
   sourceHealth,
   sourceRegistry: initialRegistry,
   errorMessage,
@@ -367,7 +410,7 @@ export function AdminScrapeDashboard({
   const router                        = useRouter()
   const [isPending, startTransition] = useTransition()
   const [tab, setTab]                = useState(initialTab)
-  const [queue, setQueue]            = useState(initialQueue)
+  const [queue, setQueue]            = useState(initialQueuePage.rows)
   const [registry, setRegistry]      = useState(initialRegistry)
   const [catFilter, setCatFilter]    = useState<string>("all")
   const [runMsg, setRunMsg]          = useState<string | null>(null)
@@ -575,7 +618,8 @@ export function AdminScrapeDashboard({
       {tab === "queue" && (
         <div className="space-y-2">
           <p className="text-xs uppercase tracking-wider mb-3" style={{ color: "var(--text-muted)" }}>
-            {pendingCount} items awaiting review
+            {initialQueuePage.total} items awaiting review
+            {initialQueuePage.totalPages > 1 && ` · page ${initialQueuePage.page}/${initialQueuePage.totalPages}`}
           </p>
           {queue.length === 0 ? (
             <div className="rounded-xl px-4 py-8 text-center"
@@ -591,6 +635,11 @@ export function AdminScrapeDashboard({
               disabled={isPending}
             />
           ))}
+          <Paginator
+            page={initialQueuePage.page}
+            totalPages={initialQueuePage.totalPages}
+            tab="queue"
+          />
         </div>
       )}
 
@@ -840,14 +889,15 @@ export function AdminScrapeDashboard({
       {tab === "runs" && (
         <div className="space-y-2">
           <p className="text-xs uppercase tracking-wider mb-3" style={{ color: "var(--text-muted)" }}>
-            {initialRuns.length} recent runs
+            {initialRunsPage.total} total runs
+            {initialRunsPage.totalPages > 1 && ` · page ${initialRunsPage.page}/${initialRunsPage.totalPages}`}
           </p>
-          {initialRuns.length === 0 ? (
+          {initialRunsPage.rows.length === 0 ? (
             <div className="rounded-xl px-4 py-8 text-center"
               style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}>
               <p className="text-sm" style={{ color: "var(--text-dim)" }}>No runs yet — trigger the scraper above</p>
             </div>
-          ) : initialRuns.map(run => (
+          ) : initialRunsPage.rows.map(run => (
             <div key={run.id} className="flex items-center gap-4 px-4 py-3 rounded-xl"
               style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}>
               <div className="flex-1 min-w-0">
@@ -873,6 +923,11 @@ export function AdminScrapeDashboard({
               )}
             </div>
           ))}
+          <Paginator
+            page={initialRunsPage.page}
+            totalPages={initialRunsPage.totalPages}
+            tab="runs"
+          />
         </div>
       )}
     </div>

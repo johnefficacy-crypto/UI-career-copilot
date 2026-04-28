@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation"
 import { createClient } from "@/utils/supabase/server"
-import { finishOnboarding } from "@/actions/onboarding"
+import { saveCareerGoalAndFinish } from "@/actions/onboarding"
 
 // FIX: removed unused `runEligibilityForUser` import.
 // Eligibility runs are triggered from the admin panel or dashboard —
@@ -21,7 +21,7 @@ export default async function OnboardingCompletePage({
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("full_name, career_stage, category, dob, target_exam")
+    .select("full_name, career_stage, category, dob, target_exam, career_goal")
     .eq("id", user.id)
     .maybeSingle()
 
@@ -88,17 +88,48 @@ export default async function OnboardingCompletePage({
         </ul>
       </div>
 
-      <form action={finishOnboarding}>
-        <button
-          type="submit"
-          className="cc-btn-primary"
-          style={{ fontSize: "1rem", padding: "0.875rem 2rem" }}
-        >
-          Go to my dashboard →
-        </button>
-      </form>
+      {/* Career goal — the one question that personalises everything */}
+      <div className="cc-card-static mb-8">
+        <form action={saveCareerGoalAndFinish}>
+          <div className="cc-field">
+            <label htmlFor="career_goal" className="cc-section-label" style={{ display: "block", marginBottom: "0.5rem" }}>
+              One last thing — what's your bigger goal? <span className="text-white/25 font-normal">(optional)</span>
+            </label>
+            <p className="text-xs mb-3" style={{ color: "var(--text-ghost)" }}>
+              Beyond clearing the exam — what do you want to achieve? Write in any language, however feels natural.
+            </p>
+            <textarea
+              id="career_goal"
+              name="career_goal"
+              rows={3}
+              maxLength={400}
+              defaultValue={profile?.career_goal ?? ""}
+              className="cc-input"
+              style={{ resize: "none", lineHeight: "1.6" }}
+              placeholder="e.g. I want to become an IAS officer and serve my home district as a collector.
 
-      <div className="flex justify-center gap-6 mt-4">
+Hindi: Main IAS officer banna chahta hoon aur apne zile ke logon ki seva karna chahta hoon.
+
+Tamil: Naan oru IAS officer aaga virumbugireen, en makkalukkaga seiya virumbugireen.
+
+Bengali: Ami IAS officer hote chai, aamar gram-er manushder jonno kaj korte chai."
+            />
+            <p className="text-xs mt-1.5 text-right" style={{ color: "var(--text-ghost)" }}>
+              Used only to personalise your AI coaching — never shown publicly.
+            </p>
+          </div>
+
+          <button
+            type="submit"
+            className="cc-btn-primary"
+            style={{ fontSize: "1rem", padding: "0.875rem 2rem", marginTop: "0.5rem" }}
+          >
+            Go to my dashboard →
+          </button>
+        </form>
+      </div>
+
+      <div className="flex justify-center gap-6">
         <a href="/onboarding/preferences" className="cc-btn-link">← Edit preferences</a>
         <a href="/onboarding/education"   className="cc-btn-link">Edit education</a>
       </div>

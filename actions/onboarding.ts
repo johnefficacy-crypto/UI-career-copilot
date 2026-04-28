@@ -225,3 +225,59 @@ export async function finishOnboarding() {
 
   redirect("/dashboard")
 }
+
+// ─── Complete with career goal ────────────────────────────────────────────────
+// Called from the final onboarding page. Saves the aspirant's career_goal
+// narrative (optional) then runs the standard finish sequence.
+
+export async function saveCareerGoalAndFinish(formData: FormData) {
+  const user = await requireUser()
+  const supabase = await createClient()
+
+  const raw  = formData.get("career_goal")
+  const goal = typeof raw === "string" ? raw.trim() : null
+
+  // Save career_goal — non-fatal if the column doesn't exist yet on this DB
+  if (goal) {
+    try {
+      await supabase
+        .from("profiles")
+        .update({ career_goal: goal })
+        .eq("id", user.id)
+    } catch (e) {
+      console.error("[saveCareerGoalAndFinish] career_goal save failed (non-fatal):", e)
+    }
+  }
+
+  // Re-use the full finish sequence
+  try {
+    await completeOnboarding(user.id)
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Failed to complete onboarding"
+    redirect(`/onboarding/complete?error=${encodeURIComponent(msg)}`)
+  }
+
+  const cookieStore = await cookies()
+  cookieStore.set("onboarding_completed", "true", {
+    path: "/",
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    maxAge: 60 * 60 * 24 * 365,
+  })
+
+  try {
+    await runEligibilityForUser(user.id)
+  } catch (e) {
+    console.error("[saveCareerGoalAndFinish] eligibility run failed (non-fatal):", e)
+  }
+
+  try {
+    const { seedNotificationsForNewUser } = await import("@/lib/db/notifications")
+    await seedNotificationsForNewUser(user.id)
+  } catch (e) {
+    console.error("[saveCareerGoalAndFinish] seed notifications failed (non-fatal):", e)
+  }
+
+  redirect("/dashboard")
+}

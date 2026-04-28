@@ -14,6 +14,7 @@
 import dynamic from "next/dynamic"
 import type { ScrapeRun, ScraperStats, QueueReviewItem, SourceHealthSnapshot } from "@/types/notifications"
 import type { SourceRegistryEntry } from "@/lib/db/source-registry"
+import type { PaginatedResult } from "@/lib/db/notifications"
 
 const AdminScrapeDashboard = dynamic(
   () => import("@/components/admin/AdminScrapeDashboard").then(m => m.AdminScrapeDashboard),
@@ -29,8 +30,8 @@ const AdminScrapeDashboard = dynamic(
 
 interface Props {
   stats:          ScraperStats
-  recentRuns:     ScrapeRun[]
-  pendingQueue:   QueueReviewItem[]
+  pendingQueue:   PaginatedResult<QueueReviewItem>
+  runsPage:       PaginatedResult<ScrapeRun>
   sourceHealth:   SourceHealthSnapshot[]
   sourceRegistry: SourceRegistryEntry[]
   errorMessage?:  string

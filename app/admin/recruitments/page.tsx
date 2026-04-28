@@ -8,7 +8,7 @@
 
 import Link from "next/link"
 import { createClient } from "@/utils/supabase/server"
-import { getAllRecruitmentsAdmin } from "@/lib/db/admin"
+import { getRecruitmentsAdminPaginated } from "@/lib/db/admin"
 import { formatDate, daysUntil } from "@/lib/utils/dates"
 import { adminDeleteRecruitment } from "@/actions/admin"
 import { DeleteConfirmButton } from "@/components/admin/DeleteConfirmButton"
@@ -35,7 +35,13 @@ type ScrapeOrigin = {
 
 export const dynamic = "force-dynamic"
 
-export default async function AdminRecruitmentsPage() {
+const PAGE_SIZE = 30
+
+export default async function AdminRecruitmentsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string }>
+}) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect("/auth/login")
@@ -44,15 +50,21 @@ export default async function AdminRecruitmentsPage() {
     .from("profiles").select("is_admin").eq("id", user.id).single()
   if (!profile?.is_admin) redirect("/dashboard")
 
+  const params   = await searchParams.catch(() => ({}))
+  const pageNum  = Math.max(1, parseInt(params.page ?? "1", 10) || 1)
+
   let recruitments: Recruitment[] = []
+  let total      = 0
+  let totalPages = 1
   let fetchError: string | null = null
   let scrapeOrigins: Map<string, ScrapeOrigin> = new Map()
 
   try {
-    recruitments = await getAllRecruitmentsAdmin()
+    const result = await getRecruitmentsAdminPaginated(pageNum, PAGE_SIZE)
+    recruitments = result.rows as Recruitment[]
+    total        = result.total
+    totalPages   = result.totalPages
 
-    // Identify which recruitments came from the scraper
-    // scrape_queue.duplicate_of stores the promoted recruitment_id
     if (recruitments.length > 0) {
       const { data: queueRows } = await supabase
         .from("scrape_queue")
@@ -89,7 +101,8 @@ export default async function AdminRecruitmentsPage() {
             Recruitments
           </h1>
           <p className="text-white/40 text-sm mt-0.5">
-            {recruitments.length} total · {scraped.length} from scraper · {manual.length} manual
+            {total} total · {scraped.length} from scraper · {manual.length} manual
+            {totalPages > 1 && ` · page ${pageNum}/${totalPages}`}
           </p>
         </div>
         <Link
@@ -155,6 +168,33 @@ export default async function AdminRecruitmentsPage() {
             ))}
           </div>
         </section>
+      )}
+
+      {/* ── Pagination ─────────────────────────────────────────────────── */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between pt-6 mt-4 border-t border-white/[0.06]">
+          <span className="text-xs text-white/30">
+            Page {pageNum} of {totalPages} · {total} recruitments total
+          </span>
+          <div className="flex gap-2">
+            {pageNum > 1 && (
+              <Link
+                href={`/admin/recruitments?page=${pageNum - 1}`}
+                className="text-xs px-3 py-1.5 rounded-lg border border-white/[0.10] text-white/50 hover:text-white/80 hover:border-white/20 transition-colors"
+              >
+                ← Prev
+              </Link>
+            )}
+            {pageNum < totalPages && (
+              <Link
+                href={`/admin/recruitments?page=${pageNum + 1}`}
+                className="text-xs px-3 py-1.5 rounded-lg border border-white/[0.10] text-white/50 hover:text-white/80 hover:border-white/20 transition-colors"
+              >
+                Next →
+              </Link>
+            )}
+          </div>
+        </div>
       )}
     </div>
   )

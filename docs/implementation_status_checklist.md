@@ -1,6 +1,6 @@
 # Career Copilot — Implementation Status Checklist
 
-_Last updated: 2026-04-28_
+_Last updated: 2026-04-28 (session 2 — pagination, next-actions, daily tasks, career goal)_
 
 ## 1. Purpose
 
@@ -51,13 +51,13 @@ Whenever a feature is built or changed:
 | WhatsApp notifications | 🔵 Planned | Phase 4/growth feature |
 | Billing/paywall foundation | ✅ Done | Plan definitions and gating exist |
 | AI study planner foundation | ✅ Done | AI planner, save plan, weeks, logs, stats exist |
-| Daily task execution | 🔵 Planned | Needs `study_tasks` and task UI |
-| Timer/focus mode | 🔵 Planned | Not found in implementation search |
+| Daily task execution | ✅ Done | `study_tasks` table + `DailyTasksWidget` + server actions wired into dashboard |
+| Timer/focus mode | 🟡 Partial | `study_sessions` table exists; timer UI component not yet built |
 | Personal notes | 🔵 Planned | Not found in implementation search |
 | Flashcards/revision | 🔵 Planned | Not found in implementation search |
 | Mock-test analytics | 🔵 Planned | Not found in implementation search |
 | PYQ/microtopic intelligence | 🔵 Planned | Architecture documented, implementation pending |
-| Aspirant personalization | 🔵 Planned | Architecture documented, implementation pending |
+| Aspirant personalization | 🟡 Partial | Career goal field added; full context profile pending |
 | Marketplace expansion | 🟡 Partial | Marketplace access exists in plan flags; filters/personalization need build |
 | Admin source tools | ✅ Done | Source Registry manager and admin source docs exist |
 | Admin full lifecycle dashboard | 🟡 Partial | Several admin flows exist; operational dashboard still needs deeper workflows |
@@ -76,7 +76,7 @@ Whenever a feature is built or changed:
 | Admin route structure | 🟡 Partial | Admin pages exist | Consolidate admin UX primitives |
 | Billing plan definitions | ✅ Done | `lib/billing/plans.ts` defines free/pro/elite and features | Update feature flags as modules mature |
 | Gate checks | ✅ Done | Study planner uses billing gate | Extend to notes, mocks, PYQ, reports |
-| Performance pagination | 🔵 Planned | Roadmap calls for pagination across heavy admin/dashboard pages | Implement server-side pagination |
+| Performance pagination | ✅ Done | `PaginatedResult<T>` generic; queue/runs/recruitments admin all paginated via `?page=N`; `getScrapeQueuePaginated`, `getScrapeRunsPaginated`, `getRecruitmentsAdminPaginated` | Extend to dashboard exams list |
 | Dev-server latency cleanup | 🔴 Blocked | Phase report notes proxy/dev latency issues | Remove/replace proxy and reduce watcher pressure |
 | Error boundaries/observability | 🔵 Planned | Production hardening item | Add Sentry/LogSnag or equivalent |
 
@@ -158,8 +158,8 @@ Whenever a feature is built or changed:
 | Notification preferences table | 🔴 Blocked | Phase report says missing/stubbed | Add migration and UI |
 | Email notifications | 🔴 Blocked | Needs preferences + dispatcher | Build Phase 3C |
 | WhatsApp notifications | 🔵 Planned | Phase 4 item | Build after email foundation |
-| Notification readiness diagnostic | 🔵 Planned | Roadmap specifies function | Implement `getNotificationReadiness(userId)` |
-| Empty-state diagnosis | 🔵 Planned | Roadmap says generic empty state is misleading | Replace generic message |
+| Notification readiness diagnostic | ✅ Done | `getNotificationReadiness(userId)` in `lib/db/notifications.ts` — queries profile, education, preferences, eligibility, alerts; returns `blockers[]` + `recommendedActions[]` | |
+| Empty-state diagnosis | ✅ Done | `NotificationsEmptyState` component on `/dashboard/notifications` shows red blocker cards + gold action cards from readiness diagnostic | |
 | AI notification summary | 🔵 Planned | AI plan | Summarize official PDF/alert context |
 | AI document/action checklist | 🔵 Planned | AI plan | Generate after recruitment verification |
 | Weekly digest | 🔵 Planned | AI plan | Add Pro/Elite digest |
@@ -179,8 +179,8 @@ Whenever a feature is built or changed:
 | Study plan widget | ✅ Done | Dashboard uses StudyPlanWidget | Connect to daily tasks |
 | Skill test widget | 🟡 Partial | Widget exists | Connect to mock/proficiency model |
 | AI chat widget | ✅ Done | Dashboard uses AiChatWidget | Improve context ingestion |
-| Mission-control summary | 🟡 Partial | Some widgets exist, but top-level priority needs redesign | Add eligibility summary + urgent deadlines + next actions |
-| Next-best-action panel | 🔵 Planned | Roadmap and AI plan specify it | Add `user_next_actions` |
+| Mission-control summary | 🟡 Partial | Next-actions + daily tasks now surface on dashboard; eligibility summary and urgent deadlines still need dedicated widget | Add deadline urgency card |
+| Next-best-action panel | ✅ Done | `NextBestActionPanel` component; `lib/db/next-actions.ts` generates from 7 parallel DB signals (profile gaps, deadlines, study plan, alerts); 30-min cache via `getOrGenerateNextActions`; server actions for mark-done/snooze/dismiss | |
 | Profile readiness card | 🟡 Partial | Basic profile card exists | Add eligibility-critical readiness |
 | Mobile dashboard order | 🔵 Planned | Roadmap specifies order | Implement responsive layout/bottom nav |
 | Advanced analytics widgets | 🔵 Planned | Roadmap | Add after notes/mocks/PYQ data |
@@ -198,7 +198,7 @@ Whenever a feature is built or changed:
 | Study logs | ✅ Done | `logStudySession` exists | Connect to timer UI |
 | Plan stats | ✅ Done | `getPlanStats` calculates completion/streak/hours | Expand analytics |
 | Plan limits/paywall | ✅ Done | Study planner action checks gates | Tune free/pro/elite limits |
-| Daily tasks | 🔵 Planned | Not implemented | Add `study_tasks` |
+| Daily tasks | ✅ Done | `study_tasks` table (migration 020); `lib/db/study-tasks.ts`; `DailyTasksWidget` with optimistic status updates, progress bar, resource links; `generateTasksFromWeek` idempotently materialises JSONB daily_tasks → rows | |
 | Missed-task recovery | 🔵 Planned | AI plan | Add adaptive plan logic |
 | AI plan adjustment history | 🔵 Planned | AI plan | Add `ai_plan_adjustments` |
 | Revision calendar | 🔵 Planned | Product direction | Add revision schedules |
@@ -211,9 +211,9 @@ Whenever a feature is built or changed:
 
 | Feature | Status | Evidence / Notes | Next action |
 |---|---|---|---|
-| Pomodoro/focus timer | 🔵 Planned | Not found in implementation search | Add timer component + DB sessions |
-| Study sessions table | 🔵 Planned | AI plan | Add `study_sessions` |
-| Auto-log timer sessions | 🔵 Planned | AI plan | Create study log on timer completion |
+| Pomodoro/focus timer | 🔵 Planned | Table exists, UI component not yet built | Add timer component |
+| Study sessions table | ✅ Done | `study_sessions` table in migration 020; `startStudySession` / `endStudySession` / `getRecentSessions` in `lib/db/study-tasks.ts`; `beginFocusSession` / `finishFocusSession` server actions | |
+| Auto-log timer sessions | 🔵 Planned | Server actions exist; UI trigger not built | Wire to timer component |
 | Personal notes | 🔵 Planned | Not found in implementation search | Add `user_notes` |
 | Exam/topic-linked notes | 🔵 Planned | Product direction | Link notes to exam/subject/topic |
 | AI note summarizer | 🔵 Planned | AI plan | Add note AI action |
@@ -268,12 +268,12 @@ Whenever a feature is built or changed:
 | Feature | Status | Evidence / Notes | Next action |
 |---|---|---|---|
 | Basic profile personalization | 🟡 Partial | Profile/onboarding exists | Add progressive assessment |
-| Career Chat | ✅ Done | Phase report says AI Career Chat Pro/Elite exists | Improve grounding/context |
+| Career Chat | ✅ Done | Phase report says AI Career Chat Pro/Elite exists; system prompt now includes career_goal as named context block | |
+| Career goal (aspirant's ambition narrative) | ✅ Done | `profiles.career_goal TEXT` (migration 021); onboarding final step textarea with multilingual placeholder examples (English/Hindi/Tamil/Bengali); `saveCareerGoalAndFinish` action; injected into AI chat system prompt as `ASPIRANT'S CAREER GOAL` section | |
 | Aspirant context profile | 🔵 Planned | Personalization doc proposes table | Add after core prep modules |
 | Financial/job urgency assessment | 🔵 Planned | Personalization doc | Add progressive assessment |
 | Aptitude profile | 🔵 Planned | Personalization doc | Connect to mocks/skill tests |
 | Values/work preference profile | 🔵 Planned | Personalization doc | Add optional assessment |
-| Five-year goals | 🔵 Planned | Personalization doc | Add strategy form |
 | Derived scoring model | 🔵 Planned | Personalization doc | Build deterministic scoring first |
 | Exam-fit ranking | 🔵 Planned | Personalization doc | Combine eligibility + aptitude + goals |
 | AI strategy snapshots | 🔵 Planned | Personalization doc | Add snapshot table |
@@ -303,10 +303,10 @@ Whenever a feature is built or changed:
 |---|---|---|---|
 | Admin overview | 🟡 Partial | Admin page exists | Add operational KPIs |
 | Source registry admin | ✅ Done | SourceRegistryManager exists | Improve forms and pagination |
-| Scrape dashboard | 🟡 Partial | Queue/run concepts exist | Add pagination and evidence review |
-| Evidence review | 🔵 Planned | Strategy/roadmap | Add field-level review UI |
+| Scrape dashboard | ✅ Done | Queue and run history paginated (`?tab=queue&page=N`); `Paginator` component with Prev/Next links; evidence review tab present | Deepen evidence review coverage |
+| Evidence review | 🟡 Partial | Evidence review tab exists in `AdminScrapeDashboard`; field-level verify/reject actions wired | Improve coverage per migration 017 fields |
 | Organizations admin | 🟡 Partial | Admin forms exist in project context | Verify consistency |
-| Recruitments admin | 🟡 Partial | Existing forms mentioned | Redesign workflow |
+| Recruitments admin | 🟡 Partial | Paginated (`?page=N`, 30/page); `getRecruitmentsAdminPaginated`; Prev/Next links | Redesign workflow for full post criteria |
 | Posts and criteria admin | 🟡 Partial | Needs structured workflow | Build multi-section UI |
 | Eligibility monitor | 🔵 Planned | Admin roadmap | Add queue/results monitor |
 | Notification monitor | 🔵 Planned | Admin roadmap | Add feed/event status UI |
@@ -314,7 +314,7 @@ Whenever a feature is built or changed:
 | Marketplace moderation | 🔵 Planned | Roadmap | Build moderation dashboard |
 | Forum moderation | 🔵 Planned | Roadmap | Build if forum exists |
 | Audit logs | 🟡 Partial | Admin RBAC/audit migration exists in search results | Verify coverage and add UI |
-| Shared admin UI primitives | 🔵 Planned | Roadmap lists components | Create `AdminInput`, `AdminSelect`, etc. |
+| Shared admin UI primitives | ✅ Done | `components/admin/ui/index.tsx` — `AdminInput`, `AdminSelect`, `AdminTextarea`, `AdminSection`, `AdminArrayField`, `AdminFormFooter`, `AdminStatusPill`, `AdminConfirmModal` | Migrate existing admin forms to use primitives |
 
 ---
 
@@ -323,15 +323,15 @@ Whenever a feature is built or changed:
 | Feature | Status | Evidence / Notes | Next action |
 |---|---|---|---|
 | AI study planner prompt | ✅ Done | Existing AI study planner | Add prompt versioning |
-| AI career chat | ✅ Done | Phase report says Pro/Elite | Add better context and logs |
-| Prompt versioning table | 🔵 Planned | AI plan | Add `ai_prompt_versions` |
-| AI jobs table | 🔵 Planned | AI plan | Add `ai_jobs` |
-| AI review queue | 🔵 Planned | AI plan | Add `ai_review_queue` |
+| AI career chat | ✅ Done | Pro/Elite; system prompt now includes career_goal as named section; `getChatUserContext` fetches goal | Improve context richness |
+| Prompt versioning table | ✅ Done | `ai_prompt_versions` table in migration 020 — prompt_key, version, model_name, prompt_template, json_schema, confidence_policy, is_active | Wire to job runner when AI jobs are built |
+| AI jobs table | ✅ Done | `ai_jobs` table in migration 020 — status, input/output JSON, confidence_score, model, token_count, timing; indexed on user_id/status/job_type | Build job runner |
+| AI review queue | ✅ Done | `ai_review_queue` table in migration 020 — FK to ai_jobs, proposed_value, evidence, confidence, review_status, reviewed_by/at | Build admin review UI |
 | JSON schema validation | 🔵 Planned | Needed for stable AI output | Add zod/schema validation |
-| Confidence thresholds | 🔵 Planned | AI plan | Add workflow-specific thresholds |
-| AI job observability | 🔵 Planned | AI plan | Track latency, cost, failures |
-| Field-level AI evidence | 🔵 Planned | AI plan | Connect to admin review |
-| AI output auditability | 🔵 Planned | AI plan | Store model, prompt version, input/output |
+| Confidence thresholds | 🔵 Planned | `confidence_policy` column exists on `ai_prompt_versions` | Implement threshold checks in job runner |
+| AI job observability | 🔵 Planned | Table columns exist (token_count, timing) | Build monitoring dashboard |
+| Field-level AI evidence | 🔵 Planned | AI plan | Connect ai_review_queue to admin review |
+| AI output auditability | 🟡 Partial | `ai_jobs` stores model + prompt_key/version + input/output | Build job runner to populate |
 
 ---
 
@@ -376,18 +376,19 @@ Whenever a feature is built or changed:
 |---|---|
 | Add `notification_preferences` migration | 🔴 Blocked / Needed |
 | Build email dispatcher | 🔴 Blocked until preferences |
-| Fix/replace misleading notification empty state | 🔵 Planned |
-| Add pagination to heavy admin/dashboard routes | 🔵 Planned |
-| Remove or resolve dev proxy latency | 🔴 Blocked / Needed |
-| Create shared admin UI primitives | 🔵 Planned |
+| Fix/replace misleading notification empty state | ✅ Done — `getNotificationReadiness` + `NotificationsEmptyState` |
+| Add pagination to heavy admin/dashboard routes | ✅ Done — scrape queue, run history, recruitments all paginated |
+| Remove or resolve dev proxy latency | 🔴 Blocked / Needed (do not remove proxy.ts without explicit instruction) |
+| Create shared admin UI primitives | ✅ Done — `components/admin/ui/index.tsx` |
 
 ### P1 — Build user-retention loop
 
 | Task | Status |
 |---|---|
-| Add next-best-action panel | 🔵 Planned |
-| Add daily study tasks | 🔵 Planned |
-| Add timer/focus sessions | 🔵 Planned |
+| Add next-best-action panel | ✅ Done — `NextBestActionPanel` + `lib/db/next-actions.ts` + server actions |
+| Add daily study tasks | ✅ Done — `DailyTasksWidget` + `lib/db/study-tasks.ts` + server actions |
+| Add career goal / aspirant ambition | ✅ Done — `profiles.career_goal` + onboarding question + AI chat injection |
+| Add timer/focus sessions | 🟡 Partial — DB tables exist (`study_sessions`); timer UI component pending |
 | Add notes | 🔵 Planned |
 | Add flashcards | 🔵 Planned |
 | Add mock-test entry and analysis | 🔵 Planned |

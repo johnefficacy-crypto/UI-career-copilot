@@ -70,6 +70,132 @@ export async function getUserNotifications(
   return (data ?? []) as unknown as NotificationAlert[]
 }
 
+// =============================================================================
+// NOTIFICATION READINESS DIAGNOSTIC
+// =============================================================================
+
+export interface NotificationReadiness {
+  onboardingCompleted:          boolean
+  hasDob:                       boolean
+  hasCategory:                  boolean
+  hasDomicile:                  boolean
+  hasEducation:                 boolean
+  hasPreferences:               boolean
+  hasTargetExams:               boolean
+  eligibilityRowsCount:         number
+  notificationRowsCount:        number
+  matchingOpenRecruitmentsCount: number
+  blockers:                     string[]
+  recommendedActions:           string[]
+}
+
+export async function getNotificationReadiness(userId: string): Promise<NotificationReadiness> {
+  const supabase = await createClient()
+
+  const [profileRes, educationRes, prefsRes, eligRes, alertsRes, recruitmentsRes] =
+    await Promise.all([
+      supabase
+        .from("profiles")
+        .select("onboarding_completed, dob, category, domicile_state")
+        .eq("id", userId)
+        .single(),
+      supabase
+        .from("aspirant_education")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", userId)
+        .eq("is_completed", true),
+      supabase
+        .from("aspirant_preferences")
+        .select("target_exams")
+        .eq("user_id", userId)
+        .maybeSingle(),
+      supabase
+        .from("eligibility_results")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", userId),
+      supabase
+        .from("notification_alerts")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", userId),
+      supabase
+        .from("recruitments")
+        .select("id", { count: "exact", head: true })
+        .in("status", ["active", "open"]),
+    ])
+
+  const p = profileRes.data
+
+  const onboardingCompleted          = p?.onboarding_completed ?? false
+  const hasDob                       = !!p?.dob
+  const hasCategory                  = !!p?.category
+  const hasDomicile                  = !!p?.domicile_state
+  const hasEducation                 = (educationRes.count ?? 0) > 0
+  const hasPreferences               = !!prefsRes.data
+  const hasTargetExams               = Array.isArray(prefsRes.data?.target_exams) &&
+                                       (prefsRes.data.target_exams as unknown[]).length > 0
+  const eligibilityRowsCount         = eligRes.count ?? 0
+  const notificationRowsCount        = alertsRes.count ?? 0
+  const matchingOpenRecruitmentsCount = recruitmentsRes.count ?? 0
+
+  const blockers: string[]           = []
+  const recommendedActions: string[] = []
+
+  if (!onboardingCompleted) {
+    blockers.push("Profile setup is not complete.")
+    recommendedActions.push("Finish your onboarding profile to activate eligibility matching.")
+  }
+  if (!hasDob) {
+    blockers.push("Date of birth is missing — required for age-based eligibility rules.")
+    recommendedActions.push("Add your date of birth in Profile settings.")
+  }
+  if (!hasCategory) {
+    blockers.push("Reservation category (General / OBC / SC / ST / EWS) is not set.")
+    recommendedActions.push("Set your category in Profile settings to apply relaxation rules correctly.")
+  }
+  if (!hasEducation) {
+    blockers.push("No completed education record found — exams require a minimum qualification.")
+    recommendedActions.push("Add your highest completed qualification in Profile → Education.")
+  }
+  if (!hasDomicile) {
+    blockers.push("Domicile state is missing — required for state-level and domicile-restricted exams.")
+    recommendedActions.push("Add your home/domicile state in Profile settings.")
+  }
+
+  if (blockers.length === 0) {
+    if (!hasTargetExams) {
+      blockers.push("No target exams selected — eligibility matching is not narrowed to your goals.")
+      recommendedActions.push("Select target exams in Profile → Preferences.")
+    }
+    if (eligibilityRowsCount === 0) {
+      blockers.push("Eligibility check has not run yet — your profile was recently completed.")
+      recommendedActions.push("Eligibility is usually computed within a few minutes. Check back shortly.")
+    } else if (notificationRowsCount === 0) {
+      if (matchingOpenRecruitmentsCount === 0) {
+        blockers.push("No officially verified recruitments are currently open.")
+        recommendedActions.push("Notifications will appear automatically when new official vacancies are approved.")
+      } else {
+        blockers.push("No open recruitments currently match your profile criteria.")
+        recommendedActions.push("Review your category, education, and domicile settings. Broaden your target exam list to see more matches.")
+      }
+    }
+  }
+
+  return {
+    onboardingCompleted,
+    hasDob,
+    hasCategory,
+    hasDomicile,
+    hasEducation,
+    hasPreferences,
+    hasTargetExams,
+    eligibilityRowsCount,
+    notificationRowsCount,
+    matchingOpenRecruitmentsCount,
+    blockers,
+    recommendedActions,
+  }
+}
+
 export async function getUnreadCount(userId: string): Promise<number> {
   const supabase = await createClient()
   const { count, error } = await supabase
@@ -672,6 +798,123 @@ export async function getScrapeRuns(limit = 20): Promise<ScrapeRun[]> {
     .limit(limit)
   if (error) throw new Error(`getScrapeRuns: ${error.message}`)
   return (data ?? []) as unknown as ScrapeRun[]
+}
+
+// ─── Paginated helpers ────────────────────────────────────────────────────────
+
+export interface PaginatedResult<T> {
+  rows:       T[]
+  total:      number
+  page:       number
+  pageSize:   number
+  totalPages: number
+}
+
+export async function getScrapeQueuePaginated(
+  status?: ScrapeQueueItem["status"],
+  page    = 1,
+  pageSize = 25
+): Promise<PaginatedResult<QueueReviewItem>> {
+  const supabase = await createClient()
+  const from = (page - 1) * pageSize
+  const to   = from + pageSize - 1
+
+  // Try the enriched view first
+  {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let q = (supabase as any)
+      .from("v_admin_queue_review")
+      .select("*", { count: "exact" })
+      .order("scraped_at", { ascending: false })
+      .range(from, to)
+    if (status) q = q.eq("status", status)
+    const { data, error, count } = await q
+    if (!error) {
+      const total = count ?? 0
+      return {
+        rows:       (data ?? []) as QueueReviewItem[],
+        total,
+        page,
+        pageSize,
+        totalPages: Math.max(1, Math.ceil(total / pageSize)),
+      }
+    }
+    const code: string = (error as { code?: string })?.code ?? ""
+    if (code !== "42P01" && code !== "PGRST116" && !(error as { message?: string }).message?.includes("does not exist")) {
+      throw new Error(`getScrapeQueuePaginated (view): ${(error as { message?: string }).message}`)
+    }
+  }
+
+  // Fallback: query scrape_queue directly
+  let q = supabase
+    .from("scrape_queue")
+    .select("id,source_url,source_name,confidence_score,data_quality_score,status,scraped_at,reviewed_at,reviewer_notes,extracted_data", { count: "exact" })
+    .order("scraped_at", { ascending: false })
+    .range(from, to)
+  if (status) q = q.eq("status", status)
+  const { data, error, count } = await q
+  if (error) throw new Error(`getScrapeQueuePaginated: ${error.message}`)
+
+  const rows = (data ?? []).map((row) => {
+    const ext = (row.extracted_data ?? {}) as Record<string, unknown>
+    return {
+      id:                        row.id,
+      source_url:                row.source_url,
+      source_name:               row.source_name ?? "",
+      confidence_score:          row.confidence_score ?? 0,
+      data_quality_score:        (row.data_quality_score as number | null) ?? null,
+      status:                    row.status as ScrapeQueueItem["status"],
+      scraped_at:                row.scraped_at,
+      reviewed_at:               row.reviewed_at ?? null,
+      reviewer_notes:            row.reviewer_notes ?? null,
+      title:                     (ext.title as string | null) ?? null,
+      org_name:                  (ext.organization_name as string | null) ?? null,
+      apply_end_date:            (ext.apply_end_date as string | null) ?? null,
+      total_vacancies:           ext.total_vacancies != null ? String(ext.total_vacancies) : null,
+      fingerprint:               null,
+      obs_status:                null,
+      canonical_id:              null,
+      canonical_name:            null,
+      run_started_at:            null,
+      extraction_status:         null,
+      evidence_required:         true,
+      notification_document_id:  null,
+      extraction_provider:       null,
+      extraction_model:          null,
+      evidence_total_count:      null,
+      evidence_verified_count:   null,
+      evidence_rejected_count:   null,
+      evidence_missing_count:    null,
+    } satisfies QueueReviewItem
+  })
+
+  const total = count ?? 0
+  return { rows, total, page, pageSize, totalPages: Math.max(1, Math.ceil(total / pageSize)) }
+}
+
+export async function getScrapeRunsPaginated(
+  page    = 1,
+  pageSize = 20
+): Promise<PaginatedResult<ScrapeRun>> {
+  const supabase = await createClient()
+  const from = (page - 1) * pageSize
+  const to   = from + pageSize - 1
+
+  const { data, error, count } = await supabase
+    .from("scrape_runs")
+    .select("id,started_at,finished_at,status,sources_checked,items_found,items_new,items_duplicate,error_log,triggered_by", { count: "exact" })
+    .order("started_at", { ascending: false })
+    .range(from, to)
+
+  if (error) throw new Error(`getScrapeRunsPaginated: ${error.message}`)
+  const total = count ?? 0
+  return {
+    rows:       (data ?? []) as unknown as ScrapeRun[],
+    total,
+    page,
+    pageSize,
+    totalPages: Math.max(1, Math.ceil(total / pageSize)),
+  }
 }
 
 // =============================================================================

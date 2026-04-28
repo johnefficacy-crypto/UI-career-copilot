@@ -38,6 +38,15 @@ export function buildSystemPrompt(ctx: ChatUserContext): string {
     ? `\nASPIRANT PROFILE:\n${profileLines.map((l) => `- ${l}`).join("\n")}\n`
     : ""
 
+  // The career_goal is the aspirant's own words about their deeper ambition.
+  // It is injected as a named, prominent section so Claude always sees it as
+  // the north-star context when framing advice — not just another profile fact.
+  const goalSection = ctx.career_goal
+    ? `\nASPIRANT'S CAREER GOAL (in their own words):\n"${ctx.career_goal.trim()}"\n\n` +
+      `Always keep this goal in mind. Frame exam choices, study plans, and career advice ` +
+      `in terms of how they serve this aspiration. Acknowledge it explicitly when relevant.\n`
+    : ""
+
   return `You are an expert career advisor and coaching mentor for Indian government \
 and semi-government exam aspirants. You have deep, authoritative knowledge of:
 
@@ -52,7 +61,7 @@ and semi-government exam aspirants. You have deep, authoritative knowledge of:
 - Judiciary: All India Judicial Services, District Court, High Court, Notary
 - Teaching: KVS, NVS, DSSSB, State TET/TGT/PGT, CTET, UGC NET, CSIR NET
 - Insurance: LIC AAO/ADO, GIC, UIIC, NIACL, OICL, Oriental Insurance
-${profileSection}
+${profileSection}${goalSection}
 You give personalised, direct, actionable guidance tailored to the aspirant's profile. \
 You deeply understand Indian eligibility rules — age relaxations for OBC/SC/ST/PwBD/\
 Ex-Serviceman/Govt Employees, attempt limits for each exam, minimum educational qualifications \

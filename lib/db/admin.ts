@@ -193,6 +193,32 @@ export async function getAllRecruitmentsAdmin() {
   return data ?? []
 }
 
+export async function getRecruitmentsAdminPaginated(page = 1, pageSize = 30) {
+  const supabase = await createClient()
+  const from = (page - 1) * pageSize
+  const to   = from + pageSize - 1
+
+  const { data, count, error } = await supabase
+    .from("recruitments")
+    .select(`
+      *,
+      organizations ( name, type ),
+      posts ( id, post_name, group_type )
+    `, { count: "exact" })
+    .order("created_at", { ascending: false })
+    .range(from, to)
+
+  if (error) throw new Error(`getRecruitmentsAdminPaginated: ${error.message}`)
+  const total = count ?? 0
+  return {
+    rows:       data ?? [],
+    total,
+    page,
+    pageSize,
+    totalPages: Math.max(1, Math.ceil(total / pageSize)),
+  }
+}
+
 export async function getRecruitmentById(id: string) {
   const supabase = await createClient()
   const { data } = await supabase
