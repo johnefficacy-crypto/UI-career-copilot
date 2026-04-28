@@ -19,9 +19,8 @@
  *   → Components update automatically via Pick<SourceRegistryEntry>
  */
 
-import { redirect }       from "next/navigation"
-import { revalidatePath } from "next/cache"
-import { createClient }   from "@/utils/supabase/server"
+import { revalidatePath }   from "next/cache"
+import { requireAdminRole } from "@/lib/db/admin"
 import {
   dbCreateSource,
   dbUpdateSource,
@@ -34,18 +33,6 @@ import {
   SourceValidationError,
   type SourceWriteInput,
 } from "@/lib/db/source-registry"
-
-// ─── Auth guard ───────────────────────────────────────────────────────────────
-
-async function requireAdmin() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect("/auth/login")
-  const { data: profile } = await supabase
-    .from("profiles").select("is_admin").eq("id", user.id).single()
-  if (!profile?.is_admin) redirect("/dashboard")
-  return user
-}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -147,7 +134,7 @@ function handleError(err: unknown): SourceActionResult {
 export async function createSource(
   data: Omit<SourceFormData, "id">
 ): Promise<SourceActionResult> {
-  await requireAdmin()
+  await requireAdminRole("sources")
   try {
     const id = await dbCreateSource(formToWriteInput(data) as SourceWriteInput)
     revalidatePath("/admin/sources")
@@ -162,7 +149,7 @@ export async function updateSource(
   id: string,
   data: Partial<SourceFormData>
 ): Promise<SourceActionResult> {
-  await requireAdmin()
+  await requireAdminRole("sources")
   const idErr = validateId(id)
   if (idErr) return idErr
   try {
@@ -176,7 +163,7 @@ export async function updateSource(
 }
 
 export async function deleteSource(id: string): Promise<SourceActionResult> {
-  await requireAdmin()
+  await requireAdminRole("sources")
   const idErr = validateId(id)
   if (idErr) return idErr
   try {
@@ -193,7 +180,7 @@ export async function toggleSourceActive(
   id: string,
   active: boolean
 ): Promise<SourceActionResult> {
-  await requireAdmin()
+  await requireAdminRole("sources")
   const idErr = validateId(id)
   if (idErr) return idErr
   try {
@@ -210,7 +197,7 @@ export async function markSourceVerified(
   id: string,
   verified: boolean
 ): Promise<SourceActionResult> {
-  await requireAdmin()
+  await requireAdminRole("sources")
   const idErr = validateId(id)
   if (idErr) return idErr
   try {
@@ -223,7 +210,7 @@ export async function markSourceVerified(
 }
 
 export async function resetSourceFails(id: string): Promise<SourceActionResult> {
-  await requireAdmin()
+  await requireAdminRole("sources")
   const idErr = validateId(id)
   if (idErr) return idErr
   try {
@@ -239,7 +226,7 @@ export async function bulkToggleSources(
   ids: string[],
   active: boolean
 ): Promise<SourceActionResult> {
-  await requireAdmin()
+  await requireAdminRole("sources")
   if (!ids.length) return { success: false, error: "No IDs provided" }
   if (ids.some(id => !UUID_RE.test(id))) return { success: false, error: "Invalid ID in batch" }
   try {
@@ -252,7 +239,7 @@ export async function bulkToggleSources(
 }
 
 export async function bulkDeleteSources(ids: string[]): Promise<SourceActionResult> {
-  await requireAdmin()
+  await requireAdminRole("sources")
   if (!ids.length) return { success: false, error: "No IDs provided" }
   if (ids.some(id => !UUID_RE.test(id))) return { success: false, error: "Invalid ID in batch" }
   try {

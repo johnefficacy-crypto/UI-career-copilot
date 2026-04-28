@@ -52,6 +52,38 @@ function priorityAtLeast(actual: string, minimum: string): boolean {
          (PRIORITY_ORDER[minimum as Priority] ?? 0)
 }
 
+// ─── Feed row type (matches v_notification_feed view columns) ─────────────────
+
+export type FeedRow = {
+  id:               string
+  user_id:          string
+  alert_type:       string
+  priority:         number
+  recruitment_id:   string | null
+  recruitment_name: string | null
+  org_name:         string | null
+  apply_end_date:   string | null
+  days_to_deadline: number | null
+  email_sent:       string | null
+}
+
+export function buildSubject(alert: FeedRow): string {
+  if (alert.alert_type === "deadline") {
+    return `Deadline approaching: ${alert.recruitment_name ?? "Opportunity"}`
+  }
+  return `Career Copilot update: ${alert.recruitment_name ?? "Opportunity"}`
+}
+
+export function buildBody(alert: FeedRow): string {
+  const fragments = [
+    alert.org_name         ?? "Career Copilot",
+    alert.recruitment_name ?? "Opportunity update",
+    alert.apply_end_date   ? `Apply by ${alert.apply_end_date}` : null,
+    alert.days_to_deadline != null ? `${alert.days_to_deadline} days remaining` : null,
+  ].filter(Boolean)
+  return fragments.join(" • ")
+}
+
 function db() {
   return createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
     auth: { persistSession: false },
@@ -278,22 +310,37 @@ Deno.serve(async (req) => {
   const errList: string[] = []
 
   for (const pref of targetPrefs) {
-    // ── 2. Fetch unsent alerts for this user ─────────────────────────────
-    const { data: alerts } = await supabase
-      .from("notification_alerts")
-      .select("id, title, body, priority, recruitment_id, sent_at")
+    // ── 2. Fetch unsent alerts from v_notification_feed ──────────────────
+    const { data: feedRows } = await supabase
+      .from("v_notification_feed")
+      .select(`
+        id,
+        user_id,
+        alert_type,
+        priority,
+        recruitment_id,
+        recruitment_name,
+        org_name,
+        apply_end_date,
+        days_to_deadline,
+        email_sent
+      `)
       .eq("user_id", pref.user_id)
-      .eq("email_sent", false)
-      .gte("sent_at", staleDate.toISOString())
-      .order("sent_at", { ascending: false })
+      .is("email_sent", null)
+      .gte("created_at", staleDate.toISOString())
+      .order("priority", { ascending: false })
       .limit(20)
 
-    if (!alerts || alerts.length === 0) continue
+    if (!feedRows || feedRows.length === 0) continue
 
-    // Filter by min_priority_email
-    const eligible = alerts.filter((a) =>
-      priorityAtLeast(a.priority ?? "low", pref.min_priority_email ?? "medium")
-    )
+    // Filter by min_priority_email (numeric priority: higher = more urgent)
+    const minPriority = pref.min_priority_email ?? "medium"
+    const eligible = (feedRows as FeedRow[]).filter((row) => {
+      // Map numeric priority from feed to label for comparison
+      const numericToLabel = (n: number): Priority =>
+        n >= 5 ? "critical" : n >= 4 ? "high" : n >= 3 ? "medium" : "low"
+      return priorityAtLeast(numericToLabel(row.priority ?? 0), minPriority)
+    })
     if (eligible.length === 0) continue
 
     // ── 3. Fetch user email from auth.users ──────────────────────────────
@@ -310,11 +357,14 @@ Deno.serve(async (req) => {
     const { subject, html } = renderDigestEmail({
       userName,
       userId: pref.user_id,
-      alerts:  eligible.map((a) => ({
-        title:          a.title ?? "Exam update",
-        body:           a.body  ?? "",
-        priority:       a.priority ?? "low",
-        recruitment_id: a.recruitment_id ?? null,
+      alerts: eligible.map((row) => ({
+        title:          buildSubject(row),
+        body:           buildBody(row),
+        priority:       row.priority >= 5 ? "critical"
+                      : row.priority >= 4 ? "high"
+                      : row.priority >= 3 ? "medium"
+                      : "low",
+        recruitment_id: row.recruitment_id ?? null,
       })),
       isInstant,
     })
@@ -326,7 +376,7 @@ Deno.serve(async (req) => {
       await supabase
         .from("notification_alerts")
         .update({ email_sent: true })
-        .in("id", eligible.map((a) => a.id))
+        .in("id", eligible.map((r) => r.id))
 
       dispatched++
     } else {

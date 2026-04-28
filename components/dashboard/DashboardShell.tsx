@@ -1,4 +1,5 @@
 import type { DashboardData }            from "@/lib/db/dashboard"
+import type { MissionControlData }        from "@/lib/db/mission-control"
 import type { NotificationAlert }         from "@/types/notifications"
 import type { NextAction }               from "@/lib/db/next-actions"
 import type { StudyTask }               from "@/lib/db/study-tasks"
@@ -9,7 +10,7 @@ import { NotificationsFeed }              from "./NotificationsFeed"
 import { StatsBar }                       from "./StatsBar"
 import { StudyPlanWidget }                from "./StudyPlanWidget"
 import { SkillTestWidget }                from "./SkillTestWidget"
-import { EligibleRecruitmentsWidget }     from "./EligibleRecruitmentsWidget"
+import { MissionControlPanel }            from "./MissionControlPanel"
 import { NextBestActionPanel }            from "./NextBestActionPanel"
 import { DailyTasksWidget }              from "./DailyTasksWidget"
 import { AiChatWidget }                   from "@/components/chat/AiChatWidget"
@@ -22,6 +23,7 @@ type EligibleRecruitmentsResult = Awaited<ReturnType<typeof getEligibleRecruitme
 interface Props {
   data:                 DashboardData
   userId:               string
+  missionControlData:   MissionControlData
   eligibleRecruitments: EligibleRecruitmentsResult
   userAlerts:           NotificationAlert[]
   unreadCount:          number
@@ -37,6 +39,7 @@ interface Props {
 export function DashboardShell({
   data,
   userId,
+  missionControlData,
   eligibleRecruitments,
   userAlerts,
   unreadCount,
@@ -132,11 +135,10 @@ export function DashboardShell({
 
             <ExamTargetCard targets={targets} attempts={attempts} />
 
-            {/* Eligible recruitments — closes the UX gap where the eligibility
-                engine's output had no surface on the main dashboard. */}
-            <EligibleRecruitmentsWidget
-              rows={Array.isArray(eligibleRecruitments) ? eligibleRecruitments : []}
-            />
+            {/* Mission-control panel — eligibility-aware opportunity feed with
+                summary stats, tabs, and deadline urgency. Falls back gracefully
+                when user_recruitment_state view has no rows yet. */}
+            <MissionControlPanel data={missionControlData} />
 
             {/* Daily tasks — shown when user has an active plan */}
             {primaryPlan && (

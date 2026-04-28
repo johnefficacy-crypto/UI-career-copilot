@@ -24,6 +24,7 @@ import { getUserPlans }            from "@/lib/db/study-planner"
 import { getUserChatSessions }     from "@/lib/db/chat"
 import { getOrGenerateNextActions } from "@/lib/db/next-actions"
 import { getTodaysTasks }          from "@/lib/db/study-tasks"
+import { getMissionControlData }   from "@/lib/db/mission-control"
 import { DashboardShell }          from "@/components/dashboard/DashboardShell"
 
 export const dynamic  = "force-dynamic"
@@ -47,6 +48,7 @@ export default async function DashboardPage() {
     userPlans,
     chatSessions,
     nextActions,
+    missionControlData,
   ] = await Promise.all([
     getDashboardData(user.id),
     getEligibleRecruitments(user.id),
@@ -55,6 +57,7 @@ export default async function DashboardPage() {
     getUserPlans(user.id),
     getUserChatSessions(user.id, 5),
     getOrGenerateNextActions(user.id).catch(() => []),
+    getMissionControlData(user.id),
   ])
 
   // Derive active plan before fetching tasks
@@ -74,6 +77,7 @@ export default async function DashboardPage() {
     <DashboardShell
       data={data}
       userId={user.id}
+      missionControlData={missionControlData}
       eligibleRecruitments={eligibleRecruitments}
       userAlerts={userNotifications}
       unreadCount={unreadCount}

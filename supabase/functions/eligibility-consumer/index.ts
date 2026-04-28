@@ -1,19 +1,17 @@
 /**
  * supabase/functions/eligibility-consumer/index.ts
  *
- * Deno Edge Function — consumes eligibility_recompute_queue.
+ * Deno Edge Function — consumes eligibility_recompute_queue atomically.
  *
- * Phase 3B follow-up rewrite (P0, April 19 code review fix):
- *   Previously this function shipped its OWN minimal rule engine (age + edu
- *   level only). That silently diverged from `lib/eligibility/engine.ts`
- *   whenever we added rules (relaxation caps, ex-serviceman, domicile,
- *   appearing-candidates), so users were flagged eligible by one path and
- *   ineligible by the other. The reviewer correctly called this a split-brain.
+ * Key change (migration 024 follow-up):
+ *   Previously this function fetched pending rows and marked them 'processing'
+ *   in two separate statements, allowing concurrent invocations to double-claim
+ *   the same row. Now it calls claim_eligibility_queue() — a single SQL
+ *   transaction using FOR UPDATE SKIP LOCKED — so each row is claimed by
+ *   exactly one invocation.
  *
- *   The fix: this function now just drains the queue and POSTs each user to
- *   `/api/eligibility/recompute`, which runs the authoritative engine inside
- *   the Next.js runtime with a service-role client. One rule engine. One
- *   source of truth.
+ *   Failed jobs are retried with exponential backoff (capped at 60 min).
+ *   attempt_count and last_error are stored for ops visibility.
  *
  * Deploy:
  *   supabase functions deploy eligibility-consumer
@@ -26,15 +24,14 @@
  *   );
  *
  * Required env vars (set via `supabase secrets set`):
- *   SUPABASE_URL                    — auto-provided
- *   SUPABASE_SERVICE_ROLE_KEY       — auto-provided
- *   APP_BASE_URL                    — e.g. https://career-copilot.app
- *                                     (no trailing slash)
+ *   SUPABASE_URL                  — auto-provided
+ *   SUPABASE_SERVICE_ROLE_KEY     — auto-provided
+ *   APP_BASE_URL                  — e.g. https://career-copilot.app (no trailing slash)
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 
-const BATCH_SIZE   = 20
+const BATCH_SIZE   = 50
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 const APP_BASE_URL = Deno.env.get("APP_BASE_URL") ?? ""
@@ -49,37 +46,27 @@ Deno.serve(async (_req: Request) => {
 
   const supabase = createClient(SUPABASE_URL, SERVICE_ROLE)
 
-  // ── 1. Claim a batch ──────────────────────────────────────────────────
-  const { data: batch, error: fetchErr } = await supabase
-    .from("eligibility_recompute_queue")
-    .select("id, user_id, recruitment_id, reason")
-    .eq("status", "pending")
-    .order("queued_at", { ascending: true })
-    .limit(BATCH_SIZE)
+  // ── 1. Atomically claim a batch via FOR UPDATE SKIP LOCKED ────────────────
+  const { data: jobs, error: claimError } = await supabase.rpc(
+    "claim_eligibility_queue",
+    { p_limit: BATCH_SIZE },
+  )
 
-  if (fetchErr) {
-    return Response.json({ error: fetchErr.message }, { status: 500 })
+  if (claimError) {
+    return Response.json({ error: claimError.message }, { status: 500 })
   }
-  if (!batch?.length) {
+  if (!jobs?.length) {
     return Response.json({ processed: 0, message: "queue empty" })
   }
 
-  const ids = batch.map((r: { id: string }) => r.id)
-
-  await supabase
-    .from("eligibility_recompute_queue")
-    .update({ status: "processing" })
-    .in("id", ids)
-
-  // ── 2. Dedupe by user — one POST per distinct user per batch ──────────
+  // ── 2. Dedupe by user — one POST per distinct user per batch ──────────────
   // The authoritative engine recomputes ALL posts for the user anyway, so
-  // calling it once per (user, recruitment) is wasteful. Group by user and
-  // mark every queue row for that user as completed/failed together.
-  const byUser = new Map<string, { id: string; recruitment_id: string }[]>()
-  for (const item of batch) {
-    const list = byUser.get(item.user_id) ?? []
-    list.push({ id: item.id, recruitment_id: item.recruitment_id })
-    byUser.set(item.user_id, list)
+  // calling it once per (user, recruitment) is wasteful.
+  const byUser = new Map<string, Array<{ id: string; attempt_count: number }>>()
+  for (const job of jobs) {
+    const list = byUser.get(job.user_id) ?? []
+    list.push({ id: job.id, attempt_count: job.attempt_count })
+    byUser.set(job.user_id, list)
   }
 
   let succeeded = 0
@@ -87,7 +74,9 @@ Deno.serve(async (_req: Request) => {
   const errors: string[] = []
 
   for (const [userId, rows] of byUser) {
-    const rowIds = rows.map((r) => r.id)
+    const rowIds       = rows.map((r) => r.id)
+    const maxAttempts  = Math.max(...rows.map((r) => r.attempt_count))
+
     try {
       const resp = await fetch(`${APP_BASE_URL}/api/eligibility/recompute`, {
         method: "POST",
@@ -105,7 +94,7 @@ Deno.serve(async (_req: Request) => {
 
       await supabase
         .from("eligibility_recompute_queue")
-        .update({ status: "completed", processed_at: new Date().toISOString() })
+        .update({ status: "completed", processed_at: new Date().toISOString(), last_error: null })
         .in("id", rowIds)
 
       succeeded += rows.length
@@ -114,9 +103,17 @@ Deno.serve(async (_req: Request) => {
       console.error(`[eligibility-consumer] user=${userId} failed: ${msg}`)
       errors.push(`user ${userId}: ${msg}`)
 
+      // Exponential backoff: 2^attempt minutes, capped at 60 minutes
+      const backoffMs = Math.min(Math.pow(2, maxAttempts) * 60_000, 3_600_000)
+      const nextAttempt = new Date(Date.now() + backoffMs).toISOString()
+
       await supabase
         .from("eligibility_recompute_queue")
-        .update({ status: "failed" })
+        .update({
+          status:          "pending",
+          last_error:      msg,
+          next_attempt_at: nextAttempt,
+        })
         .in("id", rowIds)
 
       failed += rows.length
@@ -124,7 +121,7 @@ Deno.serve(async (_req: Request) => {
   }
 
   return Response.json({
-    processed: batch.length,
+    processed: jobs.length,
     users:     byUser.size,
     succeeded,
     failed,
