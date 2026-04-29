@@ -1,36 +1,111 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Career Copilot
 
-## Getting Started
+Career Copilot is an India-focused government exam and recruitment operating system. The product is designed to help aspirants discover official opportunities, verify eligibility, track deadlines, prepare strategically, and eventually receive personalized study and career guidance.
 
-First, run the development server:
+The system is built around one core principle:
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+```text
+Database = recruitment
+Frontend language = exam
+Foreign key = recruitment_id
+Avoid = public.exams
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Product scope
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Career Copilot is not only a notification tracker. It is intended to become an aspirant mission-control system covering:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- official recruitment discovery,
+- deterministic eligibility matching,
+- personalized recruitment alerts,
+- application and deadline tracking,
+- AI-assisted study planning,
+- exam intelligence and PYQ analysis,
+- marketplace/resource discovery,
+- community and mentorship workflows.
 
-## Learn More
+## Current engineering priority
 
-To learn more about Next.js, take a look at the following resources:
+Automation expansion is blocked until governance is reliable.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Current P0 sequence:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+1. Full RBAC enforcement across admin routes and server actions.
+2. Admin audit viewer.
+3. Eligibility queue monitor.
+4. Source/recruitment/organization verification workflows.
+5. Notification governance.
+6. AI action policy layer.
 
-## Deploy on Vercel
+See [`docs/implementation_status_checklist.md`](docs/implementation_status_checklist.md) for the current implementation state.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Tech stack
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Next.js App Router
+- TypeScript
+- Supabase Postgres, Auth, RLS, Edge Functions
+- Deno Edge Functions for scheduled jobs
+- Razorpay billing foundation
+- AI-assisted product modules planned through governed workflows
+
+## Local development
+
+```bash
+npm install
+npm run dev
+```
+
+Before merging or marking a task complete, run:
+
+```bash
+npm run lint
+npm run typecheck
+npm test -- --run
+npm run build
+```
+
+## Required reading for AI/code agents
+
+Start with:
+
+1. [`AGENTS.md`](AGENTS.md)
+2. [`docs/00-ai-context.md`](docs/00-ai-context.md)
+3. [`docs/implementation_status_checklist.md`](docs/implementation_status_checklist.md)
+4. [`docs/database-domain-model.md`](docs/database-domain-model.md)
+5. [`docs/runbook.md`](docs/runbook.md)
+6. [`docs/admin_automation_strategy.md`](docs/admin_automation_strategy.md)
+
+Do not use old phase reports as current implementation truth. Phase reports are historical context only.
+
+## Documentation map
+
+| Document | Purpose |
+|---|---|
+| `docs/00-ai-context.md` | Short context pack for ChatGPT, Claude, and other agents |
+| `docs/01-current-status.md` | Human-readable current state snapshot |
+| `docs/feature-registry.md` | Feature-to-code implementation map |
+| `docs/database-domain-model.md` | Canonical domain model and migration rules |
+| `docs/implementation_status_checklist.md` | Current implementation truth and P0/P1/P2 priorities |
+| `docs/runbook.md` | Operations, verification, migration, release, and troubleshooting steps |
+| `docs/admin_automation_strategy.md` | Governance-first admin and automation doctrine |
+| `docs/source-intelligence-strategy.md` | Source, scraper, official/aggregator, trust, and RSS/JSON strategy |
+| `docs/product_strategy_architecture_roadmap.md` | Broad product and architecture roadmap |
+| `docs/decisions/` | Architecture Decision Records |
+| `docs/archive/` | Historical phase reports and chat summaries |
+
+## Non-negotiable engineering rules
+
+- `public.recruitments` is canonical.
+- `exam` is allowed as UI language only.
+- New tables and joins should use `recruitment_id`, `organization_id`, and `post_id`.
+- Do not create `public.exams` to satisfy old code.
+- Eligibility verdicts must come from deterministic logic.
+- AI may propose, summarize, classify, and explain; AI must not independently publish, verify, or override official data.
+- Aggregator sources are discovery inputs, not user-facing canonical truth.
+- Admin mutations must be permission-protected and audit-logged.
+
+## Design system
+
+Career Copilot uses a serious, information-dense visual system: dark navy-black surfaces, warm gold accents, Playfair Display for display type, DM Sans for UI/body text, and DM Mono for tabular/code values.
+
+See [`SKILL.md`](SKILL.md) and the Claude design frontend kit for implementation guidance.
