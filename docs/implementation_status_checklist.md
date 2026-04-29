@@ -92,28 +92,28 @@ Legend:
 
 ## P1 next sprint
 
-- [~] Redesign recruitment detail page around actionability and explanation
+- [x] Redesign recruitment detail page around actionability and explanation
   - Effort: L
   - Owner: frontend
   - Paths:
-    - `app/dashboard/recruitments/[id]/page.tsx` ✓ minimal version (Phase 3B)
+    - `app/dashboard/recruitments/[id]/page.tsx` ✓ full redesign (Phase 4)
     - `components/recruitments/StatusPanel.tsx` ✓ created
-    - `components/recruitments/Timeline.tsx` (pending)
-  - Notes: Current page shows eligibility verdict + track toggle. Full redesign (salary table, vacancies breakdown, syllabus, apply tracker) is Phase 4.
+    - `components/recruitments/Timeline.tsx` ✓ created (visual milestones: notification → apply opens → apply closes)
+    - `components/recruitments/ApplyButton.tsx` ✓ created (client component, fires apply_click telemetry)
+  - Notes: Full redesign ships: Timeline, salary details table, vacancies breakdown by category/state, ApplyButton with telemetry, initialClicked from user_exam_summary.clicked_apply. Syllabus is Phase 5 (no schema yet).
 
-- [ ] Wire admin_promote_recruitment_payload RPC into approveScrapeItem
+- [x] Wire admin_promote_recruitment_payload RPC into approveScrapeItem
   - Effort: S
   - Owner: backend
   - Paths:
-    - `lib/db/notifications.ts` → approveScrapeItem()
-    - `lib/scraping/runner.ts` → promoteToRecruitments()
-  - Notes: Migration 025 created the RPC. The TypeScript callers still use the old inline logic.
+    - `lib/db/notifications.ts` ✓ approveScrapeItem() calls admin_promote_recruitment_payload RPC; falls back to promoteToRecruitments() on RPC error
+  - Notes: Migration 025 RPC is now the primary promotion path. TypeScript fallback preserved for schema mismatch safety.
 
-- [ ] Wire upsertNotificationAlerts into runEligibilityForUser
+- [x] Wire upsertNotificationAlerts into runEligibilityForUser
   - Effort: S
   - Owner: backend
   - Paths:
-    - `lib/eligibility/runner.ts` → after upsert of eligibility_results
+    - `lib/eligibility/runner.ts` ✓ step 6 replaced — calls upsertNotificationAlerts() with ignoreDuplicates:false; priority 3=eligible, 2=conditional
 
 - [x] Upgrade exams page to show personalized eligibility badges
   - Effort: M

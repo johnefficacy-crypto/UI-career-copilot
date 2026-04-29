@@ -42,6 +42,7 @@ import {
   type UserEducation,
   type UserExamAttempts,
 } from "./engine"
+import { upsertNotificationAlerts, type AlertUpsertInput } from "@/lib/db/notifications"
 
 /**
  * Run eligibility check for a single user against all open/upcoming posts.
@@ -203,39 +204,33 @@ export async function runEligibilityForUser(
   let alertsInserted = 0
   if (eligibleByRec.size > 0) {
     const now = new Date().toISOString()
-    const alertInserts = Array.from(eligibleByRec.entries()).map(
+    // Build AlertUpsertInput[] — uses ignoreDuplicates:false so re-running
+    // eligibility keeps alert priority/explanation current without resetting is_read.
+    // Priority: 3 = fully eligible, 2 = conditional only.
+    const alertInputs: AlertUpsertInput[] = Array.from(eligibleByRec.entries()).map(
       ([recruitmentId, isEligibleStrict]) => ({
-        user_id: userId,
+        user_id:        userId,
         recruitment_id: recruitmentId,
-        alert_type: "new_match" as const,
-        is_read: false,
-        priority: 3,
-        sent_at: now,
-        alert_event_id: null,
+        alert_type:     "new_match" as const,
+        priority:       isEligibleStrict ? 3 : 2,
+        sent_at:        now,
         // `event_type` is not a column on notification_alerts — it lives on
         // v_notification_feed. Don't set it here.
         explanation: {
-          is_tracked: trackedSet.has(recruitmentId),
-          is_eligible: isEligibleStrict === true,
-          matched_exam: false,     // TODO (P1): wire from preferences.target_exams
+          is_tracked:     trackedSet.has(recruitmentId),
+          is_eligible:    isEligibleStrict === true,
+          matched_exam:   false,   // TODO (P1): wire from preferences.target_exams
           matched_sector: false,   // TODO (P1): wire from preferences.preferred_sectors
-          matched_type: false,
+          matched_type:   false,
         },
       }),
     )
 
-    const { data: inserted, error: alertErr } = await supabase
-      .from("notification_alerts")
-      .upsert(alertInserts, {
-        onConflict: "user_id,recruitment_id,alert_type",
-        ignoreDuplicates: true,
-      })
-      .select("id")
-
-    if (alertErr) {
-      errors.push("Alert write failed: " + alertErr.message)
-    } else {
-      alertsInserted = inserted?.length ?? 0
+    try {
+      await upsertNotificationAlerts(alertInputs)
+      alertsInserted = alertInputs.length
+    } catch (alertErr) {
+      errors.push("Alert write failed: " + (alertErr instanceof Error ? alertErr.message : String(alertErr)))
     }
   }
 

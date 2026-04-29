@@ -79,7 +79,7 @@ export type AlertUpsertInput = {
   recruitment_id: string
   alert_type:     "new_match" | "deadline" | "update" | "profile_blocker"
   priority:       number
-  explanation:    string | null
+  explanation:    unknown        // JSONB — accepts object or string
   sent_at?:       string | null
 }
 
@@ -659,29 +659,62 @@ export async function approveScrapeItem(
     }
   }
  
-  // ── 4. Promote to canonical recruitments ──────────────────────────────────
-  // promoteToRecruitments now THROWS on real errors. We let those bubble to the
-  // admin UI so the reviewer sees the actual database error (e.g. missing
-  // unique constraint, CHECK violation, RLS denial) instead of a ghost approval.
-  const { promoteToRecruitments } = await import("@/lib/scraping/runner")
+  // ── 4. Promote to canonical recruitments (transactional RPC) ─────────────
+  // admin_promote_recruitment_payload (migration 025) wraps the entire
+  // promotion — org upsert, recruitment insert, posts, age criteria, education
+  // criteria — in a single plpgsql transaction. Either everything commits or
+  // nothing is written, eliminating the partial-record problem that existed
+  // when these were separate TypeScript INSERTs.
+  //
+  // Fallback: if the RPC errors at runtime (e.g. table name mismatch), we log
+  // and fall back to promoteToRecruitments() so the admin can still approve.
   if (!item.extracted_data) throw new Error(`approveScrapeItem: no extracted_data on item ${itemId}`)
+
+  const ext = item.extracted_data as Record<string, unknown>
+  const rpcPayload = {
+    title:              ext.title              ?? null,
+    organization_name:  ext.organization_name  ?? ext.org_name ?? null,
+    source_url:         ext.official_notification_url ?? item.source_url ?? null,
+    apply_start_date:   ext.apply_start_date   ?? null,
+    apply_end_date:     ext.apply_end_date     ?? null,
+    status:             ext.status             ?? "open",
+    posts:              Array.isArray(ext.posts)              ? ext.posts              : [],
+    age_criteria:       Array.isArray(ext.age_criteria)       ? ext.age_criteria       : [],
+    education_criteria: Array.isArray(ext.education_criteria) ? ext.education_criteria : [],
+  }
 
   let recruitmentId: string | null = null
   try {
-    recruitmentId = await promoteToRecruitments(
-      item.extracted_data as unknown as ExtractedRecruitment,
-      supabase
-    )
+    const { data: rpcResult, error: rpcError } = await supabase
+      .rpc("admin_promote_recruitment_payload", {
+        p_payload:     rpcPayload,
+        p_reviewer_id: reviewerId,
+      })
+
+    if (rpcError) {
+      // RPC available but failed — fall back to legacy multi-step promotion
+      console.warn(
+        `[approveScrapeItem] admin_promote_recruitment_payload RPC failed ` +
+        `(${rpcError.message}); falling back to legacy promotion`
+      )
+      const { promoteToRecruitments } = await import("@/lib/scraping/runner")
+      recruitmentId = await promoteToRecruitments(
+        item.extracted_data as unknown as ExtractedRecruitment,
+        supabase,
+      )
+    } else {
+      recruitmentId = rpcResult as string
+    }
   } catch (err) {
-    // Mark the row 'reviewing' with the error note, then re-throw so the admin
-    // UI shows the real error. DO NOT mark 'approved'.
+    // Hard failure — mark reviewing so admin UI shows the error
     await supabase
       .from("scrape_queue")
       .update({
         status:            "reviewing",
         extraction_status: "needs_review",
         reviewer_id:       reviewerId,
-        reviewer_notes:    (notes ?? "") + ` [promotion failed: ${err instanceof Error ? err.message : String(err)}]`,
+        reviewer_notes:    (notes ?? "") +
+                           ` [promotion failed: ${err instanceof Error ? err.message : String(err)}]`,
         reviewed_at:       new Date().toISOString(),
       })
       .eq("id", itemId)
