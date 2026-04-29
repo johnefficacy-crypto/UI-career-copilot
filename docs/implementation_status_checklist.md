@@ -1,5 +1,5 @@
 # Career Copilot implementation status checklist
-_Last updated: 2026-04-29_
+_Last updated: 2026-04-29 — Sprint 1 complete_
 
 This file is the single source of truth for implementation status and next build decisions.
 Legend:
@@ -98,7 +98,7 @@ Legend:
   - Owner: frontend
   - Paths:
     - `app/api/notifications/preferences/route.ts` ✓ GET + POST created
-    - `app/dashboard/notifications/preferences/page.tsx` — UI page (pending)
+    - `app/dashboard/notifications/preferences/page.tsx` ✓ UI page created (Sprint 1)
   - Suggested PR title: `feat(notifications): add user preferences page and save API`
 
 - [x] Add minimum CI gate for lint, typecheck, tests, and Supabase DB lint
@@ -110,28 +110,28 @@ Legend:
 
 ## P1 next sprint
 
-- [~] Redesign recruitment detail page around actionability and explanation
+- [x] Redesign recruitment detail page around actionability and explanation
   - Effort: L
   - Owner: frontend
   - Paths:
-    - `[UNSPECIFIED] recruitment detail route`
+    - `app/dashboard/recruitments/[id]/page.tsx` ✓ Timeline wired
     - `components/recruitments/StatusPanel.tsx` ✓ created
-    - `components/recruitments/Timeline.tsx` (pending)
+    - `components/recruitments/Timeline.tsx` ✓ created — 5-stage visual timeline with live/done/upcoming states
   - Suggested PR title: `feat(recruitments): redesign detail page with status, evidence, and timeline`
 
-- [ ] Add profile impact module to show fields that unlock more opportunities
+- [x] Add profile impact module to show fields that unlock more opportunities
   - Effort: M
   - Owner: frontend + backend
   - Paths:
-    - `app/api/dashboard/profile-impact/route.ts` (new)
-    - `components/dashboard/ProfileImpactCard.tsx` (new)
+    - `app/api/dashboard/profile-impact/route.ts` ✓ created — returns missing fields + estimated impact count
+    - `components/dashboard/ProfileImpactCard.tsx` ✓ created — progress ring + impact rows wired into DashboardShell
   - Suggested PR title: `feat(profile): show missing fields and unlock impact`
 
 - [x] Upgrade exams page from official-URL-only view to summary cards
   - Effort: L
   - Owner: frontend + backend
   - Paths:
-    - `app/dashboard/exams/page.tsx` — wire to summary API (pending)
+    - `app/dashboard/exams/page.tsx` ✓ wired to user_exam_summary view with eligibility badges; falls back to exam_summary if view has no rows
     - `app/api/exams/summary/route.ts` ✓ created
     - `supabase/migrations/029_exam_summary_support.sql` ✓ created
     - `lib/exams/form-status.ts` ✓ created
@@ -139,6 +139,14 @@ Legend:
     - `exam` is a UI/product term. Database queries must use `public.recruitments` and `recruitment_id`; do not assume `public.exams` exists.
     - See `docs/database-domain-model.md`.
   - Suggested PR title: `feat(exams): add personalized exam summary cards and fit states`
+
+- [x] Launch notification preferences page before broad email rollout
+  - Effort: M
+  - Owner: frontend
+  - Paths:
+    - `app/api/notifications/preferences/route.ts` ✓ GET + POST created
+    - `app/dashboard/notifications/preferences/page.tsx` ✓ created — email/in-app toggles, digest frequency, quiet hours, DPDP compliance note
+  - Suggested PR title: `feat(notifications): add user preferences page and save API`
 
 - [ ] Add admin tools: source registry UI, queue monitor, scraper monitor, audit viewer, RBAC manager
   - Effort: L
