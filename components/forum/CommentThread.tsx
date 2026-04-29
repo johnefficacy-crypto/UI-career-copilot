@@ -1,3 +1,5 @@
+"use client"
+
 import type { ForumCommentWithAuthor } from "@/types/forum"
 import { upvoteCommentAction, deleteCommentAction, markBestAnswerAction } from "@/actions/forum"
 import { CommentForm } from "./CommentForm"

@@ -10,16 +10,17 @@ import { formatDate } from "@/lib/utils/dates"
 export default async function StudyPlanDetailPage({
   params,
 }: {
-  params: { id: string }
+  params: Promise<{ id: string }>
 }) {
+  const { id } = await params
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect("/login")
 
   const [plan, stats, logs] = await Promise.all([
-    getPlanWithWeeks(params.id, user.id),
-    getPlanStats(params.id, user.id),
-    getStudyLogs(user.id, params.id, 7),
+    getPlanWithWeeks(id, user.id),
+    getPlanStats(id, user.id),
+    getStudyLogs(user.id, id, 7),
   ])
 
   if (!plan) notFound()

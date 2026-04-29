@@ -660,7 +660,11 @@ export function AdminScrapeDashboard({
           ) : queue.filter(q => q.extraction_status !== null || q.evidence_total_count != null).map(item => (
             <div key={item.id}>
               {/* Evidence row header */}
-              <button type="button" onClick={() => handleSelectItem(item.id)} className="w-full text-left"
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => handleSelectItem(item.id)}
+                onKeyDown={(e) => e.key === "Enter" && handleSelectItem(item.id)}
                 style={{
                   display: "flex", alignItems: "center", gap: 12,
                   padding: "12px 16px", borderRadius: 12,
@@ -708,7 +712,7 @@ export function AdminScrapeDashboard({
                     {selectedItemId === item.id ? "▲" : "▼"}
                   </span>
                 </div>
-              </button>
+              </div>
 
               {/* Expanded evidence detail */}
               {selectedItemId === item.id && (
