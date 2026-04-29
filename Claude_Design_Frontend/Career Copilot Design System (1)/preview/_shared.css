@@ -1,9 +1,0 @@
-@import url("../colors_and_type.css");
-html, body { margin: 0; padding: 0; background: var(--bg-app); color: var(--text-primary); font-family: var(--font-sans); }
-body { padding: 24px; box-sizing: border-box; }
-.row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
-.col { display: flex; flex-direction: column; gap: 12px; }
-.swatch { border-radius: 10px; border: 1px solid var(--border); padding: 12px; font-size: 11px; color: var(--text-muted); font-family: var(--font-mono); display: flex; flex-direction: column; justify-content: space-between; min-height: 72px; }
-.swatch b { font-family: var(--font-sans); font-weight: 500; color: var(--text-primary); font-size: 12px; }
-.swatch .val { color: var(--text-dim); font-size: 10px; }
-.eyebrow { font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--text-muted); margin-bottom: 10px; }
