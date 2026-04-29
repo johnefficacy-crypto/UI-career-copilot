@@ -146,8 +146,10 @@ SELECT cron.schedule(
 
 ## 6. What's Next (Phase 3D)
 
-- UI: notification preferences page at `/dashboard/notifications/preferences`
-- UI: email opt-in toggle in onboarding step 5
-- Remove proxy.ts (adds 15–48s dev latency)
-- Add error boundaries
-- Sentry / LogSnag integration
+- ~~UI: notification preferences page at `/dashboard/notifications/preferences`~~
+  ✅ Done (April 29, 2026) — full preferences page with toggles for
+  `in_app_enabled`, `email_enabled`, digest frequency, and min-priority filters.
+- UI: email opt-in toggle in onboarding step 5 ← **pending**
+- Remove proxy.ts (adds 15–48s dev latency) ← **pending**
+- Add error boundaries ← **pending**
+- Sentry / LogSnag integration ← **pending**

@@ -76,7 +76,7 @@ Actual function is `fn_fanout_alert_event(p_event_id)`. Fixed in fanOutNotificat
 
 ## 4. Current State
 
-### Working (as of Phase 3B — April 19, 2026)
+### Working (as of Phase 4 P1 completion — April 29, 2026)
 - Scraper runs every 6h
 - Admin can trigger scraper manually
 - Admin CRUD for sources, queue review
@@ -86,22 +86,31 @@ Actual function is `fn_fanout_alert_event(p_event_id)`. Fixed in fanOutNotificat
   consumer both go through `lib/eligibility/engine.ts`
   (via `/api/eligibility/recompute`)
 - Notification trust — `new_match` alerts emerge from the engine's own
-  verdict, not from blind broadcast on approval
-- Recruitment detail page at `/dashboard/recruitments/[id]`
+  verdict, not from blind broadcast on approval; `upsertNotificationAlerts()`
+  with `ignoreDuplicates:false` keeps alert priority current on re-runs
+- Recruitment detail page — **full Phase 4 redesign** at `/dashboard/recruitments/[id]`
+  with Timeline, per-post salary details, vacancies breakdown, ApplyButton
+  (telemetry on click), initialClicked seeded from `user_exam_summary.clicked_apply`
+- `admin_promote_recruitment_payload` RPC wired into `approveScrapeItem` as
+  the primary promotion path (migration 025); fallback to `promoteToRecruitments()`
+- Mission-control dashboard — `user_exam_summary` view, opportunity feed, summary cards
+- Browse Exams page — personalized eligibility badges from `user_exam_summary`
+- Notification preferences page — `/dashboard/notifications/preferences` ✅
+- Email dispatcher Edge Function — Resend-backed, respects `email_enabled` default-off
+- Telemetry tables — `user_events` + `form_submissions` (migration 027)
+- Materialized view — `user_recruitment_state` (migration 028, refresh after recompute)
 - Billing (Razorpay subscriptions)
 - AI Career Chat (Pro/Elite)
 - Onboarding (5-step flow)
 
 ### Broken / Incomplete (remaining)
-- Email notifications — not built ← **Phase 3C**
 - WhatsApp notifications — not built ← **Phase 4**
-- `notification_preferences` migration — `getUserNotifPrefs`/`upsertUserNotifPrefs`
-  still stubs ← **Phase 3C prerequisite**
 - `explanation.matched_exam` / `matched_sector` / `matched_type` flags —
-  wiring from `preferences.target_exams` / `preferred_sectors` pending
+  wiring from `preferences.target_exams` / `preferred_sectors` pending ← **P1**
 - proxy.ts adds 15–48s latency in dev ← **Phase 3D**
-- Full recruitment detail page (salary table, vacancies breakdown, syllabus,
-  apply tracker) — current page is the minimal version ← **Phase 4**
+- Syllabus section on recruitment detail page — no schema yet ← **Phase 5**
+- Profile impact module (`ProfileImpactCard`) — not built ← **P1**
+- Admin tools (source registry UI, queue monitor, RBAC manager, audit viewer) ← **P1**
 
 ---
 
@@ -113,23 +122,29 @@ See `docs/phase3a_report.md`
 ### Phase 3B: Complete the eligibility engine ✅ COMPLETE
 See `docs/phase3b_report.md`
 
-### Phase 3C: Email notifications
-- Provider: Resend or AWS SES
-- `supabase/functions/email-dispatcher/index.ts`
-- Respect notification_preferences.email_enabled
-- DPDP Act compliance
+### Phase 3C: Email notifications ✅ COMPLETE
+See `docs/phase3c_report.md`
 
 ### Phase 3D: Production hardening
 - Remove proxy.ts
 - Add error boundaries
 - Set up Sentry / LogSnag
 
-### Phase 4: Growth features
+### Phase 4 P1: Wiring + full detail page ✅ COMPLETE (April 29, 2026)
+- `admin_promote_recruitment_payload` RPC wired into `approveScrapeItem`
+- `upsertNotificationAlerts` wired into `runEligibilityForUser`
+- Full recruitment detail page — Timeline, salary, vacancies, ApplyButton
+- Mission-control dashboard + Browse Exams eligibility badges
+- Notification preferences page
+- Telemetry + materialized view + exam summary views
+
+### Phase 4 Remaining
 - WhatsApp notifications
 - Playwright adapter
 - PDF OCR
-- Recruitment detail page
-- Apply tracker
+- Profile impact module
+- Apply tracker (mark_applied lifecycle)
+- Admin tools (UI)
 - Android app / PWA
 
 ---

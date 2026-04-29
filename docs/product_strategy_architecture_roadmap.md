@@ -1,6 +1,40 @@
 # Career Copilot Product Strategy, Architecture, and Implementation Roadmap
 
-_Last updated: 2026-04-27_
+_Last updated: 2026-04-29_
+
+## 0. Implementation status snapshot (April 29, 2026)
+
+The table below is a quick-reference overlay for this strategy doc. Detailed per-phase
+reports live in `docs/phase3a_report.md` through `phase3c_report.md`. The canonical
+task tracker is `docs/implementation_status_checklist.md`.
+
+| Layer | Status |
+|---|---|
+| Scraper (scheduled + manual) | ✅ Live — 6h pg_cron, 50-source registry |
+| Admin queue review + approval | ✅ Live |
+| `admin_promote_recruitment_payload` RPC | ✅ Wired (migration 025 + notifications.ts) |
+| Eligibility engine (age, edu, attempts, domicile, relaxation, appearing) | ✅ Complete |
+| Eligibility recompute queue + consumer Edge Function | ✅ Live |
+| `upsertNotificationAlerts` in runner (ignoreDuplicates:false) | ✅ Done |
+| `new_match` alerts — engine-only, no blind broadcast | ✅ Done |
+| Notification feed view (`v_notification_feed`) | ✅ Live |
+| Notification preferences page + migration | ✅ Done |
+| Email dispatcher (Resend, DPDP-compliant opt-in) | ✅ Done |
+| Mission-control dashboard (`user_exam_summary` view) | ✅ Live |
+| Browse Exams with eligibility badges | ✅ Live |
+| Recruitment detail page — full (Timeline, salary, vacancies, ApplyButton) | ✅ Done |
+| Telemetry tables (`user_events`, apply_click event) | ✅ Live |
+| Materialized view `user_recruitment_state` (manual refresh) | ✅ Live |
+| Semantic search / embeddings (pgvector, ivfflat index) | ✅ Schema ready — ETL sync job pending |
+| Profile impact module | ⬜ Not built |
+| Ranking v1 (eligibility + urgency + telemetry signals) | ⬜ Not built |
+| Admin tools UI (queue monitor, RBAC manager, audit viewer) | ⬜ Not built |
+| WhatsApp notifications | ⬜ Phase 4 |
+| Apply tracker (mark_applied lifecycle) | ⬜ Phase 4 |
+| Syllabus section on detail page | ⬜ Phase 5 (no schema) |
+| proxy.ts removal / error boundaries / Sentry | ⬜ Phase 3D |
+
+---
 
 ## 1. Purpose of this document
 

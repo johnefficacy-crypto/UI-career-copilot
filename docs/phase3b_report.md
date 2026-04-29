@@ -158,15 +158,24 @@ matric-pass criterion silently evaluated as "unknown level = not met".
 
 - `explanation.matched_exam` / `matched_sector` / `matched_type` wired from
   `preferences.target_exams` / `preferred_sectors`. Table exists; wiring is
-  straightforward but out of scope here.
-- Full recruitment detail page with salary, vacancies breakdown, apply
-  tracker. Phase 4.
-- Email / WhatsApp fan-out on top of the engine-emitted alerts. Phase 3C.
-- `notification_preferences` migration so `getUserNotifPrefs` stops being
-  a stub. Phase 3C prerequisite.
+  straightforward but out of scope here. ← **P1 pending**
+- ~~Full recruitment detail page with salary, vacancies breakdown, apply
+  tracker. Phase 4.~~ ✅ **Done (April 29, 2026)**
+  — `components/recruitments/Timeline.tsx`, `ApplyButton.tsx`,
+  `SalaryCard`, `VacanciesTable` all shipped.
+  `initialClicked` seeded from `user_exam_summary.clicked_apply`.
+- ~~Email / WhatsApp fan-out on top of the engine-emitted alerts. Phase 3C.~~
+  ✅ Email done (Phase 3C). WhatsApp is Phase 4.
+- ~~`notification_preferences` migration so `getUserNotifPrefs` stops being
+  a stub. Phase 3C prerequisite.~~ ✅ Done — migration 014 applied; UI at
+  `/dashboard/notifications/preferences`.
 - Delete the orphan `app/onboarding/education/EducationStep.tsx` (the live
   file is `components/onboarding/EducationStep.tsx`). Pure cleanup, no
-  behavioural impact.
+  behavioural impact. ← **still pending**
+- ~~Wire `upsertNotificationAlerts` into `runEligibilityForUser`.~~ ✅ Done
+  (April 29, 2026) — `ignoreDuplicates:false`; priority 3=eligible, 2=conditional.
+- ~~Wire `admin_promote_recruitment_payload` RPC into `approveScrapeItem`.~~
+  ✅ Done (April 29, 2026) — primary path; fallback to `promoteToRecruitments`.
 
 ---
 
