@@ -69,6 +69,19 @@ Legend:
     - `lib/db/admin.ts`
   - Suggested PR title: `fix(admin): use requireAdminRole for source actions`
 
+- [x] Full RBAC enforcement — replace is_admin checks across all admin routes and actions
+  - Effort: M
+  - Owner: backend
+  - Paths:
+    - `app/admin/eligibility/page.tsx` ✓ requireAdminRole("eligibility")
+    - `app/admin/organizations/page.tsx` ✓ requireAdminRole("organizations")
+    - `app/admin/recruitments/page.tsx` ✓ requireAdminRole("recruitments")
+    - `app/admin/scrape/page.tsx` ✓ requireAdminRole("scraper")
+    - `app/admin/sources/page.tsx` ✓ requireAdminRole("sources")
+    - `app/admin/sources/guide/page.tsx` ✓ requireAdminRole("sources")
+    - `actions/inspect-source.ts` ✓ local requireAdmin() replaced with imported requireAdminRole("sources")
+  - Suggested PR title: `fix(rbac): enforce requireAdminRole across all admin routes and actions`
+
 - [x] Add telemetry tables and event ingestion endpoint
   - Effort: M
   - Owner: backend + frontend
@@ -148,17 +161,21 @@ Legend:
     - `app/dashboard/notifications/preferences/page.tsx` ✓ created — email/in-app toggles, digest frequency, quiet hours, DPDP compliance note
   - Suggested PR title: `feat(notifications): add user preferences page and save API`
 
-- [ ] Add admin tools: source registry UI, queue monitor, scraper monitor, audit viewer, RBAC manager
+- [x] Add admin tools: source registry UI, queue monitor, scraper monitor, audit viewer, RBAC manager, notification governance
   - Effort: L
   - Owner: frontend + backend + ops
   - Paths:
-    - `app/admin/sources/page.tsx`
-    - `app/admin/scraper/page.tsx`
-    - `app/admin/eligibility-queue/page.tsx`
-    - `app/admin/audit/page.tsx`
-    - `app/admin/rbac/page.tsx`
-    - `app/api/admin/*`
-  - Suggested PR title: `feat(admin): add operational control surfaces for sources, queues, and audit`
+    - `app/admin/sources/page.tsx` ✓ existing
+    - `app/admin/scrape/page.tsx` ✓ existing
+    - `app/admin/eligibility-queue/page.tsx` ✓ created (Sprint 2) — status tabs, paginated table, retry/error columns
+    - `app/admin/audit/page.tsx` ✓ created (Sprint 2) — entity-type tabs, action color coding
+    - `app/admin/rbac/page.tsx` ✓ created (Sprint 2) — super_admin role management
+    - `app/admin/notifications/page.tsx` ✓ created (Sprint 3) — send logs, emergency kill switch, stat counts
+    - `supabase/migrations/032_admin_settings.sql` ✓ created — key-value store for operational flags
+    - `actions/admin.ts` ✓ adminUpdateAdminRole + toggleKillSwitch
+    - `app/admin/layout.tsx` ✓ all pages in sidebar nav
+    - `app/admin/page.tsx` ✓ quick links for all new pages
+  - Suggested PR title: `feat(admin): add operational control surfaces for sources, queues, audit, and notifications`
 
 - [ ] Refresh README and docs to match real product and release criteria
   - Effort: S
@@ -198,15 +215,20 @@ Legend:
     - `app/api/explanations/route.ts` (new)
   - Suggested PR title: `feat(ai): generate human-friendly eligibility explanations with provenance`
 
-- [ ] Add apply tracker and saved/apply lifecycle
+- [x] Add apply tracker and saved/apply lifecycle
   - Effort: M
   - Owner: frontend + backend
   - Paths:
-    - `supabase/migrations/031_apply_tracker.sql` (new)
-    - `app/dashboard/tracker/page.tsx` (new)
+    - `supabase/migrations/031_apply_tracker.sql` ✓ created — user_recruitment_applications table, RLS, enum
+    - `lib/db/apply-tracker.ts` ✓ created — getUserApplications, getApplication, upsertApplication helpers
+    - `actions/apply-tracker.ts` ✓ created — updateApplicationStatus, updateApplicationDetails server actions
+    - `app/dashboard/tracker/page.tsx` ✓ created — filter tabs, status cards with inline status selector
+    - `app/dashboard/recruitments/[id]/page.tsx` ✓ apply tracker CTA + status selector added
+    - `components/dashboard/DashboardNav.tsx` ✓ Tracker nav link added
+    - `components/nav/UserNav.tsx` ✓ Application Tracker mobile nav item added
   - Notes:
-    - Avoid reusing migration number `029`; it is reserved for exam summary support.
-  - Suggested PR title: `feat/tracker): add saved and applied opportunity tracking`
+    - clicked_apply in user_events is telemetry only; this table is durable product state.
+  - Suggested PR title: `feat(tracker): add durable application tracker with status lifecycle`
 
 - [ ] Expand marketplace filters and trust models
   - Effort: L

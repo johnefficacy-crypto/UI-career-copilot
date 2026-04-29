@@ -21,19 +21,7 @@
  */
 
 import { redirect } from "next/navigation"
-import { createClient } from "@/utils/supabase/server"
-
-// ─── Auth guard ───────────────────────────────────────────────────────────────
-
-async function requireAdmin() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect("/auth/login")
-  const { data: profile } = await supabase
-    .from("profiles").select("is_admin").eq("id", user.id).single()
-  if (!profile?.is_admin) redirect("/dashboard")
-  return user
-}
+import { requireAdminRole } from "@/lib/db/admin"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -444,7 +432,7 @@ async function probeCaptcha(url: string): Promise<ProbeResult> {
 // ─── Main action ──────────────────────────────────────────────────────────────
 
 export async function inspectSource(rawUrl: string): Promise<InspectSourceResult> {
-  await requireAdmin()
+  try { await requireAdminRole("sources") } catch { redirect("/dashboard") }
 
   if (!rawUrl?.trim()) {
     return { success: false, error: "Please provide a URL to inspect." }

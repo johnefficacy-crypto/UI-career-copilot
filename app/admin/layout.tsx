@@ -17,12 +17,16 @@ import { createClient } from "@/utils/supabase/server"
 export const metadata = { title: "Admin — Career Copilot" }
 
 const NAV_ITEMS = [
-  { href: "/admin",                label: "Overview",        icon: "⌘" },
-  { href: "/admin/recruitments",   label: "Recruitments",    icon: "📋" },
-  { href: "/admin/organizations",  label: "Organizations",   icon: "🏛" },
-  { href: "/admin/eligibility",    label: "Eligibility",     icon: "✅" },
-  { href: "/admin/scrape",         label: "Scrape Dashboard",icon: "🔄" },
-  { href: "/admin/sources",        label: "Source Registry", icon: "🗂" },
+  { href: "/admin",                   label: "Overview",           icon: "⌘" },
+  { href: "/admin/recruitments",      label: "Recruitments",       icon: "📋" },
+  { href: "/admin/organizations",     label: "Organizations",      icon: "🏛" },
+  { href: "/admin/eligibility",       label: "Eligibility",        icon: "✅" },
+  { href: "/admin/scrape",            label: "Scrape Dashboard",   icon: "🔄" },
+  { href: "/admin/sources",           label: "Source Registry",    icon: "🗂" },
+  { href: "/admin/notifications",     label: "Notifications",      icon: "🔔" },
+  { href: "/admin/eligibility-queue", label: "Eligibility Queue",  icon: "⚙" },
+  { href: "/admin/audit",             label: "Audit Log",          icon: "🗒" },
+  { href: "/admin/rbac",              label: "RBAC",               icon: "🔑" },
 ]
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {

@@ -9,6 +9,7 @@
 import Link from "next/link"
 import { redirect } from "next/navigation"
 import { createClient } from "@/utils/supabase/server"
+import { requireAdminRole } from "@/lib/db/admin"
 
 export const metadata = { title: "Field Detection Guide — Admin" }
 
@@ -16,9 +17,7 @@ export default async function SourceGuide() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect("/auth/login")
-  const { data: profile } = await supabase
-    .from("profiles").select("is_admin").eq("id", user.id).single()
-  if (!profile?.is_admin) redirect("/dashboard")
+  try { await requireAdminRole("sources") } catch { redirect("/dashboard") }
 
   const css = {
     gold:    "var(--gold)",

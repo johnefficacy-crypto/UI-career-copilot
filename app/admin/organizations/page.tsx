@@ -11,6 +11,7 @@
 
 import { redirect }        from "next/navigation"
 import { createClient }    from "@/utils/supabase/server"
+import { requireAdminRole } from "@/lib/db/admin"
 import { dbGetAllSources } from "@/lib/db/source-registry"
 import { adminCreateOrganization } from "@/actions/admin"
 import Link                from "next/link"
@@ -28,9 +29,7 @@ export default async function AdminOrganizationsPage({
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect("/auth/login")
-  const { data: profile } = await supabase
-    .from("profiles").select("is_admin").eq("id", user.id).single()
-  if (!profile?.is_admin) redirect("/dashboard")
+  try { await requireAdminRole("organizations") } catch { redirect("/dashboard") }
 
   const { error: qError, success: qSuccess } = await searchParams
 

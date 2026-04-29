@@ -35,10 +35,11 @@ export function DashboardNav({ fullName, planId, avatarUrl, isAdmin }: Props) {
           <div className="hidden md:flex items-center gap-1">
             {[
               { href: "/dashboard",           label: "Dashboard"    },
+              { href: "/dashboard/exams",      label: "Exams"        },
+              { href: "/dashboard/tracker",    label: "Tracker"      },
               { href: "/dashboard/chat",       label: "AI Chat"      },
               { href: "/dashboard/study-plan", label: "Study Plan"   },
               { href: "/marketplace",          label: "Marketplace"  },
-              { href: "/forum",                label: "Forum"        },
             ].map((item) => (
               <Link
                 key={item.href}

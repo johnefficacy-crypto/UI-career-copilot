@@ -28,6 +28,9 @@ import { redirect, notFound } from "next/navigation"
 import { createClient } from "@/utils/supabase/server"
 import { trackRecruitmentAction, untrackRecruitmentAction } from "@/actions/notifications"
 import { Timeline } from "@/components/recruitments/Timeline"
+import { getApplication, STATUS_LABEL, upsertApplication } from "@/lib/db/apply-tracker"
+import { updateApplicationStatus } from "@/actions/apply-tracker"
+import type { ApplicationStatus } from "@/lib/db/apply-tracker"
 
 export const revalidate = 30
 export const metadata = { title: "Recruitment — Career Copilot" }
@@ -84,7 +87,7 @@ export default async function RecruitmentDetailPage({ params }: PageProps) {
   if (recErr || !recruitment) notFound()
 
   // ── Load this user's cached eligibility for every post ───────────────
-  const [elRes, trackedRes] = await Promise.all([
+  const [elRes, trackedRes, appRes] = await Promise.all([
     supabase
       .from("eligibility_results")
       .select("post_id, is_eligible, is_conditional, fail_reasons")
@@ -96,9 +99,11 @@ export default async function RecruitmentDetailPage({ params }: PageProps) {
       .eq("user_id", user.id)
       .eq("recruitment_id", id)
       .maybeSingle(),
+    getApplication(user.id, id).catch(() => null),
   ])
 
-  const isTracked = !!trackedRes.data
+  const isTracked  = !!trackedRes.data
+  const appStatus  = (appRes?.status ?? "not_started") as ApplicationStatus
 
   const verdictByPost = new Map(
     (elRes.data ?? []).map((r) => [
@@ -243,6 +248,39 @@ export default async function RecruitmentDetailPage({ params }: PageProps) {
               )}
             </div>
           </div>
+        </div>
+
+        {/* Application tracker CTA */}
+        <div className="rounded-2xl border border-white/[0.07] p-5" style={{ background: "rgba(255,255,255,0.02)" }}>
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <p className="text-xs text-white/40 uppercase tracking-wider mb-0.5">Application status</p>
+              <p className="text-sm font-medium text-white/80">{STATUS_LABEL[appStatus]}</p>
+            </div>
+            <Link href="/dashboard/tracker" className="text-xs text-[#e8d5a3]/50 hover:text-[#e8d5a3] transition-colors">
+              View tracker →
+            </Link>
+          </div>
+          <form action={updateApplicationStatus} className="flex items-center gap-2">
+            <input type="hidden" name="recruitment_id" value={id} />
+            <select
+              name="status"
+              defaultValue={appStatus}
+              className="text-xs rounded-lg px-2 py-1.5 text-white/70 flex-1 focus:outline-none"
+              style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.10)", colorScheme: "dark" }}
+            >
+              {(["not_started","opened","in_progress","submitted","skipped","not_applicable"] as ApplicationStatus[]).map(s => (
+                <option key={s} value={s}>{STATUS_LABEL[s]}</option>
+              ))}
+            </select>
+            <button
+              type="submit"
+              className="text-xs px-3 py-1.5 rounded-lg transition-colors shrink-0"
+              style={{ background: "rgba(232,213,163,0.10)", color: "#e8d5a3", border: "1px solid rgba(232,213,163,0.20)" }}
+            >
+              Save
+            </button>
+          </form>
         </div>
 
         {/* Actions */}

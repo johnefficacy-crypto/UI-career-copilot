@@ -132,11 +132,12 @@ export function UserNav({ fullName, planId, avatarUrl, isAdmin }: Props) {
 
           {/* Nav items */}
           <div className="py-1">
-            <NavItem href="/dashboard"          label="Dashboard"       icon="⊞" onClick={() => setOpen(false)} />
-            <NavItem href="/dashboard/exams"    label="Browse Exams"    icon="📋" onClick={() => setOpen(false)} />
-            <NavItem href="/dashboard/chat"     label="AI Career Chat"  icon="💬" onClick={() => setOpen(false)} badge={planId !== "pro" && planId !== "elite" ? "Pro" : undefined} />
-            <NavItem href="/onboarding"         label="Edit profile"    icon="✎" onClick={() => setOpen(false)} />
-            <NavItem href="/dashboard/study-plan" label="Study plans"   icon="📅" onClick={() => setOpen(false)} />
+            <NavItem href="/dashboard"            label="Dashboard"       icon="⊞" onClick={() => setOpen(false)} />
+            <NavItem href="/dashboard/exams"      label="Browse Exams"    icon="📋" onClick={() => setOpen(false)} />
+            <NavItem href="/dashboard/tracker"    label="Application Tracker" icon="✔" onClick={() => setOpen(false)} />
+            <NavItem href="/dashboard/chat"       label="AI Career Chat"  icon="💬" onClick={() => setOpen(false)} badge={planId !== "pro" && planId !== "elite" ? "Pro" : undefined} />
+            <NavItem href="/onboarding"           label="Edit profile"    icon="✎" onClick={() => setOpen(false)} />
+            <NavItem href="/dashboard/study-plan" label="Study plans"     icon="📅" onClick={() => setOpen(false)} />
             <NavItem href="/dashboard/billing"  label="Billing & plan"  icon="💳" onClick={() => setOpen(false)} />
             <NavItem href="/marketplace/my-courses" label="My courses"  icon="📚" onClick={() => setOpen(false)} />
 
