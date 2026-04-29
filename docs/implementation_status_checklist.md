@@ -69,16 +69,28 @@ Legend:
     - `lib/db/admin.ts`
   - Suggested PR title: `fix(admin): use requireAdminRole for source actions`
 
+- [x] Add telemetry tables and event ingestion endpoint
+  - Effort: M
+  - Owner: backend + frontend
+  - Paths:
+    - `supabase/migrations/027_user_events_and_form_submissions.sql` ✓ created
+    - `app/api/events/route.ts` ✓ created
+  - Notes:
+    - Telemetry must run before `user_recruitment_state` because the materialized view depends on `public.user_events`.
+  - Suggested PR title: `feat(telemetry): add user event pipeline for ranking and UX signals`
+
 - [x] Ship mission-control dashboard v1 on top of a unified user_recruitment_state view
   - Effort: L
   - Owner: frontend + backend
   - Paths:
-    - `supabase/migrations/027_user_recruitment_state.sql` ✓ created
+    - `supabase/migrations/028_user_recruitment_state.sql` ✓ created
     - `lib/db/mission-control.ts` ✓ server-side data fetcher
     - `app/api/dashboard/mission-control/route.ts` ✓ REST API
     - `components/dashboard/MissionControlPanel.tsx` ✓ summary cards + tabs + opportunity feed
     - `app/dashboard/page.tsx` ✓ wired — getMissionControlData in parallel fetch
     - `components/dashboard/DashboardShell.tsx` ✓ EligibleRecruitmentsWidget replaced
+  - Notes:
+    - Depends on `public.user_events`; keep this after telemetry migrations.
   - Suggested PR title: `feat(dashboard): launch mission-control dashboard powered by user state view`
 
 - [x] Launch notification preferences page before broad email rollout
@@ -121,17 +133,12 @@ Legend:
   - Paths:
     - `app/dashboard/exams/page.tsx` — wire to summary API (pending)
     - `app/api/exams/summary/route.ts` ✓ created
-    - `supabase/migrations/028_exam_summary_support.sql` ✓ created (exam_cycles table + exam_user_summary view)
+    - `supabase/migrations/029_exam_summary_support.sql` ✓ created
     - `lib/exams/form-status.ts` ✓ created
+  - Notes:
+    - `exam` is a UI/product term. Database queries must use `public.recruitments` and `recruitment_id`; do not assume `public.exams` exists.
+    - See `docs/database-domain-model.md`.
   - Suggested PR title: `feat(exams): add personalized exam summary cards and fit states`
-
-- [x] Add telemetry tables and event ingestion endpoint
-  - Effort: M
-  - Owner: backend + frontend
-  - Paths:
-    - `supabase/migrations/029_user_events_and_form_submissions.sql` ✓ created
-    - `app/api/events/route.ts` ✓ created
-  - Suggested PR title: `feat(telemetry): add user event pipeline for ranking and UX signals`
 
 - [ ] Add admin tools: source registry UI, queue monitor, scraper monitor, audit viewer, RBAC manager
   - Effort: L
@@ -151,6 +158,7 @@ Legend:
   - Paths:
     - `README.md`
     - `docs/implementation_status_checklist.md`
+    - `docs/database-domain-model.md` ✓ created
     - `docs/runbook.md` (new)
   - Suggested PR title: `docs: align repo documentation with current implementation and ops`
 
@@ -162,6 +170,8 @@ Legend:
   - Paths:
     - `supabase/migrations/030_embeddings.sql` ✓ created (pgvector table + ivfflat index)
     - `jobs/embeddings-sync.ts` (pending — ETL sync job)
+  - Notes:
+    - Embeddings should use `recruitments` as the canonical entity. `exam` remains acceptable as a UI label.
   - Suggested PR title: `feat(ai): add vector embeddings for semantic retrieval`
 
 - [ ] Add ranking v1 using eligibility, urgency, and behavioral telemetry
@@ -184,9 +194,11 @@ Legend:
   - Effort: M
   - Owner: frontend + backend
   - Paths:
-    - `supabase/migrations/029_apply_tracker.sql` (new)
+    - `supabase/migrations/031_apply_tracker.sql` (new)
     - `app/dashboard/tracker/page.tsx` (new)
-  - Suggested PR title: `feat(tracker): add saved and applied opportunity tracking`
+  - Notes:
+    - Avoid reusing migration number `029`; it is reserved for exam summary support.
+  - Suggested PR title: `feat/tracker): add saved and applied opportunity tracking`
 
 - [ ] Expand marketplace filters and trust models
   - Effort: L
