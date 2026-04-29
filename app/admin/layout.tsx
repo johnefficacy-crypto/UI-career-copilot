@@ -27,6 +27,7 @@ const NAV_ITEMS = [
   { href: "/admin/eligibility-queue", label: "Eligibility Queue",  icon: "⚙" },
   { href: "/admin/audit",             label: "Audit Log",          icon: "🗒" },
   { href: "/admin/rbac",              label: "RBAC",               icon: "🔑" },
+  { href: "/admin/ai-policy",         label: "AI Policy",          icon: "🤖" },
 ]
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {

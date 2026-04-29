@@ -74,7 +74,7 @@ export default async function BillingPage({
               </div>
               <p className="text-white/40 text-sm">
                 {isFree
-                  ? "You're on the free plan"
+                  ? "You&apos;re on the free plan"
                   : `₹${plan.price_inr}/month · billed monthly`}
               </p>
             </div>
@@ -93,12 +93,12 @@ export default async function BillingPage({
           {subscription && !isFree && (
             <div className="flex flex-col gap-1 text-sm text-white/40 mb-4">
               {subscription.current_period_start && (
-                <span>Period started: {formatDate(subscription.current_period_start as any)}</span>
+                <span>Period started: {formatDate(subscription.current_period_start as string)}</span>
               )}
               {subscription.current_period_end && (
                 <span className={isCancelling ? "text-amber-300" : ""}>
                   {isCancelling ? "Access until: " : "Renews: "}
-                  {formatDate(subscription.current_period_end as any)}
+                  {formatDate(subscription.current_period_end as string)}
                 </span>
               )}
             </div>
@@ -106,7 +106,7 @@ export default async function BillingPage({
 
           {isCancelling && (
             <div className="px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-300 text-sm mb-4">
-              Your subscription is cancelled and will not renew. You'll keep access until the end of this billing period.
+              Your subscription is cancelled and will not renew. You&apos;ll keep access until the end of this billing period.
             </div>
           )}
 
@@ -137,7 +137,7 @@ export default async function BillingPage({
 
         {/* Feature summary for current plan */}
         <div className="rounded-2xl border border-white/[0.07] bg-white/[0.02] p-5 mb-5">
-          <p className="text-white/40 text-xs uppercase tracking-widest mb-3">What's included</p>
+          <p className="text-white/40 text-xs uppercase tracking-widest mb-3">What&apos;s included</p>
           <div className="grid grid-cols-2 gap-2">
             {[
               { label: "Study plans",        val: plan.features.study_plans_limit === -1 ? "Unlimited" : plan.features.study_plans_limit },
@@ -160,7 +160,7 @@ export default async function BillingPage({
           <div className="rounded-2xl border border-white/[0.07] bg-white/[0.02] p-5">
             <p className="text-white/40 text-xs uppercase tracking-widest mb-3">Payment history</p>
             <div className="flex flex-col gap-2">
-              {payments.map((p: any) => (
+              {payments.map((p: { id: string; created_at: string; razorpay_payment_id: string; status: string; amount_inr: number }) => (
                 <div key={p.id} className="flex items-center justify-between text-sm">
                   <div>
                     <span className="text-white/60">{formatDate(p.created_at)}</span>

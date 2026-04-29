@@ -342,7 +342,7 @@ export default function NotificationPreferencesPage() {
 
             {/* DPDP compliance note */}
             <p className="text-xs pt-2 pb-6" style={{ color: "rgba(255,255,255,0.20)" }}>
-              Career Copilot complies with India's Digital Personal Data Protection Act 2023.
+              Career Copilot complies with India&apos;s Digital Personal Data Protection Act 2023.
               Email notifications are opt-in only and include an unsubscribe link in every email.
               You can update or withdraw consent here at any time.
             </p>

@@ -18,15 +18,6 @@ function urgencyColor(days: number | null): string {
   return "#34d399"
 }
 
-function VacancyTrendBadge({ trend }: { trend: "up" | "down" | "flat" | null }) {
-  if (!trend || trend === "flat") return null
-  return (
-    <span style={{ color: trend === "up" ? "#34d399" : "#f87171", fontSize: 11 }}>
-      {trend === "up" ? "↑" : "↓"} Vacancies
-    </span>
-  )
-}
-
 function EligibilityBadge({
   hasAnyEligible,
   hasConditional,

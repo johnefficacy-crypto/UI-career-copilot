@@ -25,7 +25,7 @@ import {
   updateSubscriptionStatus,
   recordPayment,
 } from "@/lib/db/billing"
-import { createClient } from "@supabase/supabase-js"
+import { type PlanId } from "@/lib/billing/plans"
 
 // Helper: get user ID from Razorpay subscription notes
 // We embed the user ID when creating the subscription
@@ -77,7 +77,7 @@ export async function POST(req: NextRequest) {
 
         await activateSubscription({
           userId,
-          planId: planId as any,
+          planId: planId as PlanId,
           razorpaySubscriptionId: sub.id,
           razorpayCustomerId: sub.customer_id ?? "",
           periodStart,

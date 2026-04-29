@@ -26,8 +26,8 @@ export default async function StudyPlanDetailPage({
   if (!plan) notFound()
 
   const weeks = plan.study_weeks ?? []
-  const currentWeek = weeks.find((w: any) => w.status === "in_progress")
-    ?? weeks.find((w: any) => w.status === "pending")
+  const currentWeek = weeks.find((w: { status: string }) => w.status === "in_progress")
+    ?? weeks.find((w: { status: string }) => w.status === "pending")
 
   return (
     <div className="min-h-screen bg-[#0f0f0f]">

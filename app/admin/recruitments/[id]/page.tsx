@@ -8,11 +8,20 @@
 
 import { notFound } from "next/navigation"
 import { getRecruitmentById, getAllOrganizations } from "@/lib/db/admin"
-import { adminUpdateRecruitment, adminSavePost, adminDeletePost } from "@/actions/admin"
+import { adminUpdateRecruitment, adminSavePost, adminDeletePost, adminSubmitForReview, adminPublishRecruitment, adminWithdrawRecruitment } from "@/actions/admin"
 import { RecruitmentForm } from "@/components/admin/RecruitmentForm"
 import { PostForm } from "@/components/admin/PostForm"
 import { DeleteConfirmButton } from "@/components/admin/DeleteConfirmButton"
 import Link from "next/link"
+
+const PUBLISH_STYLES: Record<string, { badge: string; label: string }> = {
+  draft:        { badge: "bg-white/5 text-white/30 border-white/10",               label: "Draft" },
+  needs_review: { badge: "bg-amber-500/10 text-amber-400 border-amber-500/20",     label: "Needs Review" },
+  verified:     { badge: "bg-blue-500/10 text-blue-400 border-blue-500/20",        label: "Verified" },
+  published:    { badge: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20", label: "Published" },
+  archived:     { badge: "bg-white/5 text-white/20 border-white/10",               label: "Archived" },
+  withdrawn:    { badge: "bg-red-500/10 text-red-400 border-red-500/20",           label: "Withdrawn" },
+}
 
 export default async function RecruitmentDetailPage({
   params,
@@ -60,6 +69,49 @@ export default async function RecruitmentDetailPage({
       )}
 
       {rec && (
+        <>
+        {/* Publish workflow panel */}
+        {(() => {
+          const ps = (rec as { publish_status?: string }).publish_status ?? "draft"
+          const style = PUBLISH_STYLES[ps] ?? PUBLISH_STYLES.draft
+          return (
+            <div className="mb-6 flex items-center gap-4 px-5 py-4 rounded-xl border border-white/[0.07] bg-white/[0.02]">
+              <div className="flex-1">
+                <p className="text-white/40 text-xs uppercase tracking-widest mb-1">Publish status</p>
+                <span className={`inline-block text-xs px-2.5 py-1 rounded-full border ${style.badge}`}>
+                  {style.label}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                {(ps === "draft" || ps === "withdrawn") && (
+                  <form action={adminSubmitForReview}>
+                    <input type="hidden" name="id" value={rec.id} />
+                    <button type="submit" className="text-xs px-3 py-1.5 rounded-lg border border-amber-500/30 text-amber-400 hover:bg-amber-500/10 transition-colors">
+                      Submit for review
+                    </button>
+                  </form>
+                )}
+                {(ps === "needs_review" || ps === "verified") && (
+                  <form action={adminPublishRecruitment}>
+                    <input type="hidden" name="id" value={rec.id} />
+                    <button type="submit" className="text-xs px-3 py-1.5 rounded-lg border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 transition-colors">
+                      Publish
+                    </button>
+                  </form>
+                )}
+                {ps === "published" && (
+                  <form action={adminWithdrawRecruitment}>
+                    <input type="hidden" name="id" value={rec.id} />
+                    <button type="submit" className="text-xs px-3 py-1.5 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-colors">
+                      Withdraw
+                    </button>
+                  </form>
+                )}
+              </div>
+            </div>
+          )
+        })()}
+
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* Left: Edit recruitment */}
           <div>
@@ -160,6 +212,7 @@ export default async function RecruitmentDetailPage({
             </div>
           </div>
         </div>
+        </>
       )}
     </div>
   )

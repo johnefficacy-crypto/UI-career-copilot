@@ -108,7 +108,7 @@ export async function initiateSubscription(formData: FormData): Promise<{
 
 // ─── Cancel subscription ──────────────────────────────────────────────────────
 
-export async function cancelUserSubscription(formData: FormData) {
+export async function cancelUserSubscription(_formData: FormData) {
   const user = await requireUser()
 
   const subscription = await getUserSubscription(user.id)

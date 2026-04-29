@@ -8,7 +8,6 @@ import {
   startStudySession,
   endStudySession,
 } from "@/lib/db/study-tasks"
-import type { TaskStatus } from "@/lib/db/study-tasks"
 
 export async function completeTask(taskId: string, notes?: string) {
   const supabase = await createClient()

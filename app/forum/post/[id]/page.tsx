@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { notFound, redirect } from "next/navigation"
+import { notFound } from "next/navigation"
 import { createClient } from "@/utils/supabase/server"
 import { getForumPost } from "@/lib/db/forum"
 import { PostBody } from "@/components/forum/PostBody"

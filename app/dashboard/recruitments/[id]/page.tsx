@@ -28,7 +28,7 @@ import { redirect, notFound } from "next/navigation"
 import { createClient } from "@/utils/supabase/server"
 import { trackRecruitmentAction, untrackRecruitmentAction } from "@/actions/notifications"
 import { Timeline } from "@/components/recruitments/Timeline"
-import { getApplication, STATUS_LABEL, upsertApplication } from "@/lib/db/apply-tracker"
+import { getApplication, STATUS_LABEL } from "@/lib/db/apply-tracker"
 import { updateApplicationStatus } from "@/actions/apply-tracker"
 import type { ApplicationStatus } from "@/lib/db/apply-tracker"
 

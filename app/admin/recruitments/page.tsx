@@ -54,7 +54,7 @@ export default async function AdminRecruitmentsPage({
   let total      = 0
   let totalPages = 1
   let fetchError: string | null = null
-  let scrapeOrigins: Map<string, ScrapeOrigin> = new Map()
+  const scrapeOrigins: Map<string, ScrapeOrigin> = new Map()
 
   try {
     const result = await getRecruitmentsAdminPaginated(pageNum, PAGE_SIZE)
@@ -302,6 +302,24 @@ function RecruitmentRow({
       <span className={`shrink-0 border text-xs px-2.5 py-1 rounded-full ${style.badge}`}>
         {rec.status}
       </span>
+
+      {/* Publish status badge */}
+      {(() => {
+        const ps = (rec as { publish_status?: string }).publish_status
+        if (!ps || ps === "draft") return null
+        const psStyles: Record<string, string> = {
+          needs_review: "bg-amber-500/10 text-amber-400 border-amber-500/20",
+          verified:     "bg-blue-500/10 text-blue-400 border-blue-500/20",
+          published:    "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+          withdrawn:    "bg-red-500/10 text-red-400 border-red-500/20",
+          archived:     "bg-white/5 text-white/20 border-white/10",
+        }
+        return (
+          <span className={`shrink-0 border text-[10px] px-2 py-0.5 rounded-full ${psStyles[ps] ?? ""}`}>
+            {ps.replace("_", " ")}
+          </span>
+        )
+      })()}
 
       {/* Actions */}
       <div className="flex items-center gap-2 shrink-0">

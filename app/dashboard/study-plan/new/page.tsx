@@ -38,7 +38,6 @@ export default async function NewStudyPlanPage({
 
   const EXAM_TYPES = ["Banking", "UPSC", "SSC", "Regulatory", "PSU", "State PSC", "Judiciary", "Railways", "Defence", "Insurance"]
   const LEVELS     = ["beginner", "intermediate", "advanced"]
-  const MOODS      = [1, 2, 3, 4, 5]
 
   return (
     <div className="min-h-screen bg-[#0f0f0f]">

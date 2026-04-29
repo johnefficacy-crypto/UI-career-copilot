@@ -224,6 +224,85 @@ export async function adminDeletePost(formData: FormData) {
   redirect(`/admin/recruitments/${recruitmentId}`)
 }
 
+// ─── Recruitment publish workflow ─────────────────────────────────────────────
+
+export async function adminSubmitForReview(formData: FormData) {
+  const id = formData.get("id") as string
+  try {
+    const ctx = await requireAdminRole("recruitments")
+    const supabase = await createClient()
+    await supabase
+      .from("recruitments")
+      .update({ publish_status: "needs_review", updated_at: new Date().toISOString() })
+      .eq("id", id)
+    void logAdminAction({
+      actorId:    ctx.userId,
+      actorEmail: ctx.userEmail,
+      action:     "submit_for_review",
+      entityType: "recruitment",
+      entityId:   id,
+    })
+    revalidatePath("/admin/recruitments")
+    revalidatePath(`/admin/recruitments/${id}`)
+  } catch (err) {
+    adminRedirectOnError(`/admin/recruitments/${id}`, err)
+  }
+  redirect(`/admin/recruitments/${id}`)
+}
+
+export async function adminPublishRecruitment(formData: FormData) {
+  const id = formData.get("id") as string
+  try {
+    const ctx = await requireAdminRole("recruitments")
+    const supabase = await createClient()
+    await supabase
+      .from("recruitments")
+      .update({
+        publish_status: "published",
+        published_at:   new Date().toISOString(),
+        published_by:   ctx.userId,
+        updated_at:     new Date().toISOString(),
+      })
+      .eq("id", id)
+    void logAdminAction({
+      actorId:    ctx.userId,
+      actorEmail: ctx.userEmail,
+      action:     "publish_recruitment",
+      entityType: "recruitment",
+      entityId:   id,
+    })
+    revalidatePath("/admin/recruitments")
+    revalidatePath(`/admin/recruitments/${id}`)
+  } catch (err) {
+    adminRedirectOnError(`/admin/recruitments/${id}`, err)
+  }
+  redirect(`/admin/recruitments/${id}`)
+}
+
+export async function adminWithdrawRecruitment(formData: FormData) {
+  const id = formData.get("id") as string
+  try {
+    const ctx = await requireAdminRole("recruitments")
+    const supabase = await createClient()
+    await supabase
+      .from("recruitments")
+      .update({ publish_status: "withdrawn", updated_at: new Date().toISOString() })
+      .eq("id", id)
+    void logAdminAction({
+      actorId:    ctx.userId,
+      actorEmail: ctx.userEmail,
+      action:     "withdraw_recruitment",
+      entityType: "recruitment",
+      entityId:   id,
+    })
+    revalidatePath("/admin/recruitments")
+    revalidatePath(`/admin/recruitments/${id}`)
+  } catch (err) {
+    adminRedirectOnError(`/admin/recruitments/${id}`, err)
+  }
+  redirect(`/admin/recruitments/${id}`)
+}
+
 // ─── Eligibility trigger ──────────────────────────────────────────────────────
 
 /**
@@ -232,7 +311,7 @@ export async function adminDeletePost(formData: FormData) {
  * This is a sequential implementation — for large user bases,
  * replace with a Supabase Edge Function or background job.
  */
-export async function adminTriggerEligibilityRecompute(formData: FormData) {
+export async function adminTriggerEligibilityRecompute(_formData: FormData) {
   try {
     await requireAdmin()
     const supabase = await createClient()

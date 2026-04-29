@@ -151,7 +151,6 @@ async function probeRobots(url: string): Promise<ProbeResult> {
   }
   const text = await res.text().catch(() => "")
   const disallowsAll = /Disallow:\s*\/\s*$/.test(text)
-  const hasCrawlDelay = /Crawl-delay:\s*(\d+)/.test(text)
   const crawlDelayMatch = text.match(/Crawl-delay:\s*(\d+)/)
   const crawlDelay = crawlDelayMatch ? Number(crawlDelayMatch[1]) : null
 

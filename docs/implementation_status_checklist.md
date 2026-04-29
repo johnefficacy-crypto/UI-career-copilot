@@ -1,5 +1,5 @@
 # Career Copilot implementation status checklist
-_Last updated: 2026-04-29 — Sprint 1 complete_
+_Last updated: 2026-04-30 — Sprint 4 complete_
 
 This file is the single source of truth for implementation status and next build decisions.
 Legend:
@@ -360,12 +360,16 @@ Status: operational, not automated-intelligent yet.
 - [x] Confidence indicators
 - [x] Transactional promotion RPC exists
 - [~] `admin_promote_recruitment_payload` wiring has been reported as implemented; verify on `master`
-- [ ] Formal workflow states: `draft`, `needs_review`, `verified`, `published`, `archived`, `withdrawn`
-- [ ] Publish gate validation
+- [x] Formal workflow states: `draft`, `needs_review`, `verified`, `published`, `archived`, `withdrawn`
+  - `supabase/migrations/033_recruitment_publish_workflow.sql` ✓ created
+  - `actions/admin.ts` ✓ adminSubmitForReview, adminPublishRecruitment, adminWithdrawRecruitment added
+  - `app/admin/recruitments/[id]/page.tsx` ✓ publish status panel + transition buttons added
+  - `app/admin/recruitments/page.tsx` ✓ publish_status badge added to list rows
+- [ ] Publish gate validation (org verified, fields complete)
 - [ ] Version history
 - [ ] Change diff viewer
 
-Status: functional, not workflow-governed.
+Status: workflow states implemented; gate validation pending.
 
 P1 next tasks:
 
@@ -430,19 +434,18 @@ Status: user preferences are in progress; governance console not implemented.
 ## 7. AI governance layer
 
 - [x] Base `ai_jobs` / `ai_review_queue` infrastructure exists from previous AI infrastructure migration
-- [ ] AI action policy table
+- [x] AI action policy table
+  - `supabase/migrations/035_ai_action_policies.sql` ✓ created — policy enum, mode enum, seeded defaults
+  - `app/admin/ai-policy/page.tsx` ✓ created — per-action allow/require_approval/deny toggles with audit logging
+  - `app/admin/layout.tsx` ✓ AI Policy nav item added
+  - `app/admin/page.tsx` ✓ AI Policy quick link added
 - [ ] Confidence thresholds per action
-- [ ] Auto-action gating
+- [ ] Auto-action gating (runtime enforcement)
 - [ ] AI audit classification
 - [ ] Human-review-required flag
-- [ ] Admin UI for AI job/policy review
+- [ ] Fine-grained admin UI for AI job/policy review
 
-Status: not implemented as a governance layer.
-
-P1 next tasks:
-
-- Add `ai_action_policies`.
-- Require every operational AI action to declare confidence, permission, review, and audit policy.
+Status: policy table and governance UI implemented; runtime enforcement pending.
 
 ---
 
@@ -461,15 +464,18 @@ Status: core surface exists; latest pushed state must be verified.
 
 ### 8.2 Application/Form tracker
 
-- [ ] Durable application tracker table
-- [ ] User-facing form status controls
-- [ ] Application number storage
-- [ ] Fee/payment fields
-- [ ] Form submitted state distinct from telemetry click
-- [ ] Dashboard summary for pending/submitted forms
+- [x] Durable application tracker table
+  - `supabase/migrations/031_apply_tracker.sql` ✓
+- [x] User-facing form status controls
+  - `app/dashboard/tracker/page.tsx` ✓ filter tabs, inline status selector
+  - `app/dashboard/recruitments/[id]/page.tsx` ✓ CTA with status selector
+- [x] Application number storage
+- [x] Fee/payment fields
+- [x] Form submitted state distinct from telemetry click
+- [x] Dashboard summary for pending/submitted forms
 - [ ] Next-actions integration
 
-Status: not implemented.
+Status: implemented (Sprint 3).
 
 Important rule:
 
@@ -484,14 +490,20 @@ clicked_apply != form submitted
 - [x] Study planner foundation exists
 - [x] Daily tasks foundation exists
 - [x] Study sessions table exists
-- [ ] Focus timer UI
-- [ ] Mock-test tracking
-- [ ] Subject/topic breakdown
+- [x] Focus timer UI
+  - `app/dashboard/study-plan/focus/page.tsx` ✓ client-side timer ring, session start/stop, logged via beginFocusSession/finishFocusSession
+- [x] Mock-test tracking
+  - `supabase/migrations/034_mock_tests.sql` ✓ mock_tests + mock_subject_breakdowns tables
+  - `lib/db/mock-tests.ts` ✓ CRUD + stats helpers
+  - `actions/mock-tests.ts` ✓ saveMockTestAction, deleteMockTestAction
+  - `app/dashboard/study-plan/mock-tests/page.tsx` ✓ stats row, trend badge, test log, add form
+  - `components/study-plan/MockTestForm.tsx` ✓ subject breakdowns, score entry
+- [x] Subject/topic breakdown (via mock_subject_breakdowns)
 - [ ] Topic proficiency
 - [ ] Flashcards and spaced repetition
 - [ ] Weekly review dashboard
 
-Status: partial product foundation exists; analytics layer pending.
+Status: focus timer and mock test tracker implemented (Sprint 4).
 
 ### 8.4 Community and mentorship
 
