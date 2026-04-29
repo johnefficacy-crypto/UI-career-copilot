@@ -88,9 +88,12 @@ export default async function AdminOverviewPage({
       {/* Quick navigation */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {[
-          { href: "/admin/recruitments/new", title: "Add recruitment", desc: "Create a notification with posts, criteria, and deadlines" },
-          { href: "/admin/scrape",           title: "Scrape Dashboard", desc: `${ss?.pendingReview ?? 0} items pending review · trigger manual run` },
-          { href: "/admin/sources",          title: "Source Registry",  desc: "Manage scraping sources, inspect URLs, add new portals" },
+          { href: "/admin/recruitments/new",  title: "Add recruitment",    desc: "Create a notification with posts, criteria, and deadlines" },
+          { href: "/admin/scrape",            title: "Scrape Dashboard",   desc: `${ss?.pendingReview ?? 0} items pending review · trigger manual run` },
+          { href: "/admin/sources",           title: "Source Registry",    desc: "Manage scraping sources, inspect URLs, add new portals" },
+          { href: "/admin/eligibility-queue", title: "Eligibility Queue",  desc: "Monitor recompute jobs — pending, processing, failed" },
+          { href: "/admin/audit",             title: "Audit Log",          desc: "Append-only record of every admin mutation" },
+          { href: "/admin/rbac",              title: "RBAC Manager",       desc: "Manage admin roles and super_admin access" },
         ].map(item => (
           <Link key={item.href} href={item.href}
             className="flex flex-col gap-1 px-5 py-4 rounded-xl bg-white/[0.03] border border-white/[0.07] hover:border-white/[0.14] transition-colors">

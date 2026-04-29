@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation"
 import { revalidatePath } from "next/cache"
 import { requireAdmin, requireAdminRole, logAdminAction, createOrganization, updateOrganization, createRecruitment, updateRecruitment, deleteRecruitment, createPost, updatePost, deletePost, upsertEducationCriteria, upsertAgeCriteria, replaceAttemptLimits, replaceVacancies, upsertSalaryDetails, replaceExamStages } from "@/lib/db/admin"
+import type { AdminRole } from "@/lib/db/admin"
 import { runEligibilityForUser } from "@/lib/eligibility/runner"
 import { createClient } from "@/utils/supabase/server"
 
@@ -232,6 +233,54 @@ export async function adminDeletePost(formData: FormData) {
  * This is a sequential implementation — for large user bases,
  * replace with a Supabase Edge Function or background job.
  */
+// ─── RBAC actions ─────────────────────────────────────────────────────────────
+
+const VALID_ROLES: (AdminRole | "remove")[] = [
+  "super_admin", "ops_admin", "content_admin", "scraper_admin", "support_admin", "remove",
+]
+
+export async function adminUpdateAdminRole(formData: FormData) {
+  const targetUserId = formData.get("user_id") as string
+  const newRole      = formData.get("role") as string
+
+  if (!targetUserId || !VALID_ROLES.includes(newRole as AdminRole | "remove")) {
+    redirect("/admin/rbac?error=Invalid+role+or+user")
+  }
+
+  try {
+    const ctx = await requireAdminRole("*")
+    // Only super_admin can change roles
+    if (ctx.role !== "super_admin") {
+      redirect("/admin/rbac?error=Only+super_admin+can+change+roles")
+    }
+
+    const supabase = await createClient()
+    const { error } = await supabase
+      .from("profiles")
+      .update({
+        admin_role: newRole === "remove" ? null : newRole,
+        is_admin:   newRole !== "remove",
+      })
+      .eq("id", targetUserId)
+
+    if (error) throw new Error(error.message)
+
+    await logAdminAction({
+      actorId:    ctx.userId,
+      actorEmail: ctx.userEmail,
+      action:     "update_admin_role",
+      entityType: "profiles",
+      entityId:   targetUserId,
+      newValue:   { admin_role: newRole },
+    })
+
+    revalidatePath("/admin/rbac")
+  } catch (err) {
+    adminRedirectOnError("/admin/rbac", err)
+  }
+  redirect("/admin/rbac?success=Role+updated")
+}
+
 export async function adminTriggerEligibilityRecompute(formData: FormData) {
   try {
     await requireAdmin()

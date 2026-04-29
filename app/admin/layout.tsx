@@ -21,8 +21,11 @@ const NAV_ITEMS = [
   { href: "/admin/recruitments",   label: "Recruitments",    icon: "📋" },
   { href: "/admin/organizations",  label: "Organizations",   icon: "🏛" },
   { href: "/admin/eligibility",    label: "Eligibility",     icon: "✅" },
-  { href: "/admin/scrape",         label: "Scrape Dashboard",icon: "🔄" },
-  { href: "/admin/sources",        label: "Source Registry", icon: "🗂" },
+  { href: "/admin/scrape",            label: "Scrape Dashboard",   icon: "🔄" },
+  { href: "/admin/sources",           label: "Source Registry",    icon: "🗂" },
+  { href: "/admin/eligibility-queue", label: "Eligibility Queue",  icon: "⚙" },
+  { href: "/admin/audit",             label: "Audit Log",          icon: "🗒" },
+  { href: "/admin/rbac",              label: "RBAC",               icon: "🔑" },
 ]
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {

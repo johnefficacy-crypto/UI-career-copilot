@@ -1,5 +1,5 @@
 # Career Copilot implementation status checklist
-_Last updated: 2026-04-29 — Sprint 1 complete_
+_Last updated: 2026-04-29 — Sprint 2 complete_
 
 This file is the single source of truth for implementation status and next build decisions.
 Legend:
@@ -148,16 +148,19 @@ Legend:
     - `app/dashboard/notifications/preferences/page.tsx` ✓ created — email/in-app toggles, digest frequency, quiet hours, DPDP compliance note
   - Suggested PR title: `feat(notifications): add user preferences page and save API`
 
-- [ ] Add admin tools: source registry UI, queue monitor, scraper monitor, audit viewer, RBAC manager
+- [x] Add admin tools: source registry UI, queue monitor, scraper monitor, audit viewer, RBAC manager
   - Effort: L
   - Owner: frontend + backend + ops
   - Paths:
-    - `app/admin/sources/page.tsx`
-    - `app/admin/scraper/page.tsx`
-    - `app/admin/eligibility-queue/page.tsx`
-    - `app/admin/audit/page.tsx`
-    - `app/admin/rbac/page.tsx`
-    - `app/api/admin/*`
+    - `app/admin/sources/page.tsx` ✓ existing
+    - `app/admin/scrape/page.tsx` ✓ existing
+    - `app/admin/eligibility-queue/page.tsx` ✓ created — status tabs, paginated table (25/page), retry/error columns
+    - `app/admin/audit/page.tsx` ✓ created — entity-type tabs, paginated table (50/page), action color coding
+    - `app/admin/rbac/page.tsx` ✓ created — role reference, inline role change form, super_admin guard
+    - `actions/admin.ts` ✓ adminUpdateAdminRole added — validates, requires super_admin, updates profiles, logs audit
+    - `components/admin/RecruitmentForm.tsx` ✓ migrated to AdminInput/AdminSelect shared primitives
+    - `app/admin/layout.tsx` ✓ eligibility-queue, audit, rbac nav items added
+    - `app/admin/page.tsx` ✓ quick links for eligibility-queue, audit, rbac added
   - Suggested PR title: `feat(admin): add operational control surfaces for sources, queues, and audit`
 
 - [ ] Refresh README and docs to match real product and release criteria
