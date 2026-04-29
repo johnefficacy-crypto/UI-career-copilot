@@ -27,6 +27,7 @@ import Link from "next/link"
 import { redirect, notFound } from "next/navigation"
 import { createClient } from "@/utils/supabase/server"
 import { trackRecruitmentAction, untrackRecruitmentAction } from "@/actions/notifications"
+import { Timeline } from "@/components/recruitments/Timeline"
 
 export const revalidate = 30
 export const metadata = { title: "Recruitment — Career Copilot" }
@@ -286,6 +287,18 @@ export default async function RecruitmentDetailPage({ params }: PageProps) {
               {isTracked ? "★ Tracking" : "☆ Track"}
             </button>
           </form>
+        </div>
+
+        {/* Timeline */}
+        <div
+          className="rounded-2xl border border-white/[0.06] p-6"
+          style={{ background: "rgba(255,255,255,0.02)" }}
+        >
+          <Timeline
+            notificationDate={recruitment.notification_date as string | null}
+            applyStartDate={recruitment.apply_start_date as string | null}
+            applyEndDate={recruitment.apply_end_date as string | null}
+          />
         </div>
 
         {/* Posts */}

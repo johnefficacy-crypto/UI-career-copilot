@@ -13,6 +13,7 @@ import { SkillTestWidget }                from "./SkillTestWidget"
 import { MissionControlPanel }            from "./MissionControlPanel"
 import { NextBestActionPanel }            from "./NextBestActionPanel"
 import { DailyTasksWidget }              from "./DailyTasksWidget"
+import { ProfileImpactCard }              from "./ProfileImpactCard"
 import { AiChatWidget }                   from "@/components/chat/AiChatWidget"
 import type { getUserPlans }              from "@/lib/db/study-planner"
 import type { getEligibleRecruitments }   from "@/lib/eligibility/runner"
@@ -168,6 +169,7 @@ export function DashboardShell({
 
           {/* Right col */}
           <div className="flex flex-col gap-5">
+            <ProfileImpactCard />
             <ProfileCard
               profile={profile}
               education={education}
