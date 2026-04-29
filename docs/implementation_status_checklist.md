@@ -14,99 +14,81 @@ Legend:
   - Effort: S
   - Owner: backend
   - Paths:
-    - `supabase/migrations/022_drop_legacy_recruitment_open_trigger.sql` ✓ created
-    - `supabase/migrations/scraping_setup.sql` (reference only; do not edit historical migration)
-    - `lib/db/notifications.ts`
-  - Suggested PR title: `fix(db): remove legacy recruitment-open trigger and enforce engine-only alerts`
+    - `supabase/migrations/022_drop_legacy_recruitment_open_trigger.sql` ✓
 
 - [x] Tighten service-role RLS policies for notification preferences, alerts, and audit log
   - Effort: S
   - Owner: backend
   - Paths:
-    - `supabase/migrations/023_fix_service_role_policies.sql` ✓ created
-    - `supabase/migrations/014_notification_preferences.sql` (reference only)
-    - `supabase/migrations/019_admin_rbac_audit.sql` (reference only)
-  - Suggested PR title: `fix(rls): restrict service policies to service_role and narrow admin access`
+    - `supabase/migrations/023_fix_service_role_policies.sql` ✓ (table name: `admin_audit_logs` not `admin_audit_log`)
 
 - [x] Fix email dispatcher to read from feed view and derive subject/body
   - Effort: S
   - Owner: backend
   - Paths:
-    - `supabase/functions/email-dispatcher/index.ts` ✓ FeedRow type + buildSubject/buildBody added; query switched to v_notification_feed
-    - `types/notifications.ts`
-  - Suggested PR title: `fix(email): read notification feed view and derive email copy safely`
+    - `supabase/functions/email-dispatcher/index.ts` ✓ FeedRow type + buildSubject/buildBody; query switched to v_notification_feed
 
 - [x] Make eligibility queue claiming atomic and add retry metadata
   - Effort: M
   - Owner: backend
   - Paths:
-    - `supabase/migrations/024_claim_eligibility_queue_rpc.sql` ✓ created
+    - `supabase/migrations/024_claim_eligibility_queue_rpc.sql` ✓
     - `supabase/functions/eligibility-consumer/index.ts` ✓ uses claim_eligibility_queue RPC + exponential backoff
-  - Suggested PR title: `fix(queue): atomically claim eligibility jobs with retry fields`
 
 - [x] Make recruitment promotion transactional
   - Effort: M
   - Owner: backend
   - Paths:
-    - `supabase/migrations/025_admin_promote_recruitment_payload.sql` ✓ created
-    - Wire `admin_promote_recruitment_payload` RPC into `approveScrapeItem` / `promoteToRecruitments` callers
-  - Suggested PR title: `fix(scraper): promote approved scrape payloads transactionally`
+    - `supabase/migrations/025_admin_promote_recruitment_payload.sql` ✓
+  - Notes: `admin_promote_recruitment_payload` RPC wiring into approveScrapeItem is P1 follow-up
 
 - [x] Update notification upsert behavior so alert state stays current
   - Effort: M
   - Owner: backend
   - Paths:
-    - `supabase/migrations/026_notification_alert_state_uniqueness.sql` ✓ created
+    - `supabase/migrations/026_notification_alert_state_uniqueness.sql` ✓
     - `lib/db/notifications.ts` ✓ upsertNotificationAlerts() added
-    - Wire `upsertNotificationAlerts` into `runEligibilityForUser` callers
-  - Suggested PR title: `fix(alerts): upsert current alert state instead of ignoring duplicates`
 
 - [x] Replace boolean admin checks in source actions with permission-based RBAC
   - Effort: S
   - Owner: backend
   - Paths:
     - `actions/sources.ts` ✓ all guards replaced with requireAdminRole("sources")
-    - `lib/db/admin.ts`
-  - Suggested PR title: `fix(admin): use requireAdminRole for source actions`
 
 - [x] Add telemetry tables and event ingestion endpoint
   - Effort: M
   - Owner: backend + frontend
   - Paths:
-    - `supabase/migrations/027_user_events_and_form_submissions.sql` ✓ created
-    - `app/api/events/route.ts` ✓ created
-  - Notes:
-    - Telemetry must run before `user_recruitment_state` because the materialized view depends on `public.user_events`.
-  - Suggested PR title: `feat(telemetry): add user event pipeline for ranking and UX signals`
+    - `supabase/migrations/027_user_events_and_form_submissions.sql` ✓ (must run BEFORE 028)
+    - `app/api/events/route.ts` ✓
 
 - [x] Ship mission-control dashboard v1 on top of a unified user_recruitment_state view
   - Effort: L
   - Owner: frontend + backend
   - Paths:
-    - `supabase/migrations/028_user_recruitment_state.sql` ✓ created
-    - `lib/db/mission-control.ts` ✓ server-side data fetcher
+    - `supabase/migrations/028_user_recruitment_state.sql` ✓ materialized view
+    - `lib/db/mission-control.ts` ✓ queries user_exam_summary (migration 029 view)
     - `app/api/dashboard/mission-control/route.ts` ✓ REST API
     - `components/dashboard/MissionControlPanel.tsx` ✓ summary cards + tabs + opportunity feed
-    - `app/dashboard/page.tsx` ✓ wired — getMissionControlData in parallel fetch
+    - `app/dashboard/page.tsx` ✓ getMissionControlData in parallel fetch
     - `components/dashboard/DashboardShell.tsx` ✓ EligibleRecruitmentsWidget replaced
   - Notes:
-    - Depends on `public.user_events`; keep this after telemetry migrations.
-  - Suggested PR title: `feat(dashboard): launch mission-control dashboard powered by user state view`
+    - `getMissionControlData` queries `user_exam_summary` (not `user_recruitment_state` directly)
+      because the join view has both eligibility signals and recruitment metadata.
+    - Run `REFRESH MATERIALIZED VIEW CONCURRENTLY public.user_recruitment_state;` after each eligibility recompute.
 
 - [x] Launch notification preferences page before broad email rollout
   - Effort: M
   - Owner: frontend
   - Paths:
-    - `app/api/notifications/preferences/route.ts` ✓ GET + POST created
-    - `app/dashboard/notifications/preferences/page.tsx` — UI page (pending)
-  - Suggested PR title: `feat(notifications): add user preferences page and save API`
+    - `app/api/notifications/preferences/route.ts` ✓ GET + POST
+    - `app/dashboard/notifications/preferences/page.tsx` ✓ UI page built
 
 - [x] Add minimum CI gate for lint, typecheck, tests, and Supabase DB lint
   - Effort: S
   - Owner: infra + QA
   - Paths:
-    - `.github/workflows/ci.yml` ✓ created
-  - Suggested PR title: `ci: add app and database verification gates`
+    - `.github/workflows/ci.yml` ✓
 
 ## P1 next sprint
 
@@ -114,10 +96,36 @@ Legend:
   - Effort: L
   - Owner: frontend
   - Paths:
-    - `[UNSPECIFIED] recruitment detail route`
+    - `app/dashboard/recruitments/[id]/page.tsx` ✓ minimal version (Phase 3B)
     - `components/recruitments/StatusPanel.tsx` ✓ created
     - `components/recruitments/Timeline.tsx` (pending)
-  - Suggested PR title: `feat(recruitments): redesign detail page with status, evidence, and timeline`
+  - Notes: Current page shows eligibility verdict + track toggle. Full redesign (salary table, vacancies breakdown, syllabus, apply tracker) is Phase 4.
+
+- [ ] Wire admin_promote_recruitment_payload RPC into approveScrapeItem
+  - Effort: S
+  - Owner: backend
+  - Paths:
+    - `lib/db/notifications.ts` → approveScrapeItem()
+    - `lib/scraping/runner.ts` → promoteToRecruitments()
+  - Notes: Migration 025 created the RPC. The TypeScript callers still use the old inline logic.
+
+- [ ] Wire upsertNotificationAlerts into runEligibilityForUser
+  - Effort: S
+  - Owner: backend
+  - Paths:
+    - `lib/eligibility/runner.ts` → after upsert of eligibility_results
+
+- [x] Upgrade exams page to show personalized eligibility badges
+  - Effort: M
+  - Owner: frontend + backend
+  - Paths:
+    - `app/dashboard/exams/page.tsx` ✓ overlays eligibility from user_exam_summary in parallel fetch
+    - `app/api/exams/summary/route.ts` ✓ fixed to use user_exam_summary (correct view name + columns)
+    - `supabase/migrations/029_exam_summary_support.sql` ✓ exam_summary + user_exam_summary views
+    - `lib/exams/form-status.ts` ✓
+  - Notes:
+    - "exam" is a UI/product term. Database queries use `public.recruitments` and `recruitment_id`.
+    - See `docs/database-domain-model.md`.
 
 - [ ] Add profile impact module to show fields that unlock more opportunities
   - Effort: M
@@ -125,20 +133,6 @@ Legend:
   - Paths:
     - `app/api/dashboard/profile-impact/route.ts` (new)
     - `components/dashboard/ProfileImpactCard.tsx` (new)
-  - Suggested PR title: `feat(profile): show missing fields and unlock impact`
-
-- [x] Upgrade exams page from official-URL-only view to summary cards
-  - Effort: L
-  - Owner: frontend + backend
-  - Paths:
-    - `app/dashboard/exams/page.tsx` — wire to summary API (pending)
-    - `app/api/exams/summary/route.ts` ✓ created
-    - `supabase/migrations/029_exam_summary_support.sql` ✓ created
-    - `lib/exams/form-status.ts` ✓ created
-  - Notes:
-    - `exam` is a UI/product term. Database queries must use `public.recruitments` and `recruitment_id`; do not assume `public.exams` exists.
-    - See `docs/database-domain-model.md`.
-  - Suggested PR title: `feat(exams): add personalized exam summary cards and fit states`
 
 - [ ] Add admin tools: source registry UI, queue monitor, scraper monitor, audit viewer, RBAC manager
   - Effort: L
@@ -150,17 +144,14 @@ Legend:
     - `app/admin/audit/page.tsx`
     - `app/admin/rbac/page.tsx`
     - `app/api/admin/*`
-  - Suggested PR title: `feat(admin): add operational control surfaces for sources, queues, and audit`
 
-- [ ] Refresh README and docs to match real product and release criteria
+- [x] Refresh docs to match real product and release criteria
   - Effort: S
   - Owner: ops
   - Paths:
-    - `README.md`
-    - `docs/implementation_status_checklist.md`
-    - `docs/database-domain-model.md` ✓ created
-    - `docs/runbook.md` (new)
-  - Suggested PR title: `docs: align repo documentation with current implementation and ops`
+    - `docs/implementation_status_checklist.md` ✓ this file
+    - `docs/database-domain-model.md` ✓ created (recruitment vs exam canonical rule)
+    - `docs/runbook.md` ✓ created
 
 ## P2 strategic follow-up
 
@@ -168,11 +159,8 @@ Legend:
   - Effort: L
   - Owner: AI + backend
   - Paths:
-    - `supabase/migrations/030_embeddings.sql` ✓ created (pgvector table + ivfflat index)
+    - `supabase/migrations/030_embeddings.sql` ✓ pgvector table + ivfflat index
     - `jobs/embeddings-sync.ts` (pending — ETL sync job)
-  - Notes:
-    - Embeddings should use `recruitments` as the canonical entity. `exam` remains acceptable as a UI label.
-  - Suggested PR title: `feat(ai): add vector embeddings for semantic retrieval`
 
 - [ ] Add ranking v1 using eligibility, urgency, and behavioral telemetry
   - Effort: L
@@ -180,7 +168,7 @@ Legend:
   - Paths:
     - `lib/ranking/*` (new)
     - `app/api/dashboard/mission-control/route.ts`
-  - Suggested PR title: `feat(ranking): prioritize opportunities by fit, urgency, and behavior`
+  - Notes: user_events (migration 027) and user_recruitment_state (028) provide the signal tables.
 
 - [ ] Add deterministic-to-LLM explanation layer with provenance
   - Effort: M
@@ -188,7 +176,6 @@ Legend:
   - Paths:
     - `lib/explanations/*` (new)
     - `app/api/explanations/route.ts` (new)
-  - Suggested PR title: `feat(ai): generate human-friendly eligibility explanations with provenance`
 
 - [ ] Add apply tracker and saved/apply lifecycle
   - Effort: M
@@ -196,13 +183,25 @@ Legend:
   - Paths:
     - `supabase/migrations/031_apply_tracker.sql` (new)
     - `app/dashboard/tracker/page.tsx` (new)
-  - Notes:
-    - Avoid reusing migration number `029`; it is reserved for exam summary support.
-  - Suggested PR title: `feat/tracker): add saved and applied opportunity tracking`
 
 - [ ] Expand marketplace filters and trust models
   - Effort: L
   - Owner: frontend + backend
   - Paths:
     - `[UNSPECIFIED] marketplace routes and schema`
-  - Suggested PR title: `feat(marketplace): add trust-aware filters and personalized recommendations`
+
+## Migration apply order (027–030)
+
+Run in this exact order — dependency chain is strict:
+
+```
+027_user_events_and_form_submissions.sql   ← telemetry tables (no dependencies)
+028_user_recruitment_state.sql             ← mat view; depends on user_events (027)
+029_exam_summary_support.sql               ← views; depends on user_recruitment_state (028)
+030_embeddings.sql                         ← independent; requires pgvector extension
+```
+
+After applying 027–028, run:
+```sql
+REFRESH MATERIALIZED VIEW CONCURRENTLY public.user_recruitment_state;
+```

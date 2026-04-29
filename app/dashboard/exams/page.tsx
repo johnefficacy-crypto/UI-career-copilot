@@ -5,6 +5,8 @@ import { createClient } from "@/utils/supabase/server"
 export const dynamic = "force-dynamic"
 export const metadata = { title: "Browse Exams — Career Copilot" }
 
+type EligibilityStatus = "eligible" | "conditional" | "not_eligible" | null
+
 function daysUntil(dateStr: string | null): number | null {
   if (!dateStr) return null
   const diff = new Date(dateStr).getTime() - Date.now()
@@ -16,6 +18,24 @@ function urgencyColor(days: number | null): string {
   if (days <= 3)  return "#ef4444"
   if (days <= 14) return "#f59e0b"
   return "#34d399"
+}
+
+function EligibilityBadge({ status }: { status: EligibilityStatus }) {
+  if (!status) return null
+  const styles: Record<NonNullable<EligibilityStatus>, { bg: string; color: string; label: string }> = {
+    eligible:    { bg: "rgba(52,211,153,0.12)", color: "#34d399", label: "You're eligible" },
+    conditional: { bg: "rgba(251,191,36,0.12)",  color: "#fbbf24", label: "Conditional" },
+    not_eligible:{ bg: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.3)", label: "Not eligible" },
+  }
+  const s = styles[status]
+  return (
+    <span
+      className="px-2 py-0.5 rounded-full text-[10px] font-semibold"
+      style={{ background: s.bg, color: s.color }}
+    >
+      {s.label}
+    </span>
+  )
 }
 
 export default async function BrowseExamsPage({
@@ -32,6 +52,7 @@ export default async function BrowseExamsPage({
   const q = params.q ?? ""
   const today = new Date().toISOString().split("T")[0]
 
+  // ── Main recruitment list ─────────────────────────────────────────────────
   let query = supabase
     .from("recruitments")
     .select(`
@@ -43,10 +64,6 @@ export default async function BrowseExamsPage({
     .limit(60)
 
   if (filter === "open") {
-    // Show recruitments that are open/upcoming AND either (a) have a future
-    // apply_end_date, or (b) have no apply_end_date at all (scraper couldn't
-    // parse it — still worth showing so users can click through to the
-    // official notification link). Past-dated closed recruitments excluded.
     query = query
       .in("status", ["open", "upcoming", "published"])
       .or(`apply_end_date.gte.${today},apply_end_date.is.null`)
@@ -57,17 +74,38 @@ export default async function BrowseExamsPage({
     query = query.in("status", ["open", "upcoming", "published", "closed", "result_declared"])
   }
 
-  if (q) {
-    query = query.ilike("name", `%${q}%`)
-  }
+  if (q) query = query.ilike("name", `%${q}%`)
 
-  const { data: recruitments } = await query
+  // ── Personalized eligibility map (non-fatal) ──────────────────────────────
+  // user_exam_summary is populated after eligibility_recompute_queue is drained.
+  // Falls back gracefully to empty map if no rows yet.
+  const [{ data: recruitments }, { data: userSummary }] = await Promise.all([
+    query,
+    supabase
+      .from("user_exam_summary")
+      .select("recruitment_id, has_any_eligible_post, has_conditional_result")
+      .eq("user_id", user.id)
+      .then((res) => ({ data: res.data ?? [] })),
+  ])
+
+  const eligibilityMap = new Map<string, EligibilityStatus>(
+    (userSummary ?? []).map((row) => [
+      row.recruitment_id,
+      row.has_any_eligible_post
+        ? "eligible"
+        : row.has_conditional_result
+        ? "conditional"
+        : "not_eligible",
+    ])
+  )
 
   const filters = [
     { key: "open",    label: "Open now" },
     { key: "closing", label: "Closing soon" },
     { key: "all",     label: "All" },
   ]
+
+  const hasPersonalization = eligibilityMap.size > 0
 
   return (
     <div className="min-h-screen" style={{ background: "var(--bg-app)" }}>
@@ -93,7 +131,9 @@ export default async function BrowseExamsPage({
             Open Recruitments
           </h1>
           <p className="text-sm" style={{ color: "var(--text-muted)" }}>
-            Browse all active government exam notifications. Use your profile to get personalised matches.
+            {hasPersonalization
+              ? "Showing your eligibility for each recruitment. Green = you qualify."
+              : "Browse all active government exam notifications. Complete your profile to see eligibility badges."}
           </p>
         </div>
 
@@ -107,8 +147,8 @@ export default async function BrowseExamsPage({
                 className="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
                 style={{
                   background: filter === f.key ? "var(--gold-faint)" : "transparent",
-                  color: filter === f.key ? "var(--gold)" : "var(--text-dim)",
-                  border: filter === f.key ? "1px solid var(--gold-border)" : "1px solid transparent",
+                  color:      filter === f.key ? "var(--gold)" : "var(--text-dim)",
+                  border:     filter === f.key ? "1px solid var(--gold-border)" : "1px solid transparent",
                 }}
               >
                 {f.label}
@@ -125,9 +165,9 @@ export default async function BrowseExamsPage({
               className="w-full text-sm px-3 py-2 rounded-xl"
               style={{
                 background: "var(--bg-surface)",
-                border: "1px solid var(--border)",
-                color: "var(--text-primary)",
-                outline: "none",
+                border:     "1px solid var(--border)",
+                color:      "var(--text-primary)",
+                outline:    "none",
               }}
             />
           </form>
@@ -148,21 +188,38 @@ export default async function BrowseExamsPage({
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {recruitments.map((r) => {
-              const days = daysUntil(r.apply_end_date)
-              const org = r.organizations as { name: string; type: string; state: string | null } | null
+              const days      = daysUntil(r.apply_end_date)
+              const org       = r.organizations as { name: string; type: string; state: string | null } | null
+              const eligibility = eligibilityMap.get(r.id) ?? null
+
+              // Highlight eligible cards with a subtle border accent
+              const borderColor = eligibility === "eligible"
+                ? "rgba(52,211,153,0.25)"
+                : eligibility === "conditional"
+                ? "rgba(251,191,36,0.20)"
+                : "var(--border)"
+
               return (
-                <div
+                <Link
                   key={r.id}
-                  className="rounded-2xl p-5 flex flex-col gap-3 transition-colors"
-                  style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}
+                  href={`/dashboard/recruitments/${r.id}`}
+                  className="rounded-2xl p-5 flex flex-col gap-3 transition-colors hover:bg-white/[0.02]"
+                  style={{ background: "var(--bg-surface)", border: `1px solid ${borderColor}` }}
                 >
-                  {/* Title + org */}
+                  {/* Title + org + eligibility badge */}
                   <div>
-                    <p className="text-sm font-semibold text-white leading-snug mb-1">{r.name}</p>
+                    <div className="flex items-start justify-between gap-2 mb-1">
+                      <p className="text-sm font-semibold text-white leading-snug flex-1 min-w-0">
+                        {r.name}
+                      </p>
+                      <EligibilityBadge status={eligibility} />
+                    </div>
                     {org && (
                       <p className="text-xs" style={{ color: "var(--text-dim)" }}>
                         {org.name}
-                        {org.state && <span className="ml-1.5" style={{ color: "var(--text-ghost)" }}>· {org.state}</span>}
+                        {org.state && (
+                          <span className="ml-1.5" style={{ color: "var(--text-ghost)" }}>· {org.state}</span>
+                        )}
                       </p>
                     )}
                   </div>
@@ -198,13 +255,14 @@ export default async function BrowseExamsPage({
                       href={r.official_notification_url}
                       target="_blank"
                       rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
                       className="text-xs self-start"
                       style={{ color: "var(--gold)", textDecoration: "underline", textUnderlineOffset: "2px" }}
                     >
                       Official notification ↗
                     </a>
                   )}
-                </div>
+                </Link>
               )
             })}
           </div>
