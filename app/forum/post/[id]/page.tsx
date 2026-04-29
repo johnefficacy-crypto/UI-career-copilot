@@ -151,7 +151,6 @@ export default async function ForumPostPage({
               <input type="hidden" name="post_id" value={post.id} />
               <button
                 type={isLoggedIn ? "submit" : "button"}
-                onClick={!isLoggedIn ? () => window.location.href = "/auth/login" : undefined}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm transition-colors"
                 style={{
                   background: post.viewer_upvoted ? "var(--gold-faint)" : "transparent",
@@ -192,9 +191,6 @@ export default async function ForumPostPage({
                   type="submit"
                   className="text-xs px-3 py-1.5 rounded-xl transition-colors"
                   style={{ border: "1px solid var(--danger-border)", color: "var(--danger)", background: "transparent" }}
-                  onClick={(e) => {
-                    if (!confirm("Delete this post and all its comments?")) e.preventDefault()
-                  }}
                 >
                   Delete post
                 </button>

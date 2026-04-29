@@ -294,14 +294,13 @@ export default async function BrowseExamsPage({
               const days = daysUntil(r.apply_end_date)
               const evaluated = (r.evaluated_posts_count ?? 0) > 0
               return (
-                <Link
+                <div
                   key={r.recruitment_id}
-                  href={`/dashboard/recruitments/${r.recruitment_id}`}
                   className="rounded-2xl p-5 flex flex-col gap-3 transition-colors hover:border-white/[0.14]"
-                  style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", display: "flex" }}
+                  style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}
                 >
-                  {/* Title + org */}
-                  <div>
+                  {/* Title + org — the whole title row is the link */}
+                  <Link href={`/dashboard/recruitments/${r.recruitment_id}`} className="block">
                     <div className="flex items-start justify-between gap-2 mb-1">
                       <p className="text-sm font-semibold text-white leading-snug">{r.exam_name}</p>
                       <EligibilityBadge
@@ -316,7 +315,7 @@ export default async function BrowseExamsPage({
                         <span className="ml-1.5" style={{ color: "var(--text-ghost)" }}>· {r.organization_state}</span>
                       )}
                     </p>
-                  </div>
+                  </Link>
 
                   {/* Meta row */}
                   <div className="flex flex-wrap items-center gap-3 text-xs" style={{ color: "var(--text-ghost)" }}>
@@ -355,20 +354,19 @@ export default async function BrowseExamsPage({
                     </p>
                   )}
 
-                  {/* Official link */}
+                  {/* Official link — separate from the card link to avoid nested <a> */}
                   {r.official_notification_url && (
                     <a
                       href={r.official_notification_url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      onClick={e => e.stopPropagation()}
                       className="text-xs self-start"
                       style={{ color: "var(--gold)", textDecoration: "underline", textUnderlineOffset: "2px" }}
                     >
                       Official notification ↗
                     </a>
                   )}
-                </Link>
+                </div>
               )
             })}
           </div>
