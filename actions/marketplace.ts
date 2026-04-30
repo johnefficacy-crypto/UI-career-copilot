@@ -297,8 +297,7 @@ export async function addLesson(formData: FormData) {
     .select("id", { count: "exact", head: true })
     .in(
       "section_id",
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      supabase.from("course_sections").select("id").eq("course_id", courseId) as any
+      supabase.from("course_sections").select("id").eq("course_id", courseId)
     )
 
   await supabase

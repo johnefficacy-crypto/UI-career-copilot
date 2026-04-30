@@ -172,7 +172,7 @@ export default async function MockTestsPage({
                     )}
                   </div>
 
-                  <form action={deleteMockTestAction as (fd: FormData) => Promise<void>}>
+                  <form action={deleteMockTestAction}>
                     <input type="hidden" name="id" value={test.id} />
                     <button
                       type="submit"

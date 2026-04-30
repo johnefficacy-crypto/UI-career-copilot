@@ -42,3 +42,7 @@ next-env.d.ts
 .tmp.driveupload/
 
 .claude/worktrees/
+
+.claude/settings.local.json
+.claude/worktrees/
+graphify-out/

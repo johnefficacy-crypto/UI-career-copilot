@@ -132,8 +132,8 @@ async function handleSubscriptionActivated(
     planId,
     razorpaySubscriptionId: sub.id,
     razorpayCustomerId: sub.customer_id ?? "",
-    periodStart: sub.current_start ? new Date(sub.current_start * 1000).toISOString() : new Date().toISOString(),
-    periodEnd:   sub.current_end   ? new Date(sub.current_end   * 1000).toISOString() : new Date().toISOString(),
+    periodStart: sub.current_start ? new Date(sub.current_start * 1000) : null,
+    periodEnd:   sub.current_end   ? new Date(sub.current_end   * 1000) : null,
   })
 
   if (payment) {
