@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react"
 import Link from "next/link"
-import type { NotificationAlert } from "@/lib/db/notifications"
+import type { NotificationAlert } from "@/types/notifications"
 import { markNotificationRead, markAllNotificationsRead } from "@/actions/notifications"
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

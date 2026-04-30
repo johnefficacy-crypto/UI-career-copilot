@@ -15,7 +15,7 @@ import { NextBestActionPanel }            from "./NextBestActionPanel"
 import { DailyTasksWidget }              from "./DailyTasksWidget"
 import { ProfileImpactCard }              from "./ProfileImpactCard"
 import { AiChatWidget }                   from "@/components/chat/AiChatWidget"
-import type { getUserPlans }              from "@/lib/db/study-planner"
+import type { getUserPlans, getPlanStats } from "@/lib/db/study-planner"
 import type { getEligibleRecruitments }   from "@/lib/eligibility/runner"
 
 type UserPlansResult            = Awaited<ReturnType<typeof getUserPlans>>
@@ -30,7 +30,7 @@ interface Props {
   unreadCount:          number
   isPaid:               boolean
   primaryPlan:          UserPlansResult[number] | null
-  planStats:            null
+  planStats:            Awaited<ReturnType<typeof getPlanStats>> | null
   lastChatSessionId:    string | null
   nextActions:          NextAction[]
   todaysTasks:          StudyTask[]

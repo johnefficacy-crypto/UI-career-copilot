@@ -57,18 +57,18 @@ export default async function NotificationGovernancePage({
   if (!user) redirect("/auth/login")
   try { await requireAdminRole("notifications") } catch { redirect("/dashboard") }
 
-  const params = await searchParams.catch(() => ({}))
+  const params = await searchParams.catch(() => ({ success: undefined as string | undefined, error: undefined as string | undefined }))
 
   // Fetch notification stats + recent alerts + kill switch state in parallel
   const [statsRes, recentRes, killRes] = await Promise.allSettled([
     supabase
       .from("notification_alerts")
-      .select("status", { count: "exact" })
+      .select("id", { count: "exact" })
       .limit(0),
     supabase
       .from("notification_alerts")
-      .select("id, user_id, type, status, created_at")
-      .order("created_at", { ascending: false })
+      .select("id, user_id, alert_type, is_read, sent_at")
+      .order("sent_at", { ascending: false })
       .limit(50),
     supabase
       .from("admin_settings")
@@ -78,31 +78,25 @@ export default async function NotificationGovernancePage({
   ])
 
   // Per-status counts via grouped query
-  const [sentRes, pendingRes, failedRes] = await Promise.allSettled([
-    supabase.from("notification_alerts").select("id", { count: "exact" }).eq("status", "sent").limit(0),
-    supabase.from("notification_alerts").select("id", { count: "exact" }).eq("status", "pending").limit(0),
-    supabase.from("notification_alerts").select("id", { count: "exact" }).eq("status", "failed").limit(0),
+  const [sentRes, pendingRes, unreadRes] = await Promise.allSettled([
+    supabase.from("notification_alerts").select("id", { count: "exact" }).eq("email_sent", true).limit(0),
+    supabase.from("notification_alerts").select("id", { count: "exact" }).eq("email_sent", false).limit(0),
+    supabase.from("notification_alerts").select("id", { count: "exact" }).eq("is_read", false).limit(0),
   ])
 
-  const totalAlerts = statsRes.status === "fulfilled" ? (statsRes.value.count ?? 0) : 0
-  const sentCount   = sentRes.status === "fulfilled"    ? (sentRes.value.count ?? 0) : 0
-  const pendingCount= pendingRes.status === "fulfilled" ? (pendingRes.value.count ?? 0) : 0
-  const failedCount = failedRes.status === "fulfilled"  ? (failedRes.value.count ?? 0) : 0
+  const totalAlerts  = statsRes.status === "fulfilled"  ? (statsRes.value.count ?? 0) : 0
+  const sentCount    = sentRes.status === "fulfilled"   ? (sentRes.value.count ?? 0) : 0
+  const pendingCount = pendingRes.status === "fulfilled" ? (pendingRes.value.count ?? 0) : 0
+  const unreadCount  = unreadRes.status === "fulfilled"  ? (unreadRes.value.count ?? 0) : 0
 
-  type AlertRow = { id: string; user_id: string; type: string; status: string; created_at: string }
+  type AlertRow = { id: string; user_id: string; alert_type: string; is_read: boolean; sent_at: string | null }
   const recent: AlertRow[] = recentRes.status === "fulfilled" ? ((recentRes.value.data ?? []) as AlertRow[]) : []
 
   const isPaused = killRes.status === "fulfilled" && killRes.value.data?.value === "true"
 
-  function fmt(d: string) {
+  function fmt(d: string | null) {
+    if (!d) return "—"
     return new Date(d).toLocaleString("en-IN", { dateStyle: "short", timeStyle: "short" })
-  }
-
-  const STATUS_COLOR: Record<string, string> = {
-    sent:    "#86efac",
-    pending: "#fde68a",
-    failed:  "#f87171",
-    read:    "rgba(255,255,255,0.30)",
   }
 
   return (
@@ -165,9 +159,9 @@ export default async function NotificationGovernancePage({
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
           { label: "Total alerts",  value: totalAlerts,   accent: false },
-          { label: "Sent",          value: sentCount,     accent: false },
-          { label: "Pending",       value: pendingCount,  accent: pendingCount > 0 },
-          { label: "Failed",        value: failedCount,   accent: failedCount > 0 },
+          { label: "Email sent",    value: sentCount,     accent: false },
+          { label: "Email unsent",  value: pendingCount,  accent: pendingCount > 0 },
+          { label: "Unread",        value: unreadCount,   accent: unreadCount > 0 },
         ].map(s => (
           <div key={s.label}
             className={`rounded-xl border px-4 py-3 ${s.accent ? "bg-amber-500/[0.04] border-amber-500/20" : "bg-white/[0.02] border-white/[0.07]"}`}>
@@ -200,7 +194,7 @@ export default async function NotificationGovernancePage({
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-white/[0.06]">
-                  {["User ID", "Type", "Status", "Sent at"].map(h => (
+                  {["User ID", "Alert type", "Read", "Sent at"].map(h => (
                     <th key={h} className="text-left text-xs font-medium text-white/30 uppercase tracking-wider px-4 py-3">
                       {h}
                     </th>
@@ -218,16 +212,16 @@ export default async function NotificationGovernancePage({
                     <td className="px-4 py-3">
                       <span className="text-xs px-2 py-0.5 rounded"
                         style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.45)" }}>
-                        {row.type}
+                        {row.alert_type}
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <span className="text-xs font-medium" style={{ color: STATUS_COLOR[row.status] ?? "rgba(255,255,255,0.40)" }}>
-                        {row.status}
+                      <span className="text-xs font-medium" style={{ color: row.is_read ? "rgba(255,255,255,0.30)" : "#fde68a" }}>
+                        {row.is_read ? "read" : "unread"}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-xs text-white/35 whitespace-nowrap">
-                      {fmt(row.created_at)}
+                      {fmt(row.sent_at)}
                     </td>
                   </tr>
                 ))}

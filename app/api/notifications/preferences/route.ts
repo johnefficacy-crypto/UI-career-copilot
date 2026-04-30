@@ -69,7 +69,7 @@ export async function POST(req: NextRequest) {
 
   const { error } = await supabase
     .from("notification_preferences")
-    .upsert(update, { onConflict: "user_id" })
+    .upsert(update as never, { onConflict: "user_id" })
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })

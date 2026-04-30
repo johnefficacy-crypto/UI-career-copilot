@@ -8,7 +8,7 @@
 
 import Link from "next/link"
 import { createClient } from "@/utils/supabase/server"
-import { getRecruitmentsAdminPaginated, requireAdminRole } from "@/lib/db/admin"
+import { getRecruitmentsAdminPaginated, getAllRecruitmentsAdmin, requireAdminRole } from "@/lib/db/admin"
 import { formatDate, daysUntil } from "@/lib/utils/dates"
 import { adminDeleteRecruitment } from "@/actions/admin"
 import { DeleteConfirmButton } from "@/components/admin/DeleteConfirmButton"
@@ -47,7 +47,7 @@ export default async function AdminRecruitmentsPage({
   if (!user) redirect("/auth/login")
   try { await requireAdminRole("recruitments") } catch { redirect("/dashboard") }
 
-  const params   = await searchParams.catch(() => ({}))
+  const params   = await searchParams.catch(() => ({ page: undefined }))
   const pageNum  = Math.max(1, parseInt(params.page ?? "1", 10) || 1)
 
   let recruitments: Recruitment[] = []

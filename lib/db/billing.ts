@@ -117,8 +117,8 @@ export async function activateSubscription(opts: {
   planId:                 string
   razorpaySubscriptionId: string
   razorpayCustomerId:     string
-  periodStart:            string
-  periodEnd:              string
+  periodStart:            string | null
+  periodEnd:              string | null
 }): Promise<void> {
   const supabase = await createClient()
 

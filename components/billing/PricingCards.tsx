@@ -20,15 +20,9 @@ import Link from "next/link"
 import { initiateSubscription } from "@/actions/billing"
 import type { Plan, PlanId } from "@/lib/billing/plans"
 
-// ─── Razorpay window type ─────────────────────────────────────────────────────
+// ─── Razorpay local types ─────────────────────────────────────────────────────
 
-declare global {
-  interface Window {
-    Razorpay: new (options: RazorpayOptions) => RazorpayInstance
-  }
-}
-
-interface RazorpayOptions {
+type PricingRazorpayOptions = {
   key:             string
   subscription_id: string
   name:            string
@@ -40,12 +34,8 @@ interface RazorpayOptions {
     contact?: string
   }
   theme?: { color: string }
-  handler:                 (response: RazorpayResponse) => void
-  modal?: {
-    ondismiss?:   () => void
-    escape?:      boolean
-    backdropclose?: boolean
-  }
+  handler:   (response: { razorpay_payment_id: string; razorpay_subscription_id: string; razorpay_signature: string }) => void
+  modal?: { ondismiss?: () => void; escape?: boolean }
 }
 
 interface RazorpayResponse {
@@ -129,7 +119,8 @@ export function PricingCards({ plans, currentPlanId, isLoggedIn }: Props) {
         return
       }
 
-      const rzp = new window.Razorpay({
+      const RazorpayConstructor = (window as unknown as { Razorpay: new (opts: PricingRazorpayOptions) => { open: () => void } }).Razorpay
+      const rzp = new RazorpayConstructor({
         key:             result.keyId,
         subscription_id: result.subscriptionId,
         name:            "Career Copilot",
@@ -141,7 +132,6 @@ export function PricingCards({ plans, currentPlanId, isLoggedIn }: Props) {
         },
         modal: {
           ondismiss: () => setLoadingPlanId(null),
-          escape:    true,
         },
       })
 

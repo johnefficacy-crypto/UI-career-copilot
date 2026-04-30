@@ -60,7 +60,7 @@ export async function getUserApplications(userId: string): Promise<UserApplicati
     `)
     .eq("user_id", userId)
     .order("updated_at", { ascending: false })
-  return (data ?? []) as UserApplication[]
+  return (data ?? []) as unknown as UserApplication[]
 }
 
 export async function getApplication(
@@ -86,7 +86,7 @@ export async function upsertApplication(
   await supabase
     .from("user_recruitment_applications")
     .upsert(
-      { user_id: userId, recruitment_id: recruitmentId, ...patch },
+      { user_id: userId, recruitment_id: recruitmentId, ...patch } as never,
       { onConflict: "user_id,recruitment_id" }
     )
 }

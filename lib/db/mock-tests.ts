@@ -50,7 +50,7 @@ export async function getUserMockTests(userId: string, planId?: string): Promise
 
   const { data, error } = await q
   if (error) throw new Error(`getUserMockTests: ${error.message}`)
-  return (data ?? []) as MockTest[]
+  return (data ?? []) as unknown as MockTest[]
 }
 
 export async function getMockTest(id: string, userId: string): Promise<MockTest | null> {

@@ -108,16 +108,16 @@ export async function logAdminAction(params: AuditParams): Promise<void> {
       action:      params.action,
       entity_type: params.entityType,
       entity_id:   params.entityId ?? null,
-      old_value:   params.oldValue != null
+      old_value:   (params.oldValue != null
         ? (typeof params.oldValue === "object"
             ? params.oldValue
             : { value: params.oldValue })
-        : null,
-      new_value:   params.newValue != null
+        : null) as never,
+      new_value:   (params.newValue != null
         ? (typeof params.newValue === "object"
             ? params.newValue
             : { value: params.newValue })
-        : null,
+        : null) as never,
       notes:       params.notes ?? null,
     })
   } catch {

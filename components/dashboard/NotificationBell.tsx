@@ -7,9 +7,17 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import { NotificationAlert } from "@/types/delete-scraping"
-import { markMyAlertsRead } from "@/actions/delete-scraping"
-import { formatDistanceToNow } from "date-fns"
+import type { NotificationAlert } from "@/types/notifications"
+import { markUserAlertsRead } from "@/actions/notifications"
+
+function timeAgoSimple(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime()
+  const mins = Math.floor(diff / 60000)
+  if (mins < 60) return `${mins}m ago`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24) return `${hrs}h ago`
+  return `${Math.floor(hrs / 24)}d ago`
+}
 import Link from "next/link"
 
 interface NotificationBellProps {
@@ -42,7 +50,7 @@ export function NotificationBell({ initialAlerts, unreadCount }: NotificationBel
     if (!open && count > 0) {
       // Mark all as read
       startTransition(async () => {
-        await markMyAlertsRead()
+        await markUserAlertsRead()
         setCount(0)
         setAlerts(prev => prev.map(a => ({ ...a, is_read: true })))
       })
@@ -91,7 +99,6 @@ export function NotificationBell({ initialAlerts, unreadCount }: NotificationBel
             ) : (
               <div className="max-h-80 overflow-y-auto divide-y divide-white/[0.04]">
                 {alerts.map(alert => {
-                  const rec = alert.recruitment as any
                   return (
                     <Link
                       key={alert.id}
@@ -107,10 +114,10 @@ export function NotificationBell({ initialAlerts, unreadCount }: NotificationBel
                           {ALERT_LABELS[alert.alert_type]}
                         </p>
                         <p className="text-white/45 text-xs leading-snug truncate">
-                          {rec?.name ?? "Recruitment"} — {rec?.organization?.name ?? ""}
+                          {alert.recruitment_name} — {alert.org_name ?? ""}
                         </p>
                         <p className="text-white/20 text-[10px] mt-1">
-                          {formatDistanceToNow(new Date(alert.sent_at), { addSuffix: true })}
+                          {timeAgoSimple(alert.sent_at)}
                         </p>
                       </div>
                       {!alert.is_read && (
