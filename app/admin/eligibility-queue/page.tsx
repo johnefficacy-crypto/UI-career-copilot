@@ -60,7 +60,8 @@ export default async function EligibilityQueuePage({
   const to      = from + PAGE_SIZE - 1
 
   // Stats
-  const { data: stats } = await supabase.rpc("get_eligibility_queue_stats").maybeSingle().catch(() => ({ data: null }))
+  const statsResult = await supabase.rpc("get_eligibility_queue_stats").maybeSingle()
+  const stats = statsResult.data
 
   // Counts per status
   const statusCountsRes = await supabase

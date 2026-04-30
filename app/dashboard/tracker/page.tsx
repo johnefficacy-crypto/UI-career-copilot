@@ -50,7 +50,7 @@ export default async function TrackerPage({
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect("/auth/login")
 
-  const params = await searchParams.catch(() => ({}))
+  const params = await searchParams.catch(() => ({ filter: undefined, success: undefined, error: undefined }))
   const filter = (params.filter ?? "active") as "active" | "submitted" | "all"
 
   const all = await getUserApplications(user.id)

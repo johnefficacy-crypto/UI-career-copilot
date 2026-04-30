@@ -80,8 +80,8 @@ export async function POST(req: NextRequest) {
           planId: planId as PlanId,
           razorpaySubscriptionId: sub.id,
           razorpayCustomerId: sub.customer_id ?? "",
-          periodStart,
-          periodEnd,
+          periodStart: periodStart?.toISOString() ?? new Date().toISOString(),
+          periodEnd:   periodEnd?.toISOString()   ?? new Date().toISOString(),
         })
 
         // Record payment if this was a charge event
@@ -99,9 +99,7 @@ export async function POST(req: NextRequest) {
       // ── Subscription cancelled ────────────────────────────────────────
       case "subscription.cancelled": {
         const sub = entity
-        await updateSubscriptionStatus(sub.id, "cancelled", {
-          cancel_at_period_end: false,
-        })
+        await updateSubscriptionStatus(sub.id, "cancelled")
         break
       }
 

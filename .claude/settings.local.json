@@ -39,7 +39,9 @@
       "Bash(gh pr *)",
       "Bash(git fetch *)",
       "Bash(git rebase *)",
-      "Bash(git stash *)"
+      "Bash(git stash *)",
+      "Bash(git reset *)",
+      "PowerShell($content = Get-Content \"types/supabase.ts\" -Encoding Unicode -Raw; $content.Length)"
     ]
   }
 }
