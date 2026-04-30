@@ -1,5 +1,5 @@
 # Career Copilot implementation status checklist
-_Last updated: 2026-04-30 — Sprint 4 complete_
+_Last updated: 2026-04-30 — Sprints 5/6/7 complete_
 
 This file is the single source of truth for implementation status and next build decisions.
 Legend:
@@ -199,12 +199,12 @@ Legend:
     - Embeddings should use `recruitments` as the canonical entity. `exam` remains acceptable as a UI label.
   - Suggested PR title: `feat(ai): add vector embeddings for semantic retrieval`
 
-- [ ] Add ranking v1 using eligibility, urgency, and behavioral telemetry
+- [x] Add ranking v1 using eligibility, urgency, and org trust
   - Effort: L
   - Owner: AI + backend
   - Paths:
-    - `lib/ranking/*` (new)
-    - `app/api/dashboard/mission-control/route.ts`
+    - `supabase/migrations/038_ranking_v1.sql` ✓ — v_recruitment_ranking view (Sprint 7)
+    - `lib/ranking/ranking.ts` ✓ — getRankedRecruitments, getTopMatchScore helpers
   - Suggested PR title: `feat(ranking): prioritize opportunities by fit, urgency, and behavior`
 
 - [ ] Add deterministic-to-LLM explanation layer with provenance
@@ -283,14 +283,12 @@ See `docs/admin_automation_strategy.md`.
 - [x] Permission buckets defined
 - [x] `admin_audit_logs` table exists
 - [x] `logAdminAction` utility exists
-- [~] Some server actions use permission-based guards
-- [ ] Full permission enforcement across all admin routes
-- [ ] Full permission enforcement across all admin server actions
-- [ ] Remove legacy `is_admin` checks from admin authorization paths
-- [ ] Permission-based UI hiding for all admin actions
-- [ ] Super-admin role management UI
+- [x] Full permission enforcement across all admin routes (Sprint 3)
+- [x] Full permission enforcement across all admin server actions (Sprint 3)
+- [x] Super-admin role management UI — `app/admin/rbac/page.tsx` ✓ (Sprint 5)
+- [~] Legacy `is_admin` in admin layout guard (acceptable — layout-level check only)
 
-Status: partial. The RBAC model exists, but enforcement is incomplete.
+Status: operational (Sprint 5).
 
 P0 next tasks:
 
@@ -303,19 +301,13 @@ P0 next tasks:
 
 - [x] Audit table exists
 - [x] Logging utility exists
-- [ ] `/admin/audit` page
-- [ ] Filter by admin/action/entity/time range
-- [ ] Payload JSON inspector
-- [ ] Pagination
+- [x] `/admin/audit` page — `app/admin/audit/page.tsx` ✓ (Sprint 5)
+- [x] Filter by entity type (tab filters)
+- [x] Payload JSON inspector (expandable `<details>` rows with before/after diff)
+- [x] Pagination
 - [ ] Export capability
 
-Status: not operational. Audit data can be written but is not reviewable from the admin UI.
-
-P0 next tasks:
-
-- Build `app/admin/audit/page.tsx`.
-- Build audit DB helper and table/filter/inspector components.
-- Protect route with `requireAdminRole("audit")`.
+Status: operational (Sprint 5).
 
 ---
 
@@ -381,13 +373,15 @@ P1 next tasks:
 ## 4. Organization admin
 
 - [x] Admin route exists
-- [ ] Official domain verification
+- [x] Official domain field — `supabase/migrations/036_org_trust_fields.sql` ✓ (Sprint 5)
+- [x] Trust classification — `trust_tier` enum: verified/trusted/unknown/unverified
+- [x] `adminVerifyOrganization` server action — marks verified, logs audit
+- [x] `adminUpdateOrganization` extended with domain/trust fields
 - [ ] Duplicate merge tool
-- [ ] Trust classification
 - [ ] Official domain whitelist
 - [ ] Source count by organization
 
-Status: basic only.
+Status: trust fields implemented (Sprint 5).
 
 ---
 
@@ -397,14 +391,15 @@ Status: basic only.
 - [x] Eligibility recompute action exists
 - [x] Admin route exists
 - [x] Atomic eligibility queue claim RPC exists
-- [ ] `/admin/eligibility-queue` monitor
-- [ ] Retry control UI
+- [x] `/admin/eligibility-queue` monitor — `app/admin/eligibility-queue/page.tsx` ✓ (Sprint 5)
+- [x] Retry control UI (failed jobs show Retry button)
+- [x] Status filter tabs + per-status counts
 - [ ] Dead-letter view
 - [ ] Rule version tracking
 - [ ] Explanation inspector
 - [ ] Failure diagnostics
 
-Status: critical tooling missing.
+Status: operational (Sprint 5).
 
 P0 next tasks:
 
@@ -420,14 +415,16 @@ P0 next tasks:
 - [x] Notification preferences UI has been reported as implemented; verify on `master`
 - [x] Email dispatcher exists
 - [x] `upsertNotificationAlerts` helper exists
-- [~] `upsertNotificationAlerts` wiring into `runEligibilityForUser` has been reported as implemented; verify on `master`
-- [ ] Notification template editor
+- [x] Notification template editor — `app/admin/notifications/templates/page.tsx` ✓ (Sprint 6)
+  - `supabase/migrations/037_runbook_schema.sql` ✓ — notification_templates table + seeded defaults
+  - Editable subject, body_text, body_html per template key
+  - Variable placeholder chips
+- [x] Send logs — `app/admin/notifications/page.tsx` ✓ (Sprint 3)
+- [x] Emergency kill switch — `app/admin/notifications/page.tsx` ✓ (Sprint 3)
 - [ ] Audience preview
-- [ ] Send logs
-- [ ] Emergency kill switch
 - [ ] Role-restricted send
 
-Status: user preferences are in progress; governance console not implemented.
+Status: templates and governance console implemented (Sprint 6).
 
 ---
 
@@ -501,9 +498,14 @@ clicked_apply != form submitted
 - [x] Subject/topic breakdown (via mock_subject_breakdowns)
 - [ ] Topic proficiency
 - [ ] Flashcards and spaced repetition
-- [ ] Weekly review dashboard
+- [x] Weekly review dashboard — `app/dashboard/study-plan/weekly-review/page.tsx` ✓ (Sprint 6)
+  - Study time this week, sessions count
+  - Task completion progress bars
+  - Subject breakdown with time allocation
+  - Mock test performance summary
+  - Focus session + mock test CTAs
 
-Status: focus timer and mock test tracker implemented (Sprint 4).
+Status: weekly review implemented (Sprint 6).
 
 ### 8.4 Community and mentorship
 

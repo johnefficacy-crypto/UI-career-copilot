@@ -169,6 +169,13 @@ export async function updateOrganization(id: string, input: {
   name?: string
   type?: string
   state?: string | null
+  official_domain?: string | null
+  website_url?: string | null
+  trust_tier?: string
+  is_verified?: boolean
+  verification_notes?: string | null
+  verified_at?: string | null
+  verified_by?: string | null
 }) {
   const supabase = await createClient()
   const { error } = await supabase

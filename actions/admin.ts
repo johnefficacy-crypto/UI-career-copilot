@@ -37,13 +37,40 @@ export async function adminUpdateOrganization(formData: FormData) {
   try {
     await requireAdmin()
     await updateOrganization(id, {
-      name: formData.get("name") as string,
-      type: formData.get("type") as string,
-      state: (formData.get("state") as string) || null,
+      name:                 formData.get("name") as string,
+      type:                 formData.get("type") as string,
+      state:                (formData.get("state") as string) || null,
+      official_domain:      (formData.get("official_domain") as string) || null,
+      website_url:          (formData.get("website_url") as string) || null,
+      trust_tier:           (formData.get("trust_tier") as string) || "unknown",
+      verification_notes:   (formData.get("verification_notes") as string) || null,
     })
     revalidatePath("/admin/organizations")
   } catch (err) {
     adminRedirectOnError(`/admin/organizations/${id}/edit`, err)
+  }
+  redirect("/admin/organizations")
+}
+
+export async function adminVerifyOrganization(formData: FormData) {
+  const id = formData.get("id") as string
+  try {
+    const ctx = await requireAdminRole("organizations")
+    const supabase = await createClient()
+    await supabase
+      .from("organizations")
+      .update({ is_verified: true, trust_tier: "verified", verified_at: new Date().toISOString(), verified_by: ctx.userId })
+      .eq("id", id)
+    void logAdminAction({
+      actorId:    ctx.userId,
+      actorEmail: ctx.userEmail,
+      action:     "verify_organization",
+      entityType: "organization",
+      entityId:   id,
+    })
+    revalidatePath("/admin/organizations")
+  } catch (err) {
+    adminRedirectOnError("/admin/organizations", err)
   }
   redirect("/admin/organizations")
 }

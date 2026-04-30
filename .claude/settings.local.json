@@ -36,7 +36,10 @@
       "Bash(gh pr create --title 'fix+feat: implement deep-review action items — P0 fixes, P1 infrastructure, CI' --body ' *)",
       "Bash(echo \"EXIT:$?\")",
       "Bash(gh pr create --title 'fix+feat: P0 backend fixes, P1 infrastructure, mission-control dashboard, CI' --body ' *)",
-      "Bash(gh pr *)"
+      "Bash(gh pr *)",
+      "Bash(git fetch *)",
+      "Bash(git rebase *)",
+      "Bash(git stash *)"
     ]
   }
 }

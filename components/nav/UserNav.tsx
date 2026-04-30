@@ -139,7 +139,8 @@ export function UserNav({ fullName, planId, avatarUrl, isAdmin }: Props) {
             <NavItem href="/onboarding"           label="Edit profile"    icon="✎" onClick={() => setOpen(false)} />
             <NavItem href="/dashboard/study-plan"              label="Study plans"        icon="📅" onClick={() => setOpen(false)} />
             <NavItem href="/dashboard/study-plan/focus"       label="Focus timer"        icon="⏱" onClick={() => setOpen(false)} />
-            <NavItem href="/dashboard/study-plan/mock-tests"  label="Mock test tracker"  icon="📝" onClick={() => setOpen(false)} />
+            <NavItem href="/dashboard/study-plan/mock-tests"   label="Mock test tracker"  icon="📝" onClick={() => setOpen(false)} />
+            <NavItem href="/dashboard/study-plan/weekly-review" label="Weekly review"       icon="📊" onClick={() => setOpen(false)} />
             <NavItem href="/dashboard/billing"  label="Billing & plan"  icon="💳" onClick={() => setOpen(false)} />
             <NavItem href="/marketplace/my-courses" label="My courses"  icon="📚" onClick={() => setOpen(false)} />
 
