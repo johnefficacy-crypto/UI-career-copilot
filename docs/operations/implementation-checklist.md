@@ -69,6 +69,35 @@ Legend:
     - `lib/db/admin.ts`
   - Suggested PR title: `fix(admin): use requireAdminRole for source actions`
 
+- [x] Block confidence-only auto-approval in legacy manual scraper path
+  - Effort: S
+  - Owner: backend
+  - Paths:
+    - `lib/scraping/runner.ts` ✓ status now always `pending` (no confidence-based `approved`)
+  - Notes:
+    - Admin evidence review remains mandatory before promotion.
+  - Suggested PR title: `fix(scraper): disable confidence-based auto-approval in legacy runner`
+
+- [x] Add aggregator official-host validation before queue-item promotion
+  - Effort: S
+  - Owner: backend
+  - Paths:
+    - `lib/db/notifications.ts` ✓ validation rejects aggregator items where `official_notification_url` host matches aggregator host
+  - Notes:
+    - Prevents treating aggregator/listing URLs as canonical official notifications.
+  - Suggested PR title: `fix(scraper): require distinct official host for aggregator promotions`
+
+- [x] Add explicit official-source resolution flags for scrape queue rows
+  - Effort: S
+  - Owner: backend
+  - Paths:
+    - `supabase/migrations/043_aggregator_official_source_gate.sql` ✓ created
+    - `supabase/functions/scheduled-scraper/index.ts` ✓ writes `official_source_resolved` + `official_source_host`
+    - `lib/db/notifications.ts` ✓ promotion validator blocks rows where `official_source_resolved=false`
+  - Notes:
+    - Adds durable database-level state instead of relying only on inline hostname checks.
+  - Suggested PR title: `feat(scraper): persist and enforce official-source resolution before promotion`
+
 - [x] Full RBAC enforcement — replace is_admin checks across all admin routes and actions
   - Effort: M
   - Owner: backend

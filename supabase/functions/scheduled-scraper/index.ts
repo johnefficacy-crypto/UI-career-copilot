@@ -2145,6 +2145,21 @@ Deno.serve(async (req) => {
         const { confidence: _conf, _provider: _p, _model: _m, ...dataWithoutConf } = extracted
         void _conf; void _p; void _m
 
+        const toHost = (raw: string | null | undefined): string | null => {
+          if (!raw) return null
+          try {
+            const withProto = raw.startsWith("http") ? raw : `https://${raw}`
+            return new URL(withProto).hostname.replace(/^www\./, "").toLowerCase()
+          } catch {
+            return null
+          }
+        }
+        const sourceHost = toHost(url) ?? toHost(src.official_url)
+        const officialHost = toHost(extracted.official_notification_url)
+        const officialSourceResolved = src.source_type === "aggregator"
+          ? Boolean(officialHost && sourceHost && officialHost !== sourceHost)
+          : Boolean(officialHost)
+
         const { data: queueRow, error: queueErr } = await supabase
           .from("scrape_queue")
           .insert({
@@ -2164,6 +2179,8 @@ Deno.serve(async (req) => {
             notification_document_id:  documentId,
             extraction_status:         extractionStatus,
             evidence_required:         true,
+            official_source_resolved:  officialSourceResolved,
+            official_source_host:      officialHost,
           })
           .select("id")
           .single()
