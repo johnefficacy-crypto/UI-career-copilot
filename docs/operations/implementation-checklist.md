@@ -15,8 +15,16 @@ Legend:
 - [x] Removed `ProfileCard` from main dashboard shell sidebar to reduce duplicate profile surfaces.
 - [x] Fixed `profileBlockers` summary computation to count `needs_profile_data` instead of mirroring `conditional`.
 - [x] Updated profile-impact onboarding links to route-specific paths (`/onboarding/identity`, `/onboarding/education`) for deterministic CTAs.
+<<<<<<< codex/implement-sprint-8-features-gwd01w
+- [x] Replaced static `StatsBar` with collapsible `LiveStatsBar` (collapsed by default, localStorage persistence, mobile defaults to collapsed).
+- [x] Added Sprint 8 notification grouping foundation: `notification_group_state` migration + grouped notification read path with fallback for non-migrated environments.
+- [x] Added `GET /api/dashboard/live-summary` to expose Sprint 8 LiveStats summary shape for API consumers.
+- [x] Added notification feedback capture foundation: migration + `submitRecruitmentFeedback` action + user-facing "Report issue" control on notifications cards.
+- [x] Added admin recruitment feedback queue (`/admin/recruitment-feedback`) with resolve/reject workflow and `logAdminAction('resolve_feedback', ...)` audit logging.
+=======
 - [x] Published aspirant-centered platform strategy for forum, exam planning, productivity, community, marketplace, AI assistant/chat, and resource governance (`docs/product/aspirant-platform-strategy.md`).
 - [x] Replaced static `StatsBar` with collapsible `LiveStatsBar` (collapsed by default, localStorage persistence, mobile defaults to collapsed).
+>>>>>>> master
 
 ## P0 release blockers
 
