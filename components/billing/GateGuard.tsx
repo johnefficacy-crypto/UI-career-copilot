@@ -29,7 +29,7 @@ export function GateGuard({ feature, allowed, children, suggestPlan = "pro", sil
     <div className="rounded-2xl border border-[#e8d5a3]/15 bg-[#e8d5a3]/[0.03] p-5 flex flex-col gap-3">
       <div className="flex items-center gap-2">
         <span className="text-[#e8d5a3]/40 text-lg">🔒</span>
-        <p className="text-white/60 text-sm">{upgradePrompt(feature)}</p>
+        <p className="text-white/60 text-sm">{upgradePrompt(null, feature)}</p>
       </div>
       <Link
         href={`/pricing#${suggestPlan}`}

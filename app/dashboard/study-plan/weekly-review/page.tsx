@@ -34,9 +34,9 @@ export default async function WeeklyReviewPage({
   // Load all plans to let user pick
   const { data: allPlans } = await supabase
     .from("study_plans")
-    .select("id, exam_name, status, created_at")
+    .select("id, exam_name, status, updated_at")
     .eq("user_id", user.id)
-    .order("created_at", { ascending: false })
+    .order("updated_at", { ascending: false })
 
   const activePlanId = planId ?? (allPlans?.[0]?.id ?? null)
 
@@ -111,7 +111,7 @@ export default async function WeeklyReviewPage({
         <div className="grid grid-cols-3 gap-3 mb-6">
           {[
             { label: "Study time",    val: `${Math.round(totalMinsThisWeek / 60 * 10) / 10}h`, sub: `${sessionCount} sessions` },
-            { label: "Tasks done",    val: String(stats?.completedTasks ?? 0), sub: `of ${stats?.totalTasks ?? 0} total` },
+            { label: "Weeks done",    val: String(stats?.completedWeeks ?? 0), sub: `of ${stats?.totalWeeks ?? 0} total` },
             { label: "Mock tests",    val: String(recentMocks.length), sub: mockStats.avgScore != null ? `avg ${mockStats.avgScore}%` : "this week" },
           ].map((s) => (
             <div key={s.label} className="rounded-2xl border border-white/[0.07] bg-white/[0.02] px-4 py-4">
@@ -130,9 +130,9 @@ export default async function WeeklyReviewPage({
               <div>
                 <div className="flex justify-between text-xs mb-1.5">
                   <span className="text-white/50">Tasks completed</span>
-                  <span className="text-white/50 tabular-nums">{stats.completedTasks}/{stats.totalTasks}</span>
+                  <span className="text-white/50 tabular-nums">{stats.completedWeeks}/{stats.totalWeeks}</span>
                 </div>
-                <ProgressBar value={stats.completedTasks} max={stats.totalTasks} />
+                <ProgressBar value={stats.completedWeeks} max={stats.totalWeeks} />
               </div>
               {stats.totalWeeks > 0 && (
                 <div>

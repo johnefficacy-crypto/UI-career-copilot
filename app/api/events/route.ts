@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
     entity_type,
     entity_id,
     event_type,
-    metadata:    typeof metadata === "object" && metadata !== null ? metadata : {},
+    metadata:    (typeof metadata === "object" && metadata !== null ? metadata : {}) as never,
   })
 
   if (error) {

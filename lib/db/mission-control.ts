@@ -63,8 +63,8 @@ export async function getMissionControlData(
 
     if (error || !rows) return EMPTY
 
-    const feed: MissionControlFeedItem[] = rows.map((r) => ({
-      recruitmentId:     r.recruitment_id,
+    const feed: MissionControlFeedItem[] = rows.filter((r) => r.recruitment_id != null).map((r) => ({
+      recruitmentId:     r.recruitment_id!,
       recruitmentName:   r.recruitment_name ?? null,
       eligibilityStatus: r.eligibility_status ?? "unknown",
       daysToDeadline:    r.days_to_deadline  ?? null,

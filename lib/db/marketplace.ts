@@ -408,20 +408,22 @@ export async function getCourseProgress(
 ): Promise<{ progress: LessonProgress[]; percentComplete: number }> {
   const supabase = await createClient()
 
-  const [progressRes, totalRes] = await Promise.all([
+  const [progressRes, sectionsRes] = await Promise.all([
     supabase
       .from("lesson_progress")
       .select("*")
       .eq("course_id", courseId)
       .eq("user_id", userId),
     supabase
-      .from("lessons")
-      .select("id", { count: "exact", head: true })
-      .in(
-        "section_id",
-        supabase.from("course_sections").select("id").eq("course_id", courseId)
-      ),
+      .from("course_sections")
+      .select("id")
+      .eq("course_id", courseId),
   ])
+
+  const sectionIds = (sectionsRes.data ?? []).map((s) => s.id)
+  const totalRes = sectionIds.length > 0
+    ? await supabase.from("lessons").select("id", { count: "exact", head: true }).in("section_id", sectionIds)
+    : { count: 0 }
 
   const progress     = (progressRes.data ?? []) as LessonProgress[]
   const total        = totalRes.count ?? 0

@@ -160,10 +160,10 @@ export default async function BillingPage({
           <div className="rounded-2xl border border-white/[0.07] bg-white/[0.02] p-5">
             <p className="text-white/40 text-xs uppercase tracking-widest mb-3">Payment history</p>
             <div className="flex flex-col gap-2">
-              {payments.map((p: { id: string; created_at: string; razorpay_payment_id: string; status: string; amount_inr: number }) => (
+              {payments.map((p: { id: string; created_at: string | null; razorpay_payment_id: string | null; status: string; amount_inr: number }) => (
                 <div key={p.id} className="flex items-center justify-between text-sm">
                   <div>
-                    <span className="text-white/60">{formatDate(p.created_at)}</span>
+                    <span className="text-white/60">{p.created_at ? formatDate(p.created_at) : "—"}</span>
                     <span className="text-white/25 text-xs ml-2 font-mono">{p.razorpay_payment_id}</span>
                   </div>
                   <div className="flex items-center gap-2">

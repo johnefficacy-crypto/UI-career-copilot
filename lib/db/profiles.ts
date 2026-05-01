@@ -156,6 +156,11 @@ export async function completeOnboarding(userId: string): Promise<void> {
   if (error) throw new Error(`completeOnboarding: ${error.message}`)
 }
 
+export async function setOnboardingStep(userId: string, step: number): Promise<void> {
+  const supabase = await createClient()
+  await supabase.from("profiles").update({ onboarding_step: step }).eq("id", userId)
+}
+
 // ─── Readers ──────────────────────────────────────────────────────────────────
 
 export async function getProfileDraft(userId: string) {

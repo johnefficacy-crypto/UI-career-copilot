@@ -7,10 +7,10 @@ interface Props {
 }
 
 const URGENCY_STYLES = {
-  safe:   { bar: "bg-emerald-500",   badge: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20", label: "On track" },
-  soon:   { bar: "bg-amber-400",     badge: "bg-amber-400/10 text-amber-300 border-amber-400/20",     label: "Closing soon" },
-  urgent: { bar: "bg-red-500",       badge: "bg-red-500/10 text-red-400 border-red-500/20",           label: "Urgent" },
-  closed: { bar: "bg-white/20",      badge: "bg-white/5 text-white/40 border-white/10",               label: "Closed" },
+  safe:    { bar: "bg-emerald-500",   badge: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20", label: "On track" },
+  warning: { bar: "bg-amber-400",     badge: "bg-amber-400/10 text-amber-300 border-amber-400/20",     label: "Closing soon" },
+  danger:  { bar: "bg-red-500",       badge: "bg-red-500/10 text-red-400 border-red-500/20",           label: "Urgent" },
+  expired: { bar: "bg-white/20",      badge: "bg-white/5 text-white/40 border-white/10",               label: "Closed" },
 }
 
 export function ExamTargetCard({ targets, attempts }: Props) {
@@ -39,7 +39,7 @@ export function ExamTargetCard({ targets, attempts }: Props) {
           if (!rec) return null
 
           const daysLeft = daysUntil(rec.apply_end_date)
-          const urgency = getDeadlineUrgency(daysLeft)
+          const urgency = getDeadlineUrgency(rec.apply_end_date)
           const styles = URGENCY_STYLES[urgency]
           const progress = dateProgress(rec.apply_start_date, rec.apply_end_date)
           const attemptRecord = attempts.find((a) => a.recruitment_id === rec.id)
@@ -78,7 +78,7 @@ export function ExamTargetCard({ targets, attempts }: Props) {
               </div>
 
               {/* Countdown */}
-              {daysLeft !== null && urgency !== "closed" && (
+              {daysLeft !== null && urgency !== "expired" && (
                 <div className="flex items-center gap-3">
                   <div className="flex-1 h-1 bg-white/[0.07] rounded-full overflow-hidden">
                     <div
@@ -87,15 +87,15 @@ export function ExamTargetCard({ targets, attempts }: Props) {
                     />
                   </div>
                   <span className={`text-xs font-medium tabular-nums ${
-                    urgency === "urgent" ? "text-red-400" :
-                    urgency === "soon" ? "text-amber-300" : "text-white/50"
+                    urgency === "danger" ? "text-red-400" :
+                    urgency === "warning" ? "text-amber-300" : "text-white/50"
                   }`}>
                     {daysLeft}d left
                   </span>
                 </div>
               )}
 
-              {urgency === "closed" && (
+              {urgency === "expired" && (
                 <p className="text-white/30 text-xs">Application window closed</p>
               )}
             </div>

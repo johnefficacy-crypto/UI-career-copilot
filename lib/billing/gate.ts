@@ -24,7 +24,7 @@ export type Gate = {
 }
 
 export async function getGate(userId: string): Promise<Gate> {
-  const planId = await getUserPlanId(userId)
+  const planId = (await getUserPlanId(userId)) as PlanId
   const features = getPlanFeatures(planId)
 
   return {
@@ -32,7 +32,7 @@ export async function getGate(userId: string): Promise<Gate> {
     features,
     can:           (f) => canAccess(planId, f),
     within:        (f, count) => withinLimit(planId, f, count),
-    upgradePrompt: (f) => upgradePrompt(f),
+    upgradePrompt: (f) => upgradePrompt(planId, f),
     isPro:         planId === "pro",
     isElite:       planId === "elite",
     isPaid:        planId === "pro" || planId === "elite",
@@ -51,7 +51,7 @@ export function gateFromPlanId(planId: string | null | undefined): Gate {
     features,
     can:           (f) => canAccess(id, f),
     within:        (f, count) => withinLimit(id, f, count),
-    upgradePrompt: (f) => upgradePrompt(f),
+    upgradePrompt: (f) => upgradePrompt(id, f),
     isPro:         id === "pro",
     isElite:       id === "elite",
     isPaid:        id === "pro" || id === "elite",

@@ -10,7 +10,7 @@ export async function getUserPlans(userId: string) {
     .select(`
       id, exam_name, target_date, daily_hours, weekly_days,
       current_level, status, generated_at,
-      study_weeks ( id, week_number, status )
+      study_weeks ( id, week_number, title, focus_area, status )
     `)
     .eq("user_id", userId)
     .eq("status", "active")

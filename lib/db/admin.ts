@@ -13,8 +13,8 @@ export type AdminRole =
 /** Permissions per role. '*' means unrestricted. */
 const ROLE_PERMISSIONS: Record<AdminRole, string[]> = {
   super_admin:   ["*"],
-  ops_admin:     ["scrape", "sources", "queue", "recruitments", "orgs", "audit"],
-  content_admin: ["recruitments", "orgs", "posts"],
+  ops_admin:     ["scrape", "sources", "queue", "recruitments", "organizations", "audit"],
+  content_admin: ["recruitments", "organizations", "posts"],
   scraper_admin: ["scrape", "sources", "queue"],
   support_admin: ["users", "notifications"],
 }
@@ -108,16 +108,16 @@ export async function logAdminAction(params: AuditParams): Promise<void> {
       action:      params.action,
       entity_type: params.entityType,
       entity_id:   params.entityId ?? null,
-      old_value:   params.oldValue != null
+      old_value:   (params.oldValue != null
         ? (typeof params.oldValue === "object"
             ? params.oldValue
             : { value: params.oldValue })
-        : null,
-      new_value:   params.newValue != null
+        : null) as never,
+      new_value:   (params.newValue != null
         ? (typeof params.newValue === "object"
             ? params.newValue
             : { value: params.newValue })
-        : null,
+        : null) as never,
       notes:       params.notes ?? null,
     })
   } catch {

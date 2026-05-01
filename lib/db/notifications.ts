@@ -80,7 +80,7 @@ export type AlertUpsertInput = {
   alert_type:     "new_match" | "deadline" | "update" | "profile_blocker"
   priority:       number
   explanation:    string | null
-  sent_at?:       string | null
+  sent_at?:       string
 }
 
 /**
@@ -388,7 +388,8 @@ export async function upsertUserNotifPrefs(
   const supabase = await createClient()
   const { error } = await supabase
     .from("notification_preferences")
-    .upsert({ user_id: userId, ...prefs }, { onConflict: "user_id" })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .upsert({ user_id: userId, ...prefs } as any, { onConflict: "user_id" })
   if (error) throw new Error(`upsertUserNotifPrefs: ${error.message}`)
 }
 
@@ -435,7 +436,7 @@ export async function fanOutNotificationAlerts(recruitmentId: string): Promise<n
   for (const event of events ?? []) {
     const { data } = await supabase
       .rpc("fn_fanout_alert_event", { p_event_id: event.id })
-    total += (data as number) ?? 0
+    total += (data as number | null) ?? 0
   }
   return total
 }

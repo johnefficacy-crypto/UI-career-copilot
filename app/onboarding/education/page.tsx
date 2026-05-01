@@ -101,7 +101,7 @@ export default async function EducationPage({
     graduation_year: row.graduation_year,
     percentage:      row.percentage,
     cgpa:            row.cgpa,
-    is_completed:    row.is_completed,
+    is_completed:    row.is_completed ?? false,
   }))
 
   return (

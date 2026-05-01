@@ -8,7 +8,7 @@ interface Props {
 }
 
 export function PostCard({ post }: Props) {
-  const hasAcceptedAnswer = post.comments?.some?.((c) => c.is_accepted) ?? false
+  const hasAcceptedAnswer = false
 
   return (
     <Link

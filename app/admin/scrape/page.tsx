@@ -159,7 +159,7 @@ export default async function AdminScrapePage({
   try { await requireAdminRole("scraper") } catch { redirect("/dashboard") }
 
   // Resolve URL params first so we know which page to fetch
-  const resolvedParams = await searchParams.catch(() => ({}))
+  const resolvedParams = await searchParams.catch(() => ({ tab: undefined, page: undefined, error: undefined, pageSize: undefined }))
   const activeTab  = resolvedParams.tab      ?? "queue"
   const pageNum    = Math.max(1, parseInt(resolvedParams.page ?? "1", 10) || 1)
 

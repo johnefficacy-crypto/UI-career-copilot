@@ -2,9 +2,9 @@ import Link from "next/link"
 
 interface Week {
   week_number: number
-  title: string
-  focus_area: string
-  status: string
+  title: string | null
+  focus_area: string | null
+  status: string | null
 }
 
 interface Props {

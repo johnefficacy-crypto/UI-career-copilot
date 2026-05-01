@@ -2,11 +2,11 @@
 // Career Copilot — Phase 9: Forum snapshot on dashboard
 
 import Link from "next/link"
-import { ForumPost } from "@/types/forum"
-import { formatDistanceToNow } from "date-fns"
+import type { ForumPostSummary } from "@/types/forum"
+import { timeAgo } from "@/lib/utils/dates"
 
 interface ForumWidgetProps {
-  recentPosts: ForumPost[]
+  recentPosts: ForumPostSummary[]
 }
 
 export function ForumWidget({ recentPosts }: ForumWidgetProps) {
@@ -52,7 +52,7 @@ export function ForumWidget({ recentPosts }: ForumWidgetProps) {
                   <span>·</span>
                   <span>💬 {post.reply_count}</span>
                   <span>·</span>
-                  <span>{formatDistanceToNow(new Date(post.created_at), { addSuffix: true })}</span>
+                  <span>{timeAgo(post.created_at)}</span>
                 </div>
               </div>
             </Link>

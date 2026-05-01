@@ -292,13 +292,15 @@ export async function addLesson(formData: FormData) {
   })
 
   // Update total_lessons on course
+  const { data: sectionRows } = await supabase
+    .from("course_sections")
+    .select("id")
+    .eq("course_id", courseId)
+  const sectionIds = (sectionRows ?? []).map((r) => r.id)
   const { count: totalLessons } = await supabase
     .from("lessons")
     .select("id", { count: "exact", head: true })
-    .in(
-      "section_id",
-      supabase.from("course_sections").select("id").eq("course_id", courseId)
-    )
+    .in("section_id", sectionIds.length > 0 ? sectionIds : ["__none__"])
 
   await supabase
     .from("courses")

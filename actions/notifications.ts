@@ -75,6 +75,8 @@ export async function markAllNotificationsRead(): Promise<void> {
   revalidatePath("/dashboard/notifications")
 }
 
+export const markUserAlertsRead = markAllNotificationsRead
+
 export async function saveNotificationPrefs(
   prefs: Partial<Omit<UserNotificationPrefs, "user_id">>
 ): Promise<{ success: boolean; error?: string }> {

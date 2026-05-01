@@ -37,7 +37,7 @@ Current P0 sequence:
 5. Notification governance.
 6. AI action policy layer.
 
-See [`docs/implementation_status_checklist.md`](docs/implementation_status_checklist.md) for the current implementation state.
+See [`docs/operations/implementation-checklist.md`](docs/operations/implementation-checklist.md)
 
 ## Tech stack
 
@@ -70,10 +70,10 @@ Start with:
 
 1. [`AGENTS.md`](AGENTS.md)
 2. [`docs/00-ai-context.md`](docs/00-ai-context.md)
-3. [`docs/implementation_status_checklist.md`](docs/implementation_status_checklist.md)
-4. [`docs/database-domain-model.md`](docs/database-domain-model.md)
-5. [`docs/runbook.md`](docs/runbook.md)
-6. [`docs/admin_automation_strategy.md`](docs/admin_automation_strategy.md)
+3. [`docs/operations/implementation-checklist.md`](docs/operations/implementation-checklist.md)
+4. [`docs/engineering/domain-model.md`](docs/engineering/domain-model.md)
+5. [`docs/operations/runbook.md`](docs/operations/runbook.md)
+6. [`docs/engineering/admin-strategy.md`](docs/engineering/admin-strategy.md)
 
 Do not use old phase reports as current implementation truth. Phase reports are historical context only.
 
