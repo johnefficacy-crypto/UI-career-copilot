@@ -36,7 +36,7 @@ export function LogSessionForm({ planId, currentWeekId, currentWeekTitle }: Prop
   return (
     <div className="rounded-2xl border border-white/[0.07] bg-white/[0.02] p-5">
       <div className="flex items-center justify-between mb-3">
-        <p className="text-white/40 text-xs uppercase tracking-widest">Log today's session</p>
+        <p className="text-white/40 text-xs uppercase tracking-widest">Log today&apos;s session</p>
         {done && <span className="text-emerald-400 text-xs">Logged ✓</span>}
       </div>
 

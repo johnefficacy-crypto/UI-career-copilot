@@ -11,10 +11,15 @@ Career Copilot is an eligibility-first, recruitment-canonical operating system f
 Before editing code, read these files in order:
 
 1. `docs/00-ai-context.md`
-2. `docs/implementation_status_checklist.md`
-3. `docs/database-domain-model.md`
-4. `docs/runbook.md`
-5. The module document relevant to the task, if one exists
+2. `docs/operations/implementation-checklist.md`
+3. `docs/engineering/domain-model.md`
+4. `docs/operations/runbook.md`
+5. The module document relevant to the task, if one exists:
+   - Admin/RBAC work → `docs/engineering/admin-strategy.md`
+   - AI features → `docs/engineering/ai-strategy.md`
+   - Community/forum/mentor → `docs/product/community-platform.md`
+   - Monetization/tiers → `docs/product/monetization.md`
+   - Product direction → `docs/product/vision.md` and `docs/product/roadmap.md`
 
 ## Non-negotiable domain rules
 
@@ -68,10 +73,10 @@ grep -R "is_admin\|profile?.is_admin" app actions lib components --exclude-dir=n
 
 After any meaningful change, update the smallest relevant truth document:
 
-- Current status/progress: `docs/implementation_status_checklist.md`
+- Current status/progress: `docs/operations/implementation-checklist.md`
 - Feature-to-code mapping: `docs/feature-registry.md`
-- Operational procedure: `docs/runbook.md`
+- Operational procedure: `docs/operations/runbook.md`
 - Permanent architecture decision: `docs/decisions/ADR-*.md`
 - AI handoff summary: `docs/00-ai-context.md` only when the top-level context changes
 
-Old phase reports and chat summaries are historical context, not current implementation truth.
+Historical phase reports and strategy chat summaries are in `docs/history/` — they are immutable context, not current implementation truth.

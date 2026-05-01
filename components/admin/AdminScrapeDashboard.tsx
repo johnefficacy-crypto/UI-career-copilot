@@ -765,7 +765,7 @@ export function AdminScrapeDashboard({
                             {ev.evidence_text && (
                               <p className="text-xs mt-1 italic"
                                 style={{ color: "var(--text-ghost)", fontFamily: "monospace" }}>
-                                "{ev.evidence_text.slice(0, 120)}{ev.evidence_text.length > 120 ? "…" : ""}"
+                                &ldquo;{ev.evidence_text.slice(0, 120)}{ev.evidence_text.length > 120 ? "…" : ""}&rdquo;
                               </p>
                             )}
                             {ev.confidence != null && (

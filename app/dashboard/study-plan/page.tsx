@@ -51,7 +51,7 @@ export default async function StudyPlanIndexPage() {
           </div>
         ) : (
           <div className="flex flex-col gap-4">
-            {plans.map(async (plan: any) => {
+            {plans.map(async (plan) => {
               const stats = await getPlanStats(plan.id, user.id)
 
               return (

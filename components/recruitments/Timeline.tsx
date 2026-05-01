@@ -57,7 +57,7 @@ export function Timeline({
 
   // Find the last past event index to determine which is "active"
   let activeIndex = 0
-  const now = Date.now()
+  const now = new Date().getTime()
   for (let i = 0; i < rawEvents.length; i++) {
     const d = rawEvents[i].date
     if (d && new Date(d).getTime() < now) {

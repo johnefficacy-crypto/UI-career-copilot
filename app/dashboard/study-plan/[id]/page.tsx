@@ -71,7 +71,7 @@ export default async function StudyPlanDetailPage({
           {/* Left: week list */}
           <div className="lg:col-span-2 flex flex-col gap-3">
             <p className="text-white/40 text-xs uppercase tracking-widest mb-1">Week by week</p>
-            {weeks.map((week: any) => (
+            {weeks.map((week) => (
               <WeekCard
                 key={week.id}
                 week={week}
@@ -93,7 +93,7 @@ export default async function StudyPlanDetailPage({
               <div className="rounded-2xl border border-white/[0.07] bg-white/[0.02] p-5">
                 <p className="text-white/40 text-xs uppercase tracking-widest mb-3">Recent sessions</p>
                 <div className="flex flex-col gap-2">
-                  {logs.map((log: any) => (
+                  {logs.map((log) => (
                     <div key={log.id} className="flex items-center justify-between text-xs">
                       <div>
                         <span className="text-white/60">{log.logged_date}</span>
