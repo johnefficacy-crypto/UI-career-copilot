@@ -76,7 +76,6 @@ Start with:
 6. [`docs/engineering/admin-strategy.md`](docs/engineering/admin-strategy.md)
 
 Do not use old phase reports as current implementation truth. Phase reports are historical context only.
-
 ## Documentation map
 
 | Document | Purpose |
@@ -84,14 +83,14 @@ Do not use old phase reports as current implementation truth. Phase reports are 
 | `docs/00-ai-context.md` | Short context pack for ChatGPT, Claude, and other agents |
 | `docs/01-current-status.md` | Human-readable current state snapshot |
 | `docs/feature-registry.md` | Feature-to-code implementation map |
-| `docs/database-domain-model.md` | Canonical domain model and migration rules |
-| `docs/implementation_status_checklist.md` | Current implementation truth and P0/P1/P2 priorities |
-| `docs/runbook.md` | Operations, verification, migration, release, and troubleshooting steps |
-| `docs/admin_automation_strategy.md` | Governance-first admin and automation doctrine |
-| `docs/source-intelligence-strategy.md` | Source, scraper, official/aggregator, trust, and RSS/JSON strategy |
-| `docs/product_strategy_architecture_roadmap.md` | Broad product and architecture roadmap |
-| `docs/decisions/` | Architecture Decision Records |
-| `docs/archive/` | Historical phase reports and chat summaries |
+| `docs/engineering/domain-model.md` | Canonical domain model and migration rules |
+| `docs/operations/implementation-checklist.md` | Current implementation truth and P0/P1/P2 priorities |
+| `docs/operations/runbook.md` | Operations, verification, migration, release, and troubleshooting steps |
+| `docs/engineering/admin-strategy.md` | Governance-first admin and automation doctrine |
+| `docs/engineering/source-intelligence.md` | Source, scraper, official/aggregator, trust, and RSS/JSON strategy |
+| `docs/product/roadmap.md` | Broad product and architecture roadmap |
+| `docs/history/README.md` | Architecture Decision Records |
+| `docs/history/` | Historical phase reports and chat summaries |
 
 ## Non-negotiable engineering rules
 
