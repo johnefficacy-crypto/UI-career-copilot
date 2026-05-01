@@ -160,8 +160,11 @@ export async function runScrapingPass(
         continue
       }
 
-      // Insert as pending (confidence < 0.90) or approved (confidence ≥ 0.90)
-      const status = confidence >= 0.90 ? "approved" : "pending"
+      // Safety hardening (May 2026):
+      // Never auto-approve based on confidence. All scrape outputs must pass
+      // evidence + official-source validation in the admin review flow before
+      // promotion into canonical recruitments.
+      const status = "pending"
       await supabase.from("scrape_queue").insert({
         source_url:       targetUrl,
         source_name:      source.name,
