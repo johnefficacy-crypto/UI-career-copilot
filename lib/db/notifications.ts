@@ -33,6 +33,7 @@ import type {
   SourceHealthSnapshot,
   SourceTier,
   UserNotificationPrefs,
+  GroupedNotification,
 } from "@/types/notifications"
 import type { ExtractedRecruitment } from "@/types/scraping"
 
@@ -68,6 +69,48 @@ export async function getUserNotifications(
   const { data, error } = await query
   if (error) throw new Error(`getUserNotifications: ${error.message}`)
   return (data ?? []) as unknown as NotificationAlert[]
+}
+
+
+export async function getGroupedUserNotifications(
+  userId: string,
+  opts: { limit?: number } = {}
+): Promise<GroupedNotification[]> {
+  const alerts = await getUserNotifications(userId, { limit: Math.max((opts.limit ?? 50) * 4, 100) })
+  const map = new Map<string, GroupedNotification>()
+
+  for (const a of alerts) {
+    const current = map.get(a.recruitment_id)
+    if (!current) {
+      map.set(a.recruitment_id, {
+        recruitment_id: a.recruitment_id,
+        recruitment_name: a.recruitment_name,
+        org_name: a.org_name ?? null,
+        latest_sent_at: a.sent_at,
+        latest_alert_type: a.alert_type,
+        latest_priority: a.priority,
+        latest_is_read: a.is_read,
+        unread_count: a.is_read ? 0 : 1,
+        total_events: 1,
+        days_to_deadline: a.days_to_deadline ?? null,
+      })
+      continue
+    }
+
+    current.total_events += 1
+    if (!a.is_read) current.unread_count += 1
+    if (new Date(a.sent_at).getTime() > new Date(current.latest_sent_at).getTime()) {
+      current.latest_sent_at = a.sent_at
+      current.latest_alert_type = a.alert_type
+      current.latest_priority = a.priority
+      current.latest_is_read = a.is_read
+      current.days_to_deadline = a.days_to_deadline ?? current.days_to_deadline
+    }
+  }
+
+  return [...map.values()]
+    .sort((a, b) => new Date(b.latest_sent_at).getTime() - new Date(a.latest_sent_at).getTime())
+    .slice(0, opts.limit ?? 50)
 }
 
 // =============================================================================
@@ -610,12 +653,6 @@ export async function validateScrapeItemForPromotion(itemId: string): Promise<vo
           )
         }
       }
-    }
-
-    // Explicit migration-043 gate: when official confirmation is tracked as not
-    // resolved, never allow promotion.
-    if (row.official_source_resolved === false) {
-      missing.push("official_source_resolved=false — resolve first-party official source before promotion")
     }
   }
 

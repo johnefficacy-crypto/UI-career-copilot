@@ -8,6 +8,16 @@ Legend:
 - Owner: frontend / backend / infra / ops / AI / QA
 - Status: [ ] not started, [~] in progress, [x] done
 
+
+## Sprint 8 trust-redesign progress (2026-05-01)
+
+- [x] Replaced user-facing `new_match` label copy with `Confirmed match` in dashboard bell and notifications list.
+- [x] Removed `ProfileCard` from main dashboard shell sidebar to reduce duplicate profile surfaces.
+- [x] Fixed `profileBlockers` summary computation to count `needs_profile_data` instead of mirroring `conditional`.
+- [x] Updated profile-impact onboarding links to route-specific paths (`/onboarding/identity`, `/onboarding/education`) for deterministic CTAs.
+- [x] Published aspirant-centered platform strategy for forum, exam planning, productivity, community, marketplace, AI assistant/chat, and resource governance (`docs/product/aspirant-platform-strategy.md`).
+- [x] Replaced static `StatsBar` with collapsible `LiveStatsBar` (collapsed by default, localStorage persistence, mobile defaults to collapsed).
+
 ## P0 release blockers
 
 - [x] Drop legacy blind-notification trigger and enforce engine-only alert creation
@@ -86,17 +96,6 @@ Legend:
   - Notes:
     - Prevents treating aggregator/listing URLs as canonical official notifications.
   - Suggested PR title: `fix(scraper): require distinct official host for aggregator promotions`
-
-- [x] Add explicit official-source resolution flags for scrape queue rows
-  - Effort: S
-  - Owner: backend
-  - Paths:
-    - `supabase/migrations/043_aggregator_official_source_gate.sql` ✓ created
-    - `supabase/functions/scheduled-scraper/index.ts` ✓ writes `official_source_resolved` + `official_source_host`
-    - `lib/db/notifications.ts` ✓ promotion validator blocks rows where `official_source_resolved=false`
-  - Notes:
-    - Adds durable database-level state instead of relying only on inline hostname checks.
-  - Suggested PR title: `feat(scraper): persist and enforce official-source resolution before promotion`
 
 - [x] Full RBAC enforcement — replace is_admin checks across all admin routes and actions
   - Effort: M

@@ -15,8 +15,8 @@
 import Link          from "next/link"
 import { redirect }  from "next/navigation"
 import { createClient } from "@/utils/supabase/server"
-import { getUserNotifications, getNotificationReadiness } from "@/lib/db/notifications"
-import type { NotificationAlert } from "@/types/notifications"
+import { getGroupedUserNotifications, getNotificationReadiness } from "@/lib/db/notifications"
+import type { GroupedNotification } from "@/types/notifications"
 import type { NotificationReadiness } from "@/lib/db/notifications"
 import { markAllNotificationsRead } from "@/actions/notifications"
 
@@ -49,7 +49,7 @@ const ALERT_LABELS: Record<string, string> = {
   status_changed:       "Status changed",
   admit_card_released:  "Admit card released",
   result_released:      "Result released",
-  new_match:            "New exam match",
+  new_match:            "Confirmed match",
   deadline_3day:        "Deadline in 3 days",
   deadline_1day:        "Last day to apply",
   status_change:        "Status changed",
@@ -158,10 +158,10 @@ export default async function NotificationsPage() {
   if (!user) redirect("/auth/login")
 
   const [alerts, readiness] = await Promise.all([
-    getUserNotifications(user.id, { limit: 50 }),
+    getGroupedUserNotifications(user.id, { limit: 50 }),
     getNotificationReadiness(user.id).catch(() => null),
   ])
-  const unread = alerts.filter(a => !a.is_read)
+  const unread = alerts.filter(a => a.unread_count > 0)
 
   return (
     <div className="min-h-screen bg-[#0f0f0f]">
@@ -204,20 +204,20 @@ export default async function NotificationsPage() {
           <NotificationsEmptyState readiness={readiness} />
         ) : (
           <div className="space-y-2">
-            {alerts.map((alert: NotificationAlert) => (
+            {alerts.map((alert: GroupedNotification) => (
               <div
-                key={alert.id}
+                key={alert.recruitment_id}
                 className="flex items-start gap-4 px-4 py-4 rounded-xl transition-colors"
                 style={{
-                  background: alert.is_read
+                  background: alert.unread_count === 0
                     ? "rgba(255,255,255,0.02)"
                     : "rgba(232,213,163,0.04)",
-                  border:     `1px solid ${alert.is_read ? "rgba(255,255,255,0.06)" : "rgba(232,213,163,0.15)"}`,
+                  border:     `1px solid ${alert.unread_count === 0 ? "rgba(255,255,255,0.06)" : "rgba(232,213,163,0.15)"}`,
                 }}>
 
                 {/* Icon */}
                 <span className="text-xl shrink-0 mt-0.5">
-                  {ALERT_ICONS[alert.alert_type] ?? "🔔"}
+                  {ALERT_ICONS[alert.latest_alert_type] ?? "🔔"}
                 </span>
 
                 {/* Content */}
@@ -225,9 +225,9 @@ export default async function NotificationsPage() {
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-xs font-medium px-1.5 py-0.5 rounded"
                       style={{ color: "rgba(232,213,163,0.70)", background: "rgba(232,213,163,0.08)" }}>
-                      {ALERT_LABELS[alert.alert_type] ?? alert.alert_type}
+                      {ALERT_LABELS[alert.latest_alert_type] ?? alert.latest_alert_type}
                     </span>
-                    {!alert.is_read && (
+                    {alert.unread_count > 0 && (
                       <span className="w-1.5 h-1.5 rounded-full bg-[#e8d5a3] shrink-0" />
                     )}
                   </div>
@@ -237,9 +237,9 @@ export default async function NotificationsPage() {
                   {alert.org_name && (
                     <p className="text-xs text-white/40 mt-0.5">
                       {alert.org_name}
-                      {alert.apply_end_date && (
+                      {alert.days_to_deadline != null && (
                         <span className="ml-2 text-white/30">
-                          · Apply by {new Date(alert.apply_end_date!).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
+                          · {alert.days_to_deadline <= 0 ? "Deadline passed" : `${alert.days_to_deadline}d left`}
                         </span>
                       )}
                     </p>
@@ -248,7 +248,7 @@ export default async function NotificationsPage() {
 
                 {/* Time */}
                 <span className="text-xs text-white/25 shrink-0 mt-0.5">
-                  {timeAgo(alert.sent_at)}
+                  {timeAgo(alert.latest_sent_at)}
                 </span>
               </div>
             ))}
