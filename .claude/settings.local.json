@@ -41,7 +41,8 @@
       "Bash(git rebase *)",
       "Bash(git stash *)",
       "Bash(git reset *)",
-      "PowerShell($content = Get-Content \"types/supabase.ts\" -Encoding Unicode -Raw; $content.Length)"
+      "PowerShell($content = Get-Content \"types/supabase.ts\" -Encoding Unicode -Raw; $content.Length)",
+      "Bash(grep -E \"\\\\.sql$\")"
     ]
   }
 }

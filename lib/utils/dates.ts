@@ -114,9 +114,10 @@ export function timeAgo(isoString: string): string {
 
 /**
  * Returns a formatted date string for display.
- * e.g. "12 April 2025"
+ * e.g. "12 April 2025". Returns "—" for null/undefined input.
  */
-export function formatDate(isoString: string): string {
+export function formatDate(isoString: string | null | undefined): string {
+  if (!isoString) return "—"
   return new Date(isoString).toLocaleDateString("en-IN", {
     day: "numeric",
     month: "long",
@@ -126,9 +127,10 @@ export function formatDate(isoString: string): string {
 
 /**
  * Returns days remaining until a deadline date.
- * Negative = already passed.
+ * Negative = already passed. Returns null for null/undefined input.
  */
-export function daysUntil(isoString: string): number {
+export function daysUntil(isoString: string | null | undefined): number | null {
+  if (!isoString) return null
   const target = new Date(isoString)
   const now = new Date()
   return Math.ceil((target.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
@@ -138,11 +140,11 @@ export function daysUntil(isoString: string): number {
  * Returns a deadline label with urgency colouring class.
  */
 export function deadlineLabel(
-  isoString: string
+  isoString: string | null | undefined
 ): { text: string; urgency: "safe" | "warning" | "danger" | "expired" } {
   const days = daysUntil(isoString)
 
-  if (days < 0) return { text: "Closed", urgency: "expired" }
+  if (days === null || days < 0) return { text: "Closed", urgency: "expired" }
   if (days === 0) return { text: "Closes today", urgency: "danger" }
   if (days === 1) return { text: "1 day left", urgency: "danger" }
   if (days <= 3) return { text: `${days} days left`, urgency: "danger" }
@@ -177,8 +179,9 @@ export function ageFromDob(dob: string | null | undefined): number | null {
  * Returns only the urgency classification for a deadline.
  */
 export function getDeadlineUrgency(
-  isoString: string
+  isoString: string | null | undefined
 ): "safe" | "warning" | "danger" | "expired" {
+  if (!isoString) return "expired"
   return deadlineLabel(isoString).urgency
 }
 

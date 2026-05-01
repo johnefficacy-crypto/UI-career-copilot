@@ -31,7 +31,9 @@ export default async function NewStudyPlanPage({
   ])
 
   const profile = profileRes.data
-  const targets = (targetsRes.data ?? []).map((t) => t.recruitments).filter(Boolean)
+  const targets = (targetsRes.data ?? [])
+    .map((t) => t.recruitments)
+    .filter((r): r is NonNullable<typeof r> => r != null)
 
   const prefilledExam = params.exam ?? profile?.target_exam ?? ""
   const prefilledRecId = params.recruitment_id ?? ""
