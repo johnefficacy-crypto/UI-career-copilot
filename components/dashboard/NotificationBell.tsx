@@ -94,7 +94,7 @@ export function NotificationBell({ initialAlerts, unreadCount }: NotificationBel
               <div className="px-4 py-8 text-center">
                 <p className="text-3xl mb-2">🔔</p>
                 <p className="text-white/30 text-xs">No notifications yet.</p>
-                <p className="text-white/20 text-xs mt-1">You'll be alerted when new matching exams appear.</p>
+                <p className="text-white/20 text-xs mt-1">You&apos;ll be alerted when new matching exams appear.</p>
               </div>
             ) : (
               <div className="max-h-80 overflow-y-auto divide-y divide-white/[0.04]">

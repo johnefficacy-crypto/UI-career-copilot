@@ -93,7 +93,7 @@ export default async function OnboardingCompletePage({
         <form action={saveCareerGoalAndFinish}>
           <div className="cc-field">
             <label htmlFor="career_goal" className="cc-section-label" style={{ display: "block", marginBottom: "0.5rem" }}>
-              One last thing — what's your bigger goal? <span className="text-white/25 font-normal">(optional)</span>
+              One last thing — what&apos;s your bigger goal? <span className="text-white/25 font-normal">(optional)</span>
             </label>
             <p className="text-xs mb-3" style={{ color: "var(--text-ghost)" }}>
               Beyond clearing the exam — what do you want to achieve? Write in any language, however feels natural.

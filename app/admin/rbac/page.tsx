@@ -69,7 +69,7 @@ export default async function RBACPage({
   const query = sp.q?.trim() ?? ""
 
   // Get all admin users + search
-  let adminQ = supabase
+  const adminQ = supabase
     .from("profiles")
     .select("id, full_name, admin_role, is_admin, created_at")
     .or("is_admin.eq.true,admin_role.not.is.null")

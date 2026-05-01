@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect } from "react"
+import Link from "next/link"
 
 export default function MarketplaceError({
   error,
@@ -18,7 +19,7 @@ export default function MarketplaceError({
       <div className="cc-card" style={{ maxWidth: 480, width: "100%", textAlign: "center", padding: "2.5rem" }}>
         <div style={{ fontSize: "2rem", marginBottom: "1rem" }}>📦</div>
         <h2 style={{ color: "var(--text-primary)", fontWeight: 600, marginBottom: "0.5rem" }}>
-          Couldn't load the marketplace
+          Couldn&apos;t load the marketplace
         </h2>
         <p style={{ color: "var(--text-muted)", fontSize: "0.875rem", marginBottom: "1.5rem" }}>
           {error.message || "An error occurred loading courses. Please try again."}
@@ -32,9 +33,9 @@ export default function MarketplaceError({
           <button onClick={reset} className="cc-btn-primary" style={{ width: "auto" }}>
             Try again
           </button>
-          <a href="/" className="cc-btn-ghost">
+          <Link href="/" className="cc-btn-ghost">
             Go home
-          </a>
+          </Link>
         </div>
       </div>
     </div>

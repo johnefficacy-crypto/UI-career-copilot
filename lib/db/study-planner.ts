@@ -36,9 +36,10 @@ export async function getPlanWithWeeks(planId: string, userId: string) {
   if (!data) return null
 
   // Sort weeks by week_number
-  const plan = data as any
+  type PlanRow = typeof data & { study_weeks: Array<{ week_number: number }> }
+  const plan = data as PlanRow
   plan.study_weeks = (plan.study_weeks ?? []).sort(
-    (a: any, b: any) => a.week_number - b.week_number
+    (a, b) => a.week_number - b.week_number
   )
   return plan
 }
@@ -134,7 +135,7 @@ export async function markWeekStatus(
     .eq("id", weekId)
     .single()
 
-  if ((week as any)?.study_plans?.user_id !== userId) {
+  if ((week as { study_plans?: { user_id?: string } | null } | null)?.study_plans?.user_id !== userId) {
     throw new Error("Unauthorized")
   }
 

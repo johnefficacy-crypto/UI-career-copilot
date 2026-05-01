@@ -124,7 +124,7 @@ export default async function BrowseExamsPage({
         .in("status", ["open", "upcoming", "published"])
         .or(`apply_end_date.gte.${today},apply_end_date.is.null`)
     } else if (filter === "closing") {
-      const in7days = new Date(Date.now() + 7 * 86_400_000).toISOString().split("T")[0]
+      const in7days = new Date(new Date().getTime() + 7 * 86_400_000).toISOString().split("T")[0]
       userQ = userQ.gte("apply_end_date", today).lte("apply_end_date", in7days)
     }
 
@@ -156,7 +156,7 @@ export default async function BrowseExamsPage({
           .in("status", ["open", "upcoming", "published"])
           .or(`apply_end_date.gte.${today},apply_end_date.is.null`)
       } else if (filter === "closing") {
-        const in7days = new Date(Date.now() + 7 * 86_400_000).toISOString().split("T")[0]
+        const in7days = new Date(new Date().getTime() + 7 * 86_400_000).toISOString().split("T")[0]
         plainQ = plainQ.gte("apply_end_date", today).lte("apply_end_date", in7days)
       }
       if (q) plainQ = plainQ.ilike("exam_name", `%${q}%`)

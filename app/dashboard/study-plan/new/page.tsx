@@ -31,7 +31,7 @@ export default async function NewStudyPlanPage({
   ])
 
   const profile = profileRes.data
-  const targets = (targetsRes.data ?? []).map((t: any) => t.recruitments).filter(Boolean)
+  const targets = (targetsRes.data ?? []).map((t) => t.recruitments).filter(Boolean)
 
   const prefilledExam = params.exam ?? profile?.target_exam ?? ""
   const prefilledRecId = params.recruitment_id ?? ""
@@ -77,7 +77,7 @@ export default async function NewStudyPlanPage({
                   defaultValue={prefilledRecId}
                 >
                   <option value="">— Select a target exam —</option>
-                  {targets.map((t: any) => (
+                  {targets.map((t) => (
                     <option key={t.id} value={t.id}>
                       {t.name} {t.year} ({t.organizations?.type})
                     </option>

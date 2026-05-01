@@ -193,7 +193,7 @@ export function DailyTasksWidget({ tasks, planId, examName, planPageUrl }: Props
     return (
       <div className="rounded-2xl border border-white/[0.07] bg-white/[0.02] p-6">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-semibold text-white/70">Today's tasks</h3>
+          <h3 className="text-sm font-semibold text-white/70">Today&apos;s tasks</h3>
           <Link href={planPageUrl} className="text-xs text-white/30 hover:text-white/60 transition-colors">
             View plan →
           </Link>
@@ -214,7 +214,7 @@ export function DailyTasksWidget({ tasks, planId, examName, planPageUrl }: Props
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h3 className="text-sm font-semibold text-white/70">Today's tasks</h3>
+          <h3 className="text-sm font-semibold text-white/70">Today&apos;s tasks</h3>
           <p className="text-xs text-white/30 mt-0.5">{examName}</p>
         </div>
         <div className="flex items-center gap-3">
