@@ -35,7 +35,15 @@ export function ExamTargetCard({ targets, attempts }: Props) {
 
       <div className="flex flex-col gap-4">
         {targets.slice(0, 3).map((t) => {
-          const rec = t.recruitments as { apply_end_date?: string | null; name?: string; organizations?: { type?: string } | null } | null
+          const rec = t.recruitments as {
+            id?: string
+            name?: string
+            year?: number | null
+            notification_date?: string | null
+            apply_start_date?: string | null
+            apply_end_date?: string | null
+            organizations?: { type?: string; name?: string } | null
+          } | null
           if (!rec) return null
 
           const daysLeft = daysUntil(rec.apply_end_date)

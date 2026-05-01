@@ -11,11 +11,11 @@ interface Week {
   week_number: number
   title: string
   focus_area: string
-  description: string
-  topics: string[]
-  daily_tasks: DailyTask[]
-  resources: Resource[]
-  status: "pending" | "in_progress" | "completed"
+  description: string | null
+  topics: string[] | null
+  daily_tasks: unknown
+  resources: unknown
+  status: string | null
 }
 
 interface Props {
@@ -36,7 +36,13 @@ const RESOURCE_ICONS: Record<string, string> = {
 
 export function WeekCard({ week, planId, isCurrent }: Props) {
   const [expanded, setExpanded] = useState(isCurrent)
-  const [status, setStatus] = useState(week.status)
+  const validStatuses = ["pending", "in_progress", "completed"] as const
+  type ValidStatus = typeof validStatuses[number]
+  const [status, setStatus] = useState<ValidStatus>(
+    validStatuses.includes(week.status as ValidStatus)
+      ? (week.status as ValidStatus)
+      : "pending"
+  )
   const [loading, setLoading] = useState(false)
   const cfg = STATUS_CONFIG[status]
 
@@ -99,11 +105,11 @@ export function WeekCard({ week, planId, isCurrent }: Props) {
           <p className="text-white/50 text-sm mt-4 mb-4 leading-relaxed">{week.description}</p>
 
           {/* Topics */}
-          {week.topics.length > 0 && (
+          {(week.topics ?? []).length > 0 && (
             <div className="mb-4">
               <p className="text-white/30 text-xs uppercase tracking-widest mb-2">Topics this week</p>
               <div className="flex flex-wrap gap-1.5">
-                {week.topics.map((t) => (
+                {(week.topics ?? []).map((t) => (
                   <span key={t} className="text-xs px-2.5 py-1 rounded-full bg-white/[0.05] border border-white/[0.08] text-white/50">
                     {t}
                   </span>
@@ -113,11 +119,11 @@ export function WeekCard({ week, planId, isCurrent }: Props) {
           )}
 
           {/* Daily tasks */}
-          {week.daily_tasks.length > 0 && (
+          {Array.isArray(week.daily_tasks) && week.daily_tasks.length > 0 && (
             <div className="mb-4">
               <p className="text-white/30 text-xs uppercase tracking-widest mb-2">Daily schedule</p>
               <div className="flex flex-col gap-1.5">
-                {week.daily_tasks.map((task, i) => (
+                {(week.daily_tasks as DailyTask[]).map((task, i) => (
                   <div key={i} className="flex items-start gap-3 text-sm">
                     <span className="shrink-0 text-white/30 text-xs w-16 pt-0.5">{task.day}</span>
                     <span className="flex-1 text-white/60">{task.task}</span>
@@ -129,11 +135,11 @@ export function WeekCard({ week, planId, isCurrent }: Props) {
           )}
 
           {/* Resources */}
-          {week.resources.length > 0 && (
+          {Array.isArray(week.resources) && week.resources.length > 0 && (
             <div className="mb-5">
               <p className="text-white/30 text-xs uppercase tracking-widest mb-2">Resources</p>
               <div className="flex flex-col gap-1.5">
-                {week.resources.map((r, i) => (
+                {(week.resources as Resource[]).map((r, i) => (
                   <div key={i} className="flex items-center gap-2 text-sm text-white/50">
                     <span className="text-xs">{RESOURCE_ICONS[r.type] ?? "•"}</span>
                     {r.url ? (

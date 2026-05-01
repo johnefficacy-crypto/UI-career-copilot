@@ -35,13 +35,12 @@ export async function getPlanWithWeeks(planId: string, userId: string) {
 
   if (!data) return null
 
-  // Sort weeks by week_number
-  type PlanRow = typeof data & { study_weeks: Array<{ week_number: number }> }
-  const plan = data as PlanRow
-  plan.study_weeks = (plan.study_weeks ?? []).sort(
-    (a, b) => a.week_number - b.week_number
-  )
-  return plan
+  return {
+    ...data,
+    study_weeks: [...(data.study_weeks ?? [])].sort(
+      (a, b) => a.week_number - b.week_number
+    ),
+  }
 }
 
 /**

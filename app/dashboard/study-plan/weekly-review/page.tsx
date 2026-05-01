@@ -73,8 +73,8 @@ export default async function WeeklyReviewPage({
 
   // Weekly tasks completion
   const weeks = plan?.study_weeks ?? []
-  const currentWeek = weeks.find((w: { status: string }) => w.status === "in_progress")
-    ?? weeks.find((w: { status: string }) => w.status === "pending")
+  const currentWeek = weeks.find((w) => w.status === "in_progress")
+    ?? weeks.find((w) => w.status === "pending")
 
   const weekLabel = currentWeek
     ? `Week ${(currentWeek as { week_number?: number }).week_number ?? ""}: ${(currentWeek as { theme?: string }).theme ?? ""}`
