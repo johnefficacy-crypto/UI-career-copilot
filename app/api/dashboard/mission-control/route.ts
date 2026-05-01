@@ -72,7 +72,7 @@ export async function GET(req: NextRequest) {
     eligibleNow:      feed.filter((x) => x.eligibilityStatus === "eligible").length,
     closingThisWeek:  feed.filter((x) => x.daysToDeadline != null && x.daysToDeadline <= 7).length,
     conditional:      feed.filter((x) => x.eligibilityStatus === "conditional").length,
-    profileBlockers:  feed.filter((x) => x.eligibilityStatus === "conditional").length,
+    profileBlockers:  feed.filter((x) => x.eligibilityStatus === "needs_profile_data").length,
   }
 
   return NextResponse.json({

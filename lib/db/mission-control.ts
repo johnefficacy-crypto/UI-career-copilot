@@ -80,7 +80,7 @@ export async function getMissionControlData(
       eligibleNow:     feed.filter((x) => x.eligibilityStatus === "eligible").length,
       closingThisWeek: feed.filter((x) => x.daysToDeadline != null && x.daysToDeadline <= 7).length,
       conditional:     feed.filter((x) => x.eligibilityStatus === "conditional").length,
-      profileBlockers: feed.filter((x) => x.eligibilityStatus === "conditional").length,
+      profileBlockers: feed.filter((x) => x.eligibilityStatus === "needs_profile_data").length,
     }
 
     return { summary, feed }

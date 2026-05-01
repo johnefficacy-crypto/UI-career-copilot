@@ -8,6 +8,15 @@ Legend:
 - Owner: frontend / backend / infra / ops / AI / QA
 - Status: [ ] not started, [~] in progress, [x] done
 
+
+## Sprint 8 trust-redesign progress (2026-05-01)
+
+- [x] Replaced user-facing `new_match` label copy with `Confirmed match` in dashboard bell and notifications list.
+- [x] Removed `ProfileCard` from main dashboard shell sidebar to reduce duplicate profile surfaces.
+- [x] Fixed `profileBlockers` summary computation to count `needs_profile_data` instead of mirroring `conditional`.
+- [x] Updated profile-impact onboarding links to route-specific paths (`/onboarding/identity`, `/onboarding/education`) for deterministic CTAs.
+- [x] Replaced static `StatsBar` with collapsible `LiveStatsBar` (collapsed by default, localStorage persistence, mobile defaults to collapsed).
+
 ## P0 release blockers
 
 - [x] Drop legacy blind-notification trigger and enforce engine-only alert creation
