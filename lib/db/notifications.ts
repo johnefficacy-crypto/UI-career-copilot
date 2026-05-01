@@ -599,6 +599,7 @@ export async function validateScrapeItemForPromotion(itemId: string): Promise<vo
 
   const missing: string[] = []
   const ext = (item.extracted_data ?? {}) as Record<string, unknown>
+  const row = item as unknown as Record<string, unknown>
 
   // evidence_required=false means this item was manually curated — skip evidence checks
   if (item.evidence_required !== false) {
