@@ -213,15 +213,36 @@ Legend:
     - `app/admin/page.tsx` ✓ quick links for all new pages
   - Suggested PR title: `feat(admin): add operational control surfaces for sources, queues, audit, and notifications`
 
-- [ ] Refresh README and docs to match real product and release criteria
+- [x] Refresh README and docs to match real product and release criteria
   - Effort: S
   - Owner: ops
   - Paths:
     - `README.md`
-    - `docs/implementation_status_checklist.md`
-    - `docs/database-domain-model.md` ✓ created
-    - `docs/runbook.md` (new)
+    - `docs/operations/implementation-checklist.md`
+    - `docs/engineering/domain-model.md` ✓ canonicalized
+    - `docs/operations/runbook.md` ✓ canonicalized
   - Suggested PR title: `docs: align repo documentation with current implementation and ops`
+
+
+## Sprint 8 execution plan (next practical order)
+
+- [~] Phase A — Trust/documentation alignment
+  - Owner: ops + frontend
+  - Scope:
+    - Align top-level docs with current phase state and governance baseline
+    - Keep implementation checklist and feature registry as current truth
+- [ ] Phase B — Community foundation (Phase 8)
+  - Owner: frontend + backend + ops
+  - Scope:
+    - `community_spaces`, `community_channels`, `community_threads`, `community_replies`, `community_votes`, `community_reports`
+    - `/admin/community` moderation queue with RBAC + audit
+    - In-app notification for thread replies
+    - Enforce `official_updates` as admin-write only
+- [ ] Phase C — AI hardening follow-up
+  - Owner: AI + backend
+  - Scope:
+    - Deterministic-to-LLM explanation layer with provenance
+    - `jobs/embeddings-sync.ts` to activate semantic retrieval pipeline
 
 ## P2 strategic follow-up
 
