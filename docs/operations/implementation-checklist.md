@@ -17,6 +17,7 @@ Legend:
 - [x] Updated profile-impact onboarding links to route-specific paths (`/onboarding/identity`, `/onboarding/education`) for deterministic CTAs.
 - [x] Replaced static `StatsBar` with collapsible `LiveStatsBar` (collapsed by default, localStorage persistence, mobile defaults to collapsed).
 - [x] Added Sprint 8 notification grouping foundation: `notification_group_state` migration + grouped notification read path with fallback for non-migrated environments.
+- [x] Added `GET /api/dashboard/live-summary` to expose Sprint 8 LiveStats summary shape for API consumers.
 
 ## P0 release blockers
 
