@@ -15,10 +15,9 @@ Legend:
 - [x] Removed `ProfileCard` from main dashboard shell sidebar to reduce duplicate profile surfaces.
 - [x] Fixed `profileBlockers` summary computation to count `needs_profile_data` instead of mirroring `conditional`.
 - [x] Updated profile-impact onboarding links to route-specific paths (`/onboarding/identity`, `/onboarding/education`) for deterministic CTAs.
-<<<<<<< codex/implement-sprint-8-features-lcd2rq
+- [x] Published aspirant-centered platform strategy for forum, exam planning, productivity, community, marketplace, AI assistant/chat, and resource governance (`docs/product/aspirant-platform-strategy.md`).
+- [x] Implemented initial strategy findings: marketplace trust/disclosure UI and AI chat confidence label scaffold.
 - [x] Replaced static `StatsBar` with collapsible `LiveStatsBar` (collapsed by default, localStorage persistence, mobile defaults to collapsed).
-=======
->>>>>>> master
 
 ## P0 release blockers
 
