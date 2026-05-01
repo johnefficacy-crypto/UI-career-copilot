@@ -1,6 +1,6 @@
 # Source Intelligence Strategy Notes
 
-_Last updated: 2026-04-23_
+_Last updated: 2026-05-01_
 
 ## Purpose
 This note captures source-intelligence decisions that should guide the scraper, eligibility engine, and notification pipeline.
@@ -392,3 +392,56 @@ Whenever a new source-learning is found, capture:
 5. whether it changes eligibility or notification strategy.
 
 This file should evolve as the source strategy evolves.
+
+
+---
+
+## 11. Aggregator Strategy v1 (Operational)
+
+This section is the explicit operating policy for aggregator-origin discoveries.
+
+### 11.1 Non-negotiable policy
+
+1. Aggregators are discovery inputs only.
+2. Canonical rows in `public.recruitments` should prefer official notification/apply URLs.
+3. `new_match` user notifications must be driven only by deterministic eligibility verdicts.
+4. Aggregator-only items without resolved official URLs remain review-first and must not be auto-promoted.
+
+### 11.2 Required state machine for aggregator items
+
+For `source_type='aggregator'` queue items:
+
+- initial: `status='pending'`, `extraction_status='unverified'`
+- evidence review: `status='reviewing'`, `extraction_status='needs_review'` when critical evidence is missing
+- promotable only when:
+  - required extracted fields are present (`title`, `organization_name`, `official_notification_url`, non-empty `posts`)
+  - evidence rows exist and required fields are `reviewer_status='verified'`
+  - extraction status is `verified` (unless explicit manual override with `evidence_required=false`)
+
+### 11.3 Official-link resolution requirements
+
+Before promotion of aggregator-discovered rows:
+
+- Try to resolve a first-party official source URL/PDF.
+- If official URL cannot be resolved:
+  - keep item in review,
+  - record reviewer notes with why unresolved,
+  - do not expose aggregator URL as primary user-facing truth.
+
+### 11.4 Operational verification checklist (weekly)
+
+Run these checks to verify coordination quality:
+
+1. **Coverage:** recently approved scrape items have `duplicate_of` recruitment ids.
+2. **Evidence:** approved items have required verified evidence rows.
+3. **Eligibility fanout path:** approved items created eligibility queue rows and were consumed.
+4. **Alert truthfulness:** `new_match` alerts were emitted only after eligibility recompute.
+5. **Source health drift:** no accidental split-brain between `source_registry` and any legacy source table names.
+
+### 11.5 Metrics to track
+
+- `% approved rows with official_notification_url from official domain`
+- `% approved rows from aggregator sources requiring manual review`
+- `median time pending -> approved for aggregator rows`
+- `% aggregator discoveries rejected due to unresolved official links`
+- `% eligibility queue jobs completed < 10 minutes after recruitment approval`
