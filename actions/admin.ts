@@ -19,12 +19,13 @@ function adminRedirectOnError(path: string, err: unknown): never {
 
 export async function adminCreateOrganization(formData: FormData) {
   try {
-    await requireAdmin()
+    const ctx = await requireAdminRole("organizations")
     await createOrganization({
       name: formData.get("name") as string,
       type: formData.get("type") as string,
       state: (formData.get("state") as string) || null,
     })
+    void logAdminAction({ actorId: ctx.userId, actorEmail: ctx.userEmail, action: "create_organization", entityType: "organizations" })
     revalidatePath("/admin/organizations")
   } catch (err) {
     adminRedirectOnError("/admin/organizations/new", err)
@@ -35,7 +36,7 @@ export async function adminCreateOrganization(formData: FormData) {
 export async function adminUpdateOrganization(formData: FormData) {
   const id = formData.get("id") as string
   try {
-    await requireAdmin()
+    const ctx = await requireAdminRole("organizations")
     await updateOrganization(id, {
       name:                 formData.get("name") as string,
       type:                 formData.get("type") as string,
@@ -45,6 +46,7 @@ export async function adminUpdateOrganization(formData: FormData) {
       trust_tier:           (formData.get("trust_tier") as string) || "unknown",
       verification_notes:   (formData.get("verification_notes") as string) || null,
     })
+    void logAdminAction({ actorId: ctx.userId, actorEmail: ctx.userEmail, action: "update_organization", entityType: "organizations", entityId: id })
     revalidatePath("/admin/organizations")
   } catch (err) {
     adminRedirectOnError(`/admin/organizations/${id}/edit`, err)
@@ -175,7 +177,7 @@ export async function adminSavePost(formData: FormData) {
   const postId = formData.get("post_id") as string | null
 
   try {
-    await requireAdmin()
+    const ctx = await requireAdminRole("recruitments")
 
     let targetPostId = postId
 
@@ -231,6 +233,7 @@ export async function adminSavePost(formData: FormData) {
       in_hand_estimate: (formData.get("in_hand_estimate") as string) || null,
     })
 
+    void logAdminAction({ actorId: ctx.userId, actorEmail: ctx.userEmail, action: postId ? "update_post" : "create_post", entityType: "posts", entityId: targetPostId ?? undefined })
     revalidatePath(`/admin/recruitments/${recruitmentId}`)
   } catch (err) {
     adminRedirectOnError(`/admin/recruitments/${recruitmentId}`, err)
@@ -242,8 +245,9 @@ export async function adminDeletePost(formData: FormData) {
   const postId = formData.get("post_id") as string
   const recruitmentId = formData.get("recruitment_id") as string
   try {
-    await requireAdmin()
+    const ctx = await requireAdminRole("recruitments")
     await deletePost(postId)
+    void logAdminAction({ actorId: ctx.userId, actorEmail: ctx.userEmail, action: "delete_post", entityType: "posts", entityId: postId })
     revalidatePath(`/admin/recruitments/${recruitmentId}`)
   } catch (err) {
     adminRedirectOnError(`/admin/recruitments/${recruitmentId}`, err)
@@ -340,7 +344,7 @@ export async function adminWithdrawRecruitment(formData: FormData) {
  */
 export async function adminTriggerEligibilityRecompute(_formData: FormData) {
   try {
-    await requireAdmin()
+    await requireAdminRole("queue")
     const supabase = await createClient()
 
     // Get all user IDs with completed onboarding

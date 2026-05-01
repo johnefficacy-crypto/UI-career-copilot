@@ -13,8 +13,8 @@ export type AdminRole =
 /** Permissions per role. '*' means unrestricted. */
 const ROLE_PERMISSIONS: Record<AdminRole, string[]> = {
   super_admin:   ["*"],
-  ops_admin:     ["scrape", "sources", "queue", "recruitments", "orgs", "audit"],
-  content_admin: ["recruitments", "orgs", "posts"],
+  ops_admin:     ["scrape", "sources", "queue", "recruitments", "organizations", "audit"],
+  content_admin: ["recruitments", "organizations", "posts"],
   scraper_admin: ["scrape", "sources", "queue"],
   support_admin: ["users", "notifications"],
 }

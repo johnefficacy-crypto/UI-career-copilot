@@ -273,6 +273,20 @@ Deno.serve(async (req) => {
   } catch { /* non-fatal */ }
 
   const supabase = db()
+
+  // ── 0. Kill-switch check ─────────────────────────────────────────────────
+  const { data: killSetting } = await supabase
+    .from("admin_settings")
+    .select("value")
+    .eq("key", "notifications_paused")
+    .maybeSingle()
+  if (killSetting?.value === "true") {
+    return new Response(
+      JSON.stringify({ dispatched: 0, errors: 0, message: "Notifications paused by admin kill-switch" }),
+      { status: 200, headers: { "Content-Type": "application/json" } }
+    )
+  }
+
   const staleDate = new Date(Date.now() - STALE_THRESHOLD_HOURS * 60 * 60 * 1000)
 
   // ── 1. Fetch users who have email enabled ────────────────────────────────
