@@ -87,6 +87,29 @@ export const MessageBubble = memo(function MessageBubble({ message, streaming }:
               }),
         }}
       >
+        {!isUser && (
+          <div
+            style={{
+              marginBottom: "0.5rem",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "0.375rem",
+              fontSize: "0.68rem",
+              letterSpacing: "0.02em",
+              color: "rgba(232,213,163,0.88)",
+              background: "rgba(232,213,163,0.08)",
+              border: "1px solid rgba(232,213,163,0.22)",
+              borderRadius: "999px",
+              padding: "0.18rem 0.5rem",
+            }}
+            aria-label="AI guidance confidence"
+            title="AI guidance only. Verify official notifications and deterministic eligibility outputs."
+          >
+            <span>AI guidance</span>
+            <span style={{ color: "rgba(255,255,255,0.55)" }}>·</span>
+            <span>Confidence: medium</span>
+          </div>
+        )}
         <FormattedContent text={message.content} isUser={isUser} />
         {streaming && <BlinkCursor />}
       </div>
