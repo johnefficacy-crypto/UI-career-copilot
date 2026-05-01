@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 "use server"
 
 import { revalidatePath } from "next/cache"
@@ -7,7 +6,7 @@ import { logAdminAction, requireAdminRole } from "@/lib/db/admin"
 
 export async function updateForumReportAction(formData: FormData) {
   const ctx = await requireAdminRole("community")
-  const supabase = await createClient() as unknown as { from: (table: string) => any }
+  const supabase = (await createClient()) as any
 
   const reportId = String(formData.get("report_id") ?? "")
   const status = String(formData.get("status") ?? "open")

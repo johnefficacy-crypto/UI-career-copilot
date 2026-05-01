@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { createClient } from "@/utils/supabase/server"
 import { requireAdminRole } from "@/lib/db/admin"
 
@@ -11,7 +10,7 @@ export async function listForumReports(filters?: {
   limit?: number
 }) {
   await requireAdminRole("community")
-  const supabase = await createClient() as unknown as { from: (table: string) => any }
+  const supabase = (await createClient()) as any
 
   let q = supabase
     .from("forum_reports")
@@ -31,7 +30,7 @@ export async function listForumReports(filters?: {
   if (filters?.status && filters.status !== "all") q = q.eq("status", filters.status)
   if (filters?.severity && filters.severity !== "all") q = q.eq("severity", filters.severity)
 
-  const { data, error } = await q as { data: unknown[] | null; error: { message: string } | null }
+  const { data, error } = await q as { data: any[] | null; error: { message: string } | null }
   if (error) throw new Error(error.message)
   return data ?? []
 }

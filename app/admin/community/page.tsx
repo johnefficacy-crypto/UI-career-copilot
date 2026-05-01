@@ -7,19 +7,6 @@ export const metadata = { title: "Admin Community Moderation — Career Copilot"
 const STATUS_OPTIONS = ["open", "in_review", "resolved", "dismissed", "escalated"] as const
 const SEVERITY_OPTIONS = ["p0_harmful", "p1_misleading", "p2_spam_noise"] as const
 
-type ForumReportRow = {
-  id: string
-  target_type: "post" | "comment"
-  created_at: string
-  reason: string
-  details: string | null
-  status: string
-  severity: string
-  action_notes: string | null
-  post?: { title?: string | null } | null
-  comment?: { body?: string | null } | null
-}
-
 export default async function AdminCommunityPage({
   searchParams,
 }: {
@@ -31,7 +18,7 @@ export default async function AdminCommunityPage({
   const reports = (await listForumReports({
     status: status as never,
     severity: severity as never,
-  })) as ForumReportRow[]
+  })) as any[]
 
   return (
     <div className="p-6 md:p-8">

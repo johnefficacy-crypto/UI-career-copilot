@@ -16,8 +16,6 @@ Legend:
 - [x] Fixed `profileBlockers` summary computation to count `needs_profile_data` instead of mirroring `conditional`.
 - [x] Updated profile-impact onboarding links to route-specific paths (`/onboarding/identity`, `/onboarding/education`) for deterministic CTAs.
 - [x] Published aspirant-centered platform strategy for forum, exam planning, productivity, community, marketplace, AI assistant/chat, and resource governance (`docs/product/aspirant-platform-strategy.md`).
-- [x] Implemented initial strategy findings: marketplace trust/disclosure UI and AI chat confidence label scaffold.
-- [x] Added user report submission entry points for forum posts/comments, wired into moderation queue (`forum_reports`).
 - [x] Replaced static `StatsBar` with collapsible `LiveStatsBar` (collapsed by default, localStorage persistence, mobile defaults to collapsed).
 
 ## P0 release blockers
@@ -80,6 +78,24 @@ Legend:
     - `actions/sources.ts` ✓ all guards replaced with requireAdminRole("sources")
     - `lib/db/admin.ts`
   - Suggested PR title: `fix(admin): use requireAdminRole for source actions`
+
+- [x] Block confidence-only auto-approval in legacy manual scraper path
+  - Effort: S
+  - Owner: backend
+  - Paths:
+    - `lib/scraping/runner.ts` ✓ status now always `pending` (no confidence-based `approved`)
+  - Notes:
+    - Admin evidence review remains mandatory before promotion.
+  - Suggested PR title: `fix(scraper): disable confidence-based auto-approval in legacy runner`
+
+- [x] Add aggregator official-host validation before queue-item promotion
+  - Effort: S
+  - Owner: backend
+  - Paths:
+    - `lib/db/notifications.ts` ✓ validation rejects aggregator items where `official_notification_url` host matches aggregator host
+  - Notes:
+    - Prevents treating aggregator/listing URLs as canonical official notifications.
+  - Suggested PR title: `fix(scraper): require distinct official host for aggregator promotions`
 
 - [x] Full RBAC enforcement — replace is_admin checks across all admin routes and actions
   - Effort: M
@@ -189,15 +205,36 @@ Legend:
     - `app/admin/page.tsx` ✓ quick links for all new pages
   - Suggested PR title: `feat(admin): add operational control surfaces for sources, queues, audit, and notifications`
 
-- [ ] Refresh README and docs to match real product and release criteria
+- [x] Refresh README and docs to match real product and release criteria
   - Effort: S
   - Owner: ops
   - Paths:
     - `README.md`
-    - `docs/implementation_status_checklist.md`
-    - `docs/database-domain-model.md` ✓ created
-    - `docs/runbook.md` (new)
+    - `docs/operations/implementation-checklist.md`
+    - `docs/engineering/domain-model.md` ✓ canonicalized
+    - `docs/operations/runbook.md` ✓ canonicalized
   - Suggested PR title: `docs: align repo documentation with current implementation and ops`
+
+
+## Sprint 8 execution plan (next practical order)
+
+- [~] Phase A — Trust/documentation alignment
+  - Owner: ops + frontend
+  - Scope:
+    - Align top-level docs with current phase state and governance baseline
+    - Keep implementation checklist and feature registry as current truth
+- [ ] Phase B — Community foundation (Phase 8)
+  - Owner: frontend + backend + ops
+  - Scope:
+    - `community_spaces`, `community_channels`, `community_threads`, `community_replies`, `community_votes`, `community_reports`
+    - `/admin/community` moderation queue with RBAC + audit
+    - In-app notification for thread replies
+    - Enforce `official_updates` as admin-write only
+- [ ] Phase C — AI hardening follow-up
+  - Owner: AI + backend
+  - Scope:
+    - Deterministic-to-LLM explanation layer with provenance
+    - `jobs/embeddings-sync.ts` to activate semantic retrieval pipeline
 
 ## P2 strategic follow-up
 
