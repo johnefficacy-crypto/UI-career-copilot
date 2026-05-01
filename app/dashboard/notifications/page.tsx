@@ -49,7 +49,7 @@ const ALERT_LABELS: Record<string, string> = {
   status_changed:       "Status changed",
   admit_card_released:  "Admit card released",
   result_released:      "Result released",
-  new_match:            "New exam match",
+  new_match:            "Confirmed match",
   deadline_3day:        "Deadline in 3 days",
   deadline_1day:        "Last day to apply",
   status_change:        "Status changed",
