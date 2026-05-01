@@ -19,6 +19,7 @@ import { getGroupedUserNotifications, getNotificationReadiness } from "@/lib/db/
 import type { GroupedNotification } from "@/types/notifications"
 import type { NotificationReadiness } from "@/lib/db/notifications"
 import { markAllNotificationsRead } from "@/actions/notifications"
+import { submitRecruitmentFeedback } from "@/actions/feedback"
 
 // Phase 2 report recommendation: revalidate=30 instead of force-dynamic
 // Saves 1 full Supabase RTT (~1.3s from India) on every repeat page load
@@ -245,6 +246,25 @@ export default async function NotificationsPage() {
                     </p>
                   )}
                 </div>
+
+                {/* Actions */}
+                <details className="mt-2">
+                  <summary className="text-[11px] text-white/35 cursor-pointer hover:text-white/55">Report issue</summary>
+                  <form action={submitRecruitmentFeedback} className="mt-2 space-y-2">
+                    <input type="hidden" name="recruitment_id" value={alert.recruitment_id} />
+                    <select name="feedback_type" className="w-full bg-white/[0.04] border border-white/[0.1] rounded px-2 py-1 text-xs text-white" defaultValue="wrong_match">
+                      <option value="wrong_match">Wrong match</option>
+                      <option value="deadline_wrong">Deadline incorrect</option>
+                      <option value="official_link_broken">Official link broken</option>
+                      <option value="duplicate_notification">Duplicate notification</option>
+                      <option value="not_interested">Not interested</option>
+                      <option value="already_applied">Already applied</option>
+                      <option value="other">Other</option>
+                    </select>
+                    <textarea name="message" rows={2} className="w-full bg-white/[0.04] border border-white/[0.1] rounded px-2 py-1 text-xs text-white" placeholder="Optional details" />
+                    <button type="submit" className="text-xs px-2 py-1 rounded border border-white/[0.15] text-white/70 hover:text-white">Submit report</button>
+                  </form>
+                </details>
 
                 {/* Time */}
                 <span className="text-xs text-white/25 shrink-0 mt-0.5">

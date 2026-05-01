@@ -35,7 +35,7 @@ This document maps product capabilities to their current implementation anchors.
 
 | Capability | Planned anchors | Status |
 |---|---|---|
-| Community foundation | `044_community_foundation.sql`, `/admin/community`, `actions/community-admin.ts`, `lib/db/community-admin.ts` | 🔄 in progress |
+| Community foundation | `community_*` tables, `/admin/community`, thread/reply notifications | ⏳ next |
 
 ## Domain invariant
 

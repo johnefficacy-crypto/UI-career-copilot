@@ -223,11 +223,11 @@ Legend:
   - Scope:
     - Align top-level docs with current phase state and governance baseline
     - Keep implementation checklist and feature registry as current truth
-- [~] Phase B — Community foundation (Phase 8)
+- [ ] Phase B — Community foundation (Phase 8)
   - Owner: frontend + backend + ops
   - Scope:
-    - `community_spaces`, `community_channels`, `community_threads`, `community_replies`, `community_votes`, `community_reports` ✓ schema + RLS + admin-write-only official_updates
-    - `/admin/community` moderation queue with RBAC + audit ✓ initial admin page + moderation action logging
+    - `community_spaces`, `community_channels`, `community_threads`, `community_replies`, `community_votes`, `community_reports`
+    - `/admin/community` moderation queue with RBAC + audit
     - In-app notification for thread replies
     - Enforce `official_updates` as admin-write only
 - [ ] Phase C — AI hardening follow-up

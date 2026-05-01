@@ -1,35 +1,50 @@
 "use server"
 
 import { revalidatePath } from "next/cache"
-import { requireAdminRole, logAdminAction } from "@/lib/db/admin"
-import { moderateCommunityReport } from "@/lib/db/community-admin"
+import { createClient } from "@/utils/supabase/server"
+import { logAdminAction, requireAdminRole } from "@/lib/db/admin"
 
-export async function updateCommunityReportStatusAction(formData: FormData) {
-  const reportId = String(formData.get("reportId") ?? "")
-  const status = String(formData.get("status") ?? "") as "reviewing" | "resolved" | "dismissed"
-  const moderationNotes = String(formData.get("moderationNotes") ?? "").trim()
+export async function updateForumReportAction(formData: FormData) {
+  const ctx = await requireAdminRole("community")
+  const supabase = (await createClient()) as any
 
-  if (!reportId) throw new Error("Missing report id")
-  if (!["reviewing", "resolved", "dismissed"].includes(status)) {
-    throw new Error("Invalid moderation status")
+  const reportId = String(formData.get("report_id") ?? "")
+  const status = String(formData.get("status") ?? "open")
+  const severity = String(formData.get("severity") ?? "p2_spam_noise")
+  const notes = String(formData.get("action_notes") ?? "").trim() || null
+
+  if (!reportId) return
+
+  const { data: before } = await supabase
+    .from("forum_reports")
+    .select("id,status,severity,assigned_admin_id,action_notes,resolved_at,resolved_by")
+    .eq("id", reportId)
+    .maybeSingle()
+
+  const patch: Record<string, string | null> = {
+    status,
+    severity,
+    action_notes: notes,
+    assigned_admin_id: ctx.userId,
   }
 
-  const ctx = await requireAdminRole("community")
-  const updated = await moderateCommunityReport({
-    reportId,
-    status,
-    moderationNotes,
-    moderatedBy: ctx.userId,
-  })
+  if (status === "resolved" || status === "dismissed") {
+    patch.resolved_at = new Date().toISOString()
+    patch.resolved_by = ctx.userId
+  }
+
+  const { error } = await supabase.from("forum_reports").update(patch).eq("id", reportId)
+  if (error) throw new Error(error.message)
 
   await logAdminAction({
     actorId: ctx.userId,
     actorEmail: ctx.userEmail,
-    action: "community_report_moderated",
-    entityType: "community_reports",
+    action: "update_forum_report",
+    entityType: "forum_report",
     entityId: reportId,
-    newValue: updated,
-    notes: moderationNotes || `Set status to ${status}`,
+    oldValue: before,
+    newValue: patch,
+    notes: notes ?? undefined,
   })
 
   revalidatePath("/admin/community")
