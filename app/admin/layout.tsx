@@ -24,6 +24,7 @@ const NAV_ITEMS = [
   { href: "/admin/scrape",            label: "Scrape Dashboard",   icon: "🔄" },
   { href: "/admin/sources",           label: "Source Registry",    icon: "🗂" },
   { href: "/admin/notifications",     label: "Notifications",      icon: "🔔" },
+  { href: "/admin/community",         label: "Community",          icon: "💬" },
   { href: "/admin/eligibility-queue", label: "Eligibility Queue",  icon: "⚙" },
   { href: "/admin/audit",             label: "Audit Log",          icon: "🗒" },
   { href: "/admin/rbac",              label: "RBAC",               icon: "🔑" },
