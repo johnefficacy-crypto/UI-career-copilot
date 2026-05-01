@@ -61,6 +61,23 @@ export function CourseCard({ course }: CourseCardProps) {
         {/* Instructor */}
         <p className="text-white/35 text-xs">{course.instructor.full_name}</p>
 
+        <div className="flex flex-wrap gap-1">
+          {course.total_reviews >= 15 && (course.avg_rating ?? 0) >= 4.2 ? (
+            <span className="text-[10px] px-1.5 py-0.5 rounded border border-emerald-400/30 bg-emerald-500/10 text-emerald-300">
+              Verified quality
+            </span>
+          ) : (
+            <span className="text-[10px] px-1.5 py-0.5 rounded border border-white/20 bg-white/[0.04] text-white/50">
+              New / limited reviews
+            </span>
+          )}
+          {course.price_inr === 0 && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded border border-sky-400/30 bg-sky-500/10 text-sky-300">
+              Budget-first option
+            </span>
+          )}
+        </div>
+
         {/* Rating */}
         {course.total_reviews > 0 && (
           <div className="flex items-center gap-1.5 text-xs">
