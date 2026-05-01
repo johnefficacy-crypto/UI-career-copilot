@@ -4,7 +4,6 @@ import type { NotificationAlert }         from "@/types/notifications"
 import type { NextAction }               from "@/lib/db/next-actions"
 import type { StudyTask }               from "@/lib/db/study-tasks"
 import { DashboardNav }                   from "./DashboardNav"
-import { ProfileCard }                    from "./ProfileCard"
 import { ExamTargetCard }                 from "./ExamTargetCard"
 import { NotificationsFeed }              from "./NotificationsFeed"
 import { StatsBar }                       from "./StatsBar"
@@ -170,11 +169,6 @@ export function DashboardShell({
           {/* Right col */}
           <div className="flex flex-col gap-5">
             <ProfileImpactCard />
-            <ProfileCard
-              profile={profile}
-              education={education}
-              experience={experience}
-            />
             <StudyPlanWidget
               plan={
                 primaryPlan
