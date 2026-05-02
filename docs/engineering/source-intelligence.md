@@ -1,6 +1,6 @@
 # Source Intelligence Strategy Notes
 
-_Last updated: 2026-05-01_
+_Last updated: 2026-05-02_
 
 ## Purpose
 This note captures source-intelligence decisions that should guide the scraper, eligibility engine, and notification pipeline.
@@ -445,3 +445,157 @@ Run these checks to verify coordination quality:
 - `median time pending -> approved for aggregator rows`
 - `% aggregator discoveries rejected due to unresolved official links`
 - `% eligibility queue jobs completed < 10 minutes after recruitment approval`
+
+---
+
+## 12. Trusted Ingestion Implementation Strategy (Detailed)
+
+This section translates current findings into an implementation sequence. It is intentionally technical and execution-focused.
+
+### 12.1 Current hardening already in place
+
+- Legacy manual runner no longer auto-approves by confidence.
+- Aggregator host-vs-official host guard is enforced before promotion.
+- `scrape_queue` now stores `official_source_resolved` and `official_source_host`.
+- `source_registry` supports `requires_official_confirmation` (aggregators default to true).
+
+These controls reduce unsafe promotion risk but do not yet complete end-to-end trusted ingestion.
+
+### 12.2 Remaining gaps (ordered)
+
+#### P0 — must complete before eligibility can rely on scraper data
+
+1. **Unify source-of-truth path**
+   - Remove policy drift between `source_registry` and any legacy source tables.
+   - All scrape entry paths (scheduled/manual/admin) must share one ingestion pipeline.
+
+2. **Promotion contract hardening**
+   - Promotion must be blocked unless all required trust gates pass:
+     - `official_source_resolved=true`
+     - evidence-required fields verified
+     - extraction status verified
+   - Manual overrides must be role-restricted and audit-logged with reason.
+
+3. **Eligibility gate**
+   - Eligibility query path must consume only canonical rows marked as verified/promoted in trust workflow.
+   - Unverified candidate data must not affect `new_match`.
+
+#### P1 — required for robust discovery quality
+
+4. **Aggregator cross-source candidate model**
+   - Build candidate merge layer so same opportunity across multiple aggregators converges before promotion review.
+
+5. **Official source discovery stage**
+   - Explicit stage to resolve issuing organization source and official notification document.
+   - Distinguish discovery URL vs canonical official notification URL.
+
+6. **Deterministic dedup strategy**
+   - Add durable candidate keys and observation-level dedup.
+   - Separate lifecycle updates (result/admit card/etc.) from fresh recruitment openings.
+
+#### P2 — extraction depth and analytics completeness
+
+7. **Schema for richer fields**
+   - fees/fee-relaxations
+   - exam pattern
+   - syllabus
+   - application links (including official apply URL)
+   - category-wise vacancy breakdown
+
+8. **Evidence completeness matrix**
+   - Define required fields by source type and promotion mode.
+   - Add reviewer UX for missing/incorrect evidence corrections.
+
+### 12.3 Target data-layer additions
+
+Additive design (do not break existing `source_registry`/`scrape_queue` flows):
+
+1. `aggregator_listings`
+   - discovery-only records from aggregator/RSS surfaces
+   - statuses: `discovered | duplicate | needs_official_source | official_source_found | rejected`
+
+2. `listing_observations`
+   - raw observation snapshots per listing/source with hashes
+
+3. `recruitment_candidates`
+   - merged candidate entity across observations
+   - statuses: `unverified | aggregator_confirmed | official_notification_found | extraction_pending | extraction_complete | needs_review | verified | promoted | rejected`
+
+4. `candidate_observations`
+   - links candidate to listings/sources with confidence + provenance payload
+
+5. `official_notification_documents` and `notification_document_fetches`
+   - canonical document references + fetch history (hash, status, headers, parsed host)
+
+6. Reuse/extend `extracted_field_evidence`
+   - keep single evidence table, expand required field policy and reviewer workflows
+
+### 12.4 Code-level execution plan
+
+1. **`supabase/functions/scheduled-scraper/index.ts`**
+   - Split into explicit phases:
+     - Phase A: discovery ingestion (`aggregator_listings`)
+     - Phase B: official-source resolution
+     - Phase C: official-document fetch + extraction queueing
+   - Stop treating listing URLs as canonical official URLs.
+
+2. **`lib/scraping/runner.ts`**
+   - Keep pending-only behavior.
+   - Route manual/admin-triggered runs through same core ingestion stages as scheduled scraper.
+
+3. **`lib/db/notifications.ts`**
+   - Move from queue-item-centric approval to candidate-centric promotion guard.
+   - Preserve strict validation, expand required-field checks by schema.
+
+4. **Admin review surfaces**
+   - Show: candidate merge signals, official source resolution state, evidence completeness, and rejection reasons.
+   - Provide reviewer actions: verify/correct/reject fields with audit rows.
+
+5. **`lib/eligibility/runner.ts`**
+   - Add trust-state filter so only verified/promoted canonical rows are evaluated.
+
+### 12.5 Testing and release gate
+
+Required automated checks for rollout:
+
+1. Aggregator-only listing cannot be promoted.
+2. Same opportunity from multiple aggregators merges into one candidate.
+3. Missing official notification document keeps candidate unverified.
+4. Multi-post extraction persists post-wise rows and vacancy counts.
+5. Eligibility ignores non-verified candidate-origin data.
+6. Verified candidate promotion is idempotent (promotes once).
+7. `new_match` alerts emit only after deterministic eligibility recompute.
+
+Operational release gate:
+
+- lint/typecheck/tests/build clean (or documented known failures),
+- no `public.exams` regressions,
+- no direct confidence-only or source-host-only bypasses to promotion,
+- audit trail present for all admin overrides.
+
+
+---
+
+## 13. Status cross-check (2026-05-02)
+
+This status is cross-checked against current code and migrations (not intent docs).
+
+### Implemented in code
+
+1. Legacy manual runner no longer auto-approves by confidence; new rows are forced to `pending`.
+2. `scrape_queue` persists `official_source_resolved` and `official_source_host` (migration 043 + scheduled scraper write path).
+3. Promotion validation blocks when `official_source_resolved=false` and blocks aggregator-host == official-host cases.
+4. Discovery foundation tables exist for aggregator/candidate layers (migration 044) and scheduled scraper writes `aggregator_listings`, `recruitment_candidates`, and `candidate_observations` for aggregator sources.
+
+### Not yet implemented (important)
+
+1. Candidate-centric admin promotion flow is not yet the canonical path; approval is still queue-item-centric.
+2. Eligibility runner does not yet filter by candidate trust status/verified promotion lineage; it evaluates canonical open/upcoming posts.
+3. Full field schema coverage (fees, exam pattern, syllabus, category-wise vacancy breakdown, apply-link model) is still pending in canonical promotion.
+4. Source unification is incomplete: legacy and scheduled ingestion stacks still coexist.
+
+### Operational truth
+
+Current state should be treated as: 
+
+`partially hardened ingestion with safer promotion gates, but not yet full trusted-candidate architecture.`

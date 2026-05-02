@@ -8,15 +8,6 @@ Auth → onboarding → profile completeness → dashboard mission control → e
 - The product is weak on **closed-loop learning + explainability + social retention layers** that are explicitly part of the stated positioning.
 - The biggest near-term risk is a **promise-delivery gap**: roadmap/vision highlight exam intelligence, community, and mentor marketplace, while implementation is still largely pre-community and pre-intelligence-hub.
 
-
-## Follow-up implementation update (2026-05-02, pass 2)
-- Implemented deterministic support/help entrypoint at `/dashboard/support` with explicit routing for:
-  1. wrong-match / deadline / official-link reports via notifications feedback path,
-  2. profile-completeness correction via onboarding routes,
-  3. community safety reporting path via forum.
-- Implemented community moderation hardening by removing `any` casts and introducing typed moderation records in admin/community data paths.
-- Net effect: closes part of the **supportability deficit** and reduces moderation-layer type-risk while Phase 8 community foundation is being built.
-
 ## Stage-by-stage assessment
 
 ### 1) Auth
