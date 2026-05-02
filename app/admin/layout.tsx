@@ -30,6 +30,7 @@ const NAV_ITEMS = [
   { href: "/admin/rbac",              label: "RBAC",               icon: "🔑" },
   { href: "/admin/ai-policy",         label: "AI Policy",          icon: "🤖" },
   { href: "/admin/community",         label: "Community Mod",      icon: "🛡️" },
+  { href: "/admin/control-support",   label: "Control Support",    icon: "📈" },
 ]
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
