@@ -123,6 +123,7 @@ CREATE INDEX IF NOT EXISTS user_next_actions_user_status_idx
 
 ALTER TABLE user_next_actions ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "user_next_actions_own" ON user_next_actions;
 CREATE POLICY "user_next_actions_own"
   ON user_next_actions
   FOR ALL
@@ -163,6 +164,7 @@ CREATE INDEX IF NOT EXISTS study_tasks_status_idx    ON study_tasks (user_id, st
 
 ALTER TABLE study_tasks ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "study_tasks_own" ON study_tasks;
 CREATE POLICY "study_tasks_own"
   ON study_tasks
   FOR ALL
@@ -196,6 +198,7 @@ CREATE INDEX IF NOT EXISTS study_sessions_user_idx ON study_sessions (user_id);
 
 ALTER TABLE study_sessions ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "study_sessions_own" ON study_sessions;
 CREATE POLICY "study_sessions_own"
   ON study_sessions
   FOR ALL
