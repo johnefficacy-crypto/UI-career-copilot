@@ -43,6 +43,7 @@ ALTER TABLE public.chat_sessions ENABLE ROW LEVEL SECURITY;
 
 -- Users can only read their own sessions
 DROP POLICY IF EXISTS "Users read own chat sessions" ON public.chat_sessions;
+DROP POLICY IF EXISTS "Users read own chat sessions" ON chat_sessions;
 CREATE POLICY "Users read own chat sessions"
   ON public.chat_sessions FOR SELECT
   USING (auth.uid() = user_id);
@@ -50,18 +51,21 @@ CREATE POLICY "Users read own chat sessions"
 -- Users can insert their own sessions
 -- (The API route creates sessions via createClient() which inherits the user's session)
 DROP POLICY IF EXISTS "Users insert own chat sessions" ON public.chat_sessions;
+DROP POLICY IF EXISTS "Users insert own chat sessions" ON chat_sessions;
 CREATE POLICY "Users insert own chat sessions"
   ON public.chat_sessions FOR INSERT
   WITH CHECK (auth.uid() = user_id);
 
 -- Users can update their own sessions (append messages)
 DROP POLICY IF EXISTS "Users update own chat sessions" ON public.chat_sessions;
+DROP POLICY IF EXISTS "Users update own chat sessions" ON chat_sessions;
 CREATE POLICY "Users update own chat sessions"
   ON public.chat_sessions FOR UPDATE
   USING (auth.uid() = user_id);
 
 -- Users can delete their own sessions
 DROP POLICY IF EXISTS "Users delete own chat sessions" ON public.chat_sessions;
+DROP POLICY IF EXISTS "Users delete own chat sessions" ON chat_sessions;
 CREATE POLICY "Users delete own chat sessions"
   ON public.chat_sessions FOR DELETE
   USING (auth.uid() = user_id);
