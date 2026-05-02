@@ -1,5 +1,5 @@
 # Career Copilot implementation status checklist
-_Last updated: 2026-04-30 — Sprints 5/6/7 complete_
+_Last updated: 2026-05-02 — scraper trust hardening in progress_
 
 This file is the single source of truth for implementation status and next build decisions.
 Legend:
@@ -68,6 +68,48 @@ Legend:
     - `actions/sources.ts` ✓ all guards replaced with requireAdminRole("sources")
     - `lib/db/admin.ts`
   - Suggested PR title: `fix(admin): use requireAdminRole for source actions`
+
+- [x] Block confidence-only auto-approval in legacy manual scraper path
+  - Effort: S
+  - Owner: backend
+  - Paths:
+    - `lib/scraping/runner.ts` ✓ status now always `pending` (no confidence-based `approved`)
+  - Notes:
+    - Admin evidence review remains mandatory before promotion.
+  - Suggested PR title: `fix(scraper): disable confidence-based auto-approval in legacy runner`
+
+- [x] Add aggregator official-host validation before queue-item promotion
+  - Effort: S
+  - Owner: backend
+  - Paths:
+    - `lib/db/notifications.ts` ✓ validation rejects aggregator items where `official_notification_url` host matches aggregator host
+  - Notes:
+    - Prevents treating aggregator/listing URLs as canonical official notifications.
+  - Suggested PR title: `fix(scraper): require distinct official host for aggregator promotions`
+
+- [x] Add explicit official-source resolution flags for scrape queue rows
+  - Effort: S
+  - Owner: backend
+  - Paths:
+    - `supabase/migrations/043_aggregator_official_source_gate.sql` ✓ created
+    - `supabase/functions/scheduled-scraper/index.ts` ✓ writes `official_source_resolved` + `official_source_host`
+    - `lib/db/notifications.ts` ✓ promotion validator blocks rows where `official_source_resolved=false`
+  - Notes:
+    - Adds durable database-level state instead of relying only on inline hostname checks.
+  - Suggested PR title: `feat(scraper): persist and enforce official-source resolution before promotion`
+
+- [~] Move from queue-item approval to candidate-centric trusted promotion
+  - Effort: L
+  - Owner: backend + ops
+  - Paths:
+    - `supabase/migrations/044_aggregator_candidate_layers.sql` ✓ foundation tables created
+    - `supabase/functions/scheduled-scraper/index.ts` ✓ writes candidate/listing observation rows
+    - `lib/db/notifications.ts` (pending) — promotion still queue-item-centric
+    - `lib/eligibility/runner.ts` (pending) — no trust-state filter yet
+  - Notes:
+    - Current pipeline is safer than before but still partial: candidate workflow + eligibility trust gating remain required before declaring trusted ingestion complete.
+  - Suggested PR title: `feat(scraper): complete candidate-centric promotion and eligibility trust gating`
+
 
 - [x] Full RBAC enforcement — replace is_admin checks across all admin routes and actions
   - Effort: M
@@ -198,6 +240,16 @@ Legend:
   - Notes:
     - Embeddings should use `recruitments` as the canonical entity. `exam` remains acceptable as a UI label.
   - Suggested PR title: `feat(ai): add vector embeddings for semantic retrieval`
+
+- [~] Build aggregator discovery and candidate-merge data layers (trusted ingestion Phase 2 foundation)
+  - Effort: M
+  - Owner: backend
+  - Paths:
+    - `supabase/migrations/044_aggregator_candidate_layers.sql` ✓ created
+    - `supabase/functions/scheduled-scraper/index.ts` ✓ writes `aggregator_listings`, `recruitment_candidates`, and `candidate_observations` for aggregator sources
+  - Notes:
+    - This establishes the data model and write-path foundation; admin review UX and promotion via candidates remain pending.
+  - Suggested PR title: `feat(scraper): add aggregator listings and candidate observation layers`
 
 - [x] Add ranking v1 using eligibility, urgency, and org trust
   - Effort: L
