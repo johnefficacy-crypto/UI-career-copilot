@@ -40,6 +40,7 @@ export function DashboardNav({ fullName, planId, avatarUrl, isAdmin }: Props) {
               { href: "/dashboard/chat",       label: "AI Chat"      },
               { href: "/dashboard/study-plan", label: "Study Plan"   },
               { href: "/marketplace",          label: "Marketplace"  },
+              { href: "/dashboard/support",   label: "Support"      },
             ].map((item) => (
               <Link
                 key={item.href}

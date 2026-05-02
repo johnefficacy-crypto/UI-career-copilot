@@ -586,14 +586,13 @@ This status is cross-checked against current code and migrations (not intent doc
 2. `scrape_queue` persists `official_source_resolved` and `official_source_host` (migration 043 + scheduled scraper write path).
 3. Promotion validation blocks when `official_source_resolved=false` and blocks aggregator-host == official-host cases.
 4. Discovery foundation tables exist for aggregator/candidate layers (migration 044) and scheduled scraper writes `aggregator_listings`, `recruitment_candidates`, and `candidate_observations` for aggregator sources.
-5. Canonical recruitments now carry trust lineage fields (`ingestion_trust_status`, `source_candidate_id`) and eligibility runner filters by trust status.
-6. Candidate-centric approval backend path exists via `approveCandidate(candidate_id, reviewer_id)` and links promotions back to candidate lineage.
 
 ### Not yet implemented (important)
 
-1. Candidate-centric admin promotion UI flow is not yet the canonical path (backend `approveCandidate` exists, UI/action wiring still pending).
-2. Full field schema coverage (fees, exam pattern, syllabus, category-wise vacancy breakdown, apply-link model) is still pending in canonical promotion.
-3. Source unification is incomplete: legacy and scheduled ingestion stacks still coexist.
+1. Candidate-centric admin promotion flow is not yet the canonical path; approval is still queue-item-centric.
+2. Eligibility runner does not yet filter by candidate trust status/verified promotion lineage; it evaluates canonical open/upcoming posts.
+3. Full field schema coverage (fees, exam pattern, syllabus, category-wise vacancy breakdown, apply-link model) is still pending in canonical promotion.
+4. Source unification is incomplete: legacy and scheduled ingestion stacks still coexist.
 
 ### Operational truth
 

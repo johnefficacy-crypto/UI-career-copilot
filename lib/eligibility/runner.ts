@@ -41,6 +41,7 @@ import {
   type UserProfile,
   type UserEducation,
   type UserExamAttempts,
+  type UserExamCredential,
 } from "./engine"
 
 /**
@@ -67,7 +68,7 @@ export async function runEligibilityForUser(
   const errors: string[] = []
 
   // ── 1. Load user data ──────────────────────────────────────────────────
-  const [profileRes, educationRes, attemptsRes, trackedRes] = await Promise.all([
+  const [profileRes, educationRes, attemptsRes, trackedRes, examCredsRes] = await Promise.all([
     supabase.from("profiles").select("*").eq("id", userId).single(),
     supabase
       .from("aspirant_education")
@@ -80,6 +81,10 @@ export async function runEligibilityForUser(
     supabase
       .from("tracked_recruitments")
       .select("recruitment_id")
+      .eq("user_id", userId),
+    (supabase as unknown as { from: (t: string) => { select: (q: string) => { eq: (k: string, v: string) => Promise<{ data: { exam_key: string }[] | null }> } } })
+      .from("aspirant_exam_credentials")
+      .select("exam_key")
       .eq("user_id", userId),
   ])
 
@@ -96,8 +101,9 @@ export async function runEligibilityForUser(
   const profile = profileRes.data as unknown as UserProfile
   const education = (educationRes.data ?? []) as unknown as UserEducation[]
   const examAttempts = (attemptsRes.data ?? []) as unknown as UserExamAttempts[]
+  const examCredentials = (examCredsRes.data ?? []) as unknown as UserExamCredential[]
   const trackedSet = new Set(
-    (trackedRes.data ?? []).map((t) => t.recruitment_id as string),
+    (trackedRes.data ?? []).map((t: { recruitment_id: string }) => t.recruitment_id as string),
   )
 
   // ── 2. Load all active posts with their criteria + org state ──────────
@@ -160,7 +166,27 @@ export async function runEligibilityForUser(
   })
 
   // ── 4. Run batch engine ───────────────────────────────────────────────
-  const results = checkEligibilityBatch(profile, education, examAttempts, postCriteriaList)
+  const { data: requiredCreds } = await (supabase as unknown as {
+    from: (t: string) => {
+      select: (q: string) => { in: (k: string, v: string[]) => Promise<{ data: { recruitment_id: string; exam_key: string }[] | null }> }
+    }
+  })
+    .from("recruitment_required_exam_credentials")
+    .select("recruitment_id, exam_key")
+    .in("recruitment_id", postCriteriaList.map((p) => p.recruitment_id))
+
+  const requiredMap = new Map<string, string[]>()
+  for (const row of (requiredCreds ?? [])) {
+    const arr = requiredMap.get(row.recruitment_id) ?? []
+    arr.push(row.exam_key)
+    requiredMap.set(row.recruitment_id, arr)
+  }
+
+  for (const pc of postCriteriaList) {
+    pc.required_exam_keys = requiredMap.get(pc.recruitment_id) ?? []
+  }
+
+  const results = checkEligibilityBatch(profile, education, examAttempts, examCredentials, postCriteriaList)
 
   // ── 5. Write results to cache ─────────────────────────────────────────
   const upsertRows = results.map((r) => ({
@@ -202,6 +228,22 @@ export async function runEligibilityForUser(
     }
   }
 
+
+  const { data: prefs } = await supabase
+    .from("aspirant_preferences")
+    .select("target_exams, preferred_sectors")
+    .eq("user_id", userId)
+    .maybeSingle()
+
+  const { data: recMeta } = await supabase
+    .from("recruitments")
+    .select("id, name, organizations(type)")
+    .in("id", Array.from(eligibleByRec.keys()))
+
+  const targetExams = ((prefs?.target_exams as string[] | null) ?? []).map((x) => x.toLowerCase())
+  const preferredSectors = ((prefs?.preferred_sectors as string[] | null) ?? []).map((x) => x.toLowerCase())
+  const metaMap = new Map((recMeta ?? []).map((r: { id: string; name?: string | null; organizations?: { type?: string | null } | null }) => [r.id as string, r]))
+
   let alertsInserted = 0
   if (eligibleByRec.size > 0) {
     const now = new Date().toISOString()
@@ -219,8 +261,8 @@ export async function runEligibilityForUser(
         explanation: {
           is_tracked: trackedSet.has(recruitmentId),
           is_eligible: isEligibleStrict === true,
-          matched_exam: false,     // TODO (P1): wire from preferences.target_exams
-          matched_sector: false,   // TODO (P1): wire from preferences.preferred_sectors
+          matched_exam: (() => { const m = metaMap.get(recruitmentId); const n = String(m?.name ?? "").toLowerCase(); return targetExams.some((t) => n.includes(t)); })(),
+          matched_sector: (() => { const m = metaMap.get(recruitmentId); const orgType = String((m?.organizations as { type?: string } | null)?.type ?? "").toLowerCase(); return preferredSectors.includes(orgType); })(),
           matched_type: false,
         },
       }),
