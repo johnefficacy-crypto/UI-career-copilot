@@ -92,6 +92,7 @@ export default async function AdminOverviewPage({
           { href: "/admin/scrape",            title: "Scrape Dashboard",  desc: `${ss?.pendingReview ?? 0} items pending review · trigger manual run` },
           { href: "/admin/sources",           title: "Source Registry",   desc: "Manage scraping sources, inspect URLs, add new portals" },
           { href: "/admin/notifications",     title: "Notifications",     desc: "Send logs, kill switch, role-restricted sending" },
+          { href: "/admin/recruitment-feedback", title: "Recruitment Feedback", desc: "Resolve wrong-match, deadline, and link reports" },
           { href: "/admin/eligibility-queue", title: "Eligibility Queue", desc: "Monitor recompute jobs — pending, processing, failed" },
           { href: "/admin/audit",             title: "Audit Log",         desc: "Append-only record of every admin mutation" },
           { href: "/admin/rbac",              title: "RBAC Manager",      desc: "Manage admin roles and super_admin access" },

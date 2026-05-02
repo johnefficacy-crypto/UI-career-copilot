@@ -38,6 +38,10 @@ export type UserEducation = {
   is_completed: boolean
 }
 
+export type UserExamCredential = {
+  exam_key: string
+}
+
 export type UserExamAttempts = {
   recruitment_id: string
   attempts_used: number
@@ -67,6 +71,7 @@ export type PostCriteria = {
   education_criteria: EducationCriteria | null
   attempt_limits: AttemptLimit[]
   org_state: string | null          // Phase 3B: non-null = state PSC post; null = central govt
+  required_exam_keys?: string[]
 }
 
 // ─── Output types ────────────────────────────────────────────────────────────
@@ -170,6 +175,7 @@ export function checkEligibility(
   profile: UserProfile,
   education: UserEducation[],
   examAttempts: UserExamAttempts[],
+  examCredentials: UserExamCredential[],
   criteria: PostCriteria
 ): EligibilityCheckResult {
   const checks: EligibilityCheck[] = []
@@ -411,7 +417,7 @@ export function checkEligibility(
 
   // If the result was already marked conditional by the education check,
   // verify no OTHER checks failed. If other checks also failed, it's just ineligible.
-  const nonEduFailures = failedChecks.filter((c) => c.rule !== "education")
+  const nonEduFailures = failedChecks.filter((c) => c.rule !== "education" && c.rule !== "exam_credential")
   const finalConditional = isConditional && nonEduFailures.length === 0 && !isEligible
 
   return {
@@ -434,11 +440,12 @@ export function checkEligibilityBatch(
   profile: UserProfile,
   education: UserEducation[],
   examAttempts: UserExamAttempts[],
+  examCredentials: UserExamCredential[],
   postCriteriaList: PostCriteria[]
 ): BatchEligibilityResult[] {
   return postCriteriaList.map((criteria) => ({
     post_id: criteria.post_id,
     recruitment_id: criteria.recruitment_id,
-    result: checkEligibility(profile, education, examAttempts, criteria),
+    result: checkEligibility(profile, education, examAttempts, examCredentials, criteria),
   }))
 }
