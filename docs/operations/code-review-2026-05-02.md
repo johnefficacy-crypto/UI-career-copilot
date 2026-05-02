@@ -1,10 +1,17 @@
-# Code Review — Implementation vs Documentation
+# Code Review — Dashboard & Related Components vs Docs
 
 _Date: 2026-05-02_
 
 ## Scope
 
-This review compares current implementation behavior against the documented operating requirements in:
+Focused implementation audit of:
+
+- `app/dashboard/page.tsx`
+- `app/dashboard/notifications/page.tsx`
+- `components/dashboard/*`
+- `lib/db/mission-control.ts`
+
+Compared against governance and implementation expectations in:
 
 - `docs/00-ai-context.md`
 - `docs/operations/implementation-checklist.md`
@@ -13,70 +20,67 @@ This review compares current implementation behavior against the documented oper
 
 ## Executive summary
 
-The codebase has strong directionally-correct governance intent, but there are high-confidence execution gaps between docs and runtime health:
+Dashboard architecture is broadly aligned with product direction (mission-control-first, deterministic prioritization, profile impact, and notification governance hooks), but there are immediate correctness/documentation gaps:
 
-1. **Release verification gate is currently failing** (lint/typecheck/build), so current state is not releasable under runbook criteria.
-2. **Admin authorization still uses legacy `is_admin` gating in layout/UI paths**, which conflicts with the docs' stronger role-based enforcement objective.
-3. **Notifications page has unresolved compile defects** (`ALERT_ICONS`, `timeAgo`) that directly contradict checklist claims around completed notification UX hardening.
+1. **P0 compile break on notifications page** (`ALERT_ICONS`, `timeAgo` undefined) blocks typecheck and release gating.
+2. **P1 governance drift in admin/dashboard auth surface**: legacy `is_admin` values still drive layout/nav behavior in key paths.
+3. **P1 code-health drift in dashboard orchestration comments/types**: stale implementation comments conflict with current `DashboardShell` props and can mislead future edits.
+4. **P1 deterministic UX consistency gap**: fallback/error handling is good in data fetching, but some mapping logic remains heuristic and undocumented as heuristic.
 
-## Findings
+## Detailed findings
 
-### 1) Verification gate mismatch (P0)
+### 1) P0 — Notifications page is not build-safe despite checklist completion claims
 
-Docs require lint/typecheck/test/build to pass before completion. Current implementation fails lint, typecheck, and build.
+`app/dashboard/notifications/page.tsx` references symbols not declared in file imports/constants:
 
-- **Lint** fails with 8 errors (notably `no-explicit-any`) in admin/community paths.
-- **Typecheck** fails in `app/dashboard/notifications/page.tsx`.
-- **Build** fails due to Google Font fetch errors in `app/layout.tsx` import chain (environment/network-sensitive, but still a failing gate).
-- **Tests** pass.
+- `ALERT_ICONS`
+- `timeAgo`
 
-Impact:
+This is consistent with current typecheck failures and means the dashboard notifications surface is not release-ready.
 
-- The checklist and runbook define these commands as mandatory verification; failing these indicates doc/process divergence and CI risk.
+### 2) P1 — Dashboard orchestration is resilient, but comments are stale and partially contradictory
 
-### 2) RBAC documentation intent vs layout-level legacy guard (P1)
+`app/dashboard/page.tsx` fetches key datasets in parallel and applies defensive fallbacks (`catch(() => [])`, `catch(() => 0)`) which is good for user continuity when dependent views/functions are not yet available.
 
-Implementation checklist notes legacy `is_admin` remains in admin layout as acceptable route-level compatibility. The code confirms admin layout currently blocks by `profile?.is_admin`.
+However, top-of-file implementation notes claim `DashboardShell` does not accept children, while `DashboardShell` currently *does* include `children?: React.ReactNode` in `Props`. This creates maintenance confusion and increases risk of incorrect refactors.
 
-- `app/admin/layout.tsx` enforces `if (!profile?.is_admin) redirect("/dashboard")`.
+### 3) P1 — Deterministic prioritization implementation aligns with docs, but route intent can be sharper
 
-Impact:
+`TodayPrioritiesPanel` ordering logic matches documented principles (urgency → confidence/profile completeness → execution tasks). This is a strong alignment point.
 
-- This is weaker than permission-bucket semantics (`requireAdminRole`) and can diverge from server-action level policy granularity.
-- Documentation already flags this as partial; code review confirms the gap is real and still active.
+But profile blockers route users to `/onboarding/identity` universally; if blockers include education/exam credentials, a single static route may reduce action precision. Given checklist emphasis on deterministic next-actions, this can be improved by blocker-type-specific routing.
 
-### 3) Notification UX claims vs compile-time regressions (P0/P1)
+### 4) P1 — Governance surface still includes legacy boolean admin semantics
 
-Checklist claims completed updates to notification cards and explanation features. However, notifications page cannot typecheck because referenced symbols are missing.
+- `DashboardShell` passes `isAdmin={profile?.is_admin ?? false}` into dashboard nav.
+- broader grep also shows legacy `is_admin` usage in admin layout paths.
 
-- `app/dashboard/notifications/page.tsx` references `ALERT_ICONS` and `timeAgo` with unresolved identifiers.
+This does not necessarily violate server-action enforcement directly, but it preserves a parallel boolean-admin mental model that docs explicitly aim to retire in favor of permission-bucket RBAC.
 
-Impact:
+### 5) P1 — Mission-control data layer is robust but swallows error context completely
 
-- User-facing notification page stability is currently broken at compile time, blocking confidence in Sprint 8 notification claims.
+`getMissionControlData` uses protective fallback to `EMPTY` on both query error and thrown exceptions, keeping dashboard render stable.
 
-### 4) Domain model adherence check (Good)
+Tradeoff: all failures collapse into silent empty-state behavior, making operational diagnosis harder unless observability exists elsewhere. For governance-heavy operations, returning a lightweight error reason (or logging hook) would better support incident triage without breaking UX.
 
-Regression grep confirms there are no active runtime queries to an `exams` table in application code paths; only a cautionary migration comment references `public.exams`.
+### 6) P2 — Heuristic exam ID mapping in DashboardShell should be explicitly documented as non-canonical
 
-Impact:
+`DashboardShell` maps recruitment names to exam registry IDs via substring matching. This is useful for current UX but should be explicitly tagged as a temporary heuristic path, because canonical domain rules prioritize deterministic `recruitment_id` relationships.
 
-- Canonical rule (`Database = recruitment`, avoid `public.exams`) appears preserved in active code paths.
+## What is aligned well
 
-### 5) Governance regression signal: scattered `is_admin` references remain (Expected but should reduce)
-
-Search results show multiple `is_admin` references in admin RBAC/profile-related files and dashboard props.
-
-Impact:
-
-- Not all references are authorization violations, but the surface area increases risk of accidentally re-introducing boolean-based auth patterns.
+- Mission-control summary uses canonical recruitment-centric state (`user_recruitment_state`, `recruitment_id`) rather than introducing `public.exams` assumptions.
+- Dashboard page uses parallel data fetching and safe fallbacks for partial migration environments.
+- Priorities panel reflects deterministic-first UX and avoids AI autonomy over eligibility decisions.
 
 ## Priority recommendations
 
-1. **Restore green verification pipeline first**: fix `no-explicit-any` errors and notification page type errors; then re-run full gate.
-2. **Harden admin layout gate**: prefer permission-aware role checks (or at minimum role-or-legacy fallback encapsulated in shared utility) over direct `profile?.is_admin` checks.
-3. **Add checklist truth discipline**: when features are marked done in checklist, require successful typecheck/build snapshot in the same PR.
-4. **Keep domain guardrails in CI**: retain/expand grep checks to prevent `public.exams` regressions and direct admin boolean auth regressions.
+1. **Fix P0 notifications compile defects first** (`ALERT_ICONS`, `timeAgo`) and re-run lint/typecheck/build.
+2. **Clean stale dashboard orchestration comments** so file headers match current component contracts.
+3. **Reduce boolean-admin propagation in dashboard/admin UI layers** by shifting view gating to permission-derived flags.
+4. **Improve deterministic next-action precision** by routing profile blockers to field-specific onboarding steps.
+5. **Add structured warning telemetry for mission-control fallback paths** so silent empty states are diagnosable.
+6. **Mark exam-name mapping as heuristic and plan deterministic replacement** (registry linkage keyed by canonical IDs).
 
 ## Evidence commands run
 
