@@ -9,6 +9,7 @@ import {
   upvotePostAction,
   savePostAction,
   deletePostAction,
+  reportForumContentAction,
 } from "@/actions/forum"
 import { timeAgo } from "@/lib/utils/dates"
 
@@ -28,7 +29,7 @@ export default async function ForumPostPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>
-  searchParams: Promise<{ error?: string }>
+  searchParams: Promise<{ error?: string; reported?: string }>
 }) {
   const { id } = await params
   const sp     = await searchParams
@@ -67,6 +68,10 @@ export default async function ForumPostPage({
       </nav>
 
       <div className="max-w-4xl mx-auto px-6 py-8">
+
+        {sp?.reported && (
+          <div className="mb-5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-300">Thanks — your report was submitted for admin review.</div>
+        )}
 
         {sp?.error && (
           <div className="cc-alert-error mb-5">{decodeURIComponent(sp.error)}</div>
@@ -181,6 +186,19 @@ export default async function ForumPostPage({
             <span className="text-xs" style={{ color: "var(--text-ghost)" }}>
               {post.reply_count} comment{post.reply_count !== 1 ? "s" : ""}
             </span>
+
+            {isLoggedIn && !isAuthor && (
+              <details className="ml-auto">
+                <summary className="text-xs cursor-pointer" style={{ color: "var(--text-dim)" }}>Report post</summary>
+                <form action={reportForumContentAction} className="mt-2 flex flex-col gap-2 min-w-[240px]">
+                  <input type="hidden" name="post_id" value={post.id} />
+                  <input type="hidden" name="post_page_id" value={post.id} />
+                  <input name="reason" placeholder="Reason (e.g. misleading info)" className="px-2 py-1.5 rounded-md text-xs bg-black/40 border border-white/20 text-white" required />
+                  <textarea name="details" rows={2} placeholder="Optional details" className="px-2 py-1.5 rounded-md text-xs bg-black/40 border border-white/20 text-white" />
+                  <button type="submit" className="text-xs px-2.5 py-1.5 rounded-md border border-amber-400/40 text-amber-300">Submit report</button>
+                </form>
+              </details>
+            )}
 
             {/* Delete (author only) */}
             {isAuthor && (

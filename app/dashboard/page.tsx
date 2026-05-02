@@ -20,7 +20,7 @@ import { createClient }            from "@/utils/supabase/server"
 import { getDashboardData }        from "@/lib/db/dashboard"
 import { getEligibleRecruitments } from "@/lib/eligibility/runner"
 import { getUserNotifications, getUnreadCount } from "@/lib/db/notifications"
-import { getUserPlans }            from "@/lib/db/study-planner"
+import { getUserPlans, getPlanStats }            from "@/lib/db/study-planner"
 import { getUserChatSessions }     from "@/lib/db/chat"
 import { getOrGenerateNextActions } from "@/lib/db/next-actions"
 import { getTodaysTasks }          from "@/lib/db/study-tasks"
@@ -73,6 +73,21 @@ export default async function DashboardPage() {
   const lastSession = chatSessions[0] ?? null
   const primaryPlan = primaryPlanCandidate
 
+  const planStats = primaryPlan
+    ? await getPlanStats(primaryPlan.id, user.id).catch(() => null)
+    : null
+
+  const liveStats = {
+    eligible_now: missionControlData.summary.eligibleNow,
+    potential_matches: missionControlData.summary.profileBlockers,
+    closing_soon: missionControlData.summary.closingThisWeek,
+    today_tasks_done: todaysTasks.filter((t) => t.status === "done").length,
+    today_tasks_total: todaysTasks.length,
+    weekly_focus_minutes: Math.round((planStats?.totalHours ?? 0) * 60),
+    latest_mock_score: null,
+    profile_readiness_pct: Math.max(0, 100 - (missionControlData.summary.profileBlockers * 10)),
+  }
+
   return (
     <DashboardShell
       data={data}
@@ -82,11 +97,12 @@ export default async function DashboardPage() {
       userAlerts={userNotifications}
       unreadCount={unreadCount}
       primaryPlan={primaryPlan}
-      planStats={null}
+      planStats={planStats}
       lastChatSessionId={lastSession?.id ?? null}
       isPaid={isPaid}
       nextActions={nextActions}
       todaysTasks={todaysTasks}
+      liveStats={liveStats}
     />
   )
 }

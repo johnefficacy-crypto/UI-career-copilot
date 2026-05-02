@@ -2145,9 +2145,6 @@ Deno.serve(async (req) => {
         const { confidence: _conf, _provider: _p, _model: _m, ...dataWithoutConf } = extracted
         void _conf; void _p; void _m
 
-        let aggregatorListingId: string | null = null
-        let candidateId: string | null = null
-
         const toHost = (raw: string | null | undefined): string | null => {
           if (!raw) return null
           try {
