@@ -79,19 +79,6 @@ export async function getGroupedUserNotifications(
   const alerts = await getUserNotifications(userId, { limit: Math.max((opts.limit ?? 50) * 4, 100) })
   const map = new Map<string, GroupedNotification>()
 
-  const computeMatchPercent = (alert: NotificationAlert): number => {
-    const explanation = alert.explanation
-    if (!explanation) return alert.alert_type === "new_match" ? 65 : 55
-    let score = 40
-    if (explanation.is_eligible) score += 25
-    if (explanation.is_tracked) score += 15
-    if (explanation.matched_exam) score += 10
-    if (explanation.matched_sector) score += 5
-    if (explanation.matched_type) score += 5
-    if ((alert.days_to_deadline ?? 99) <= 0) score -= 10
-    return Math.max(0, Math.min(100, score))
-  }
-
   for (const a of alerts) {
     const current = map.get(a.recruitment_id)
     if (!current) {
@@ -106,8 +93,6 @@ export async function getGroupedUserNotifications(
         unread_count: a.is_read ? 0 : 1,
         total_events: 1,
         days_to_deadline: a.days_to_deadline ?? null,
-        latest_explanation: a.explanation ?? null,
-        computed_match_percent: computeMatchPercent(a),
       })
       continue
     }
@@ -120,8 +105,6 @@ export async function getGroupedUserNotifications(
       current.latest_priority = a.priority
       current.latest_is_read = a.is_read
       current.days_to_deadline = a.days_to_deadline ?? current.days_to_deadline
-      current.latest_explanation = a.explanation ?? current.latest_explanation
-      current.computed_match_percent = computeMatchPercent(a)
     }
   }
 
@@ -632,6 +615,7 @@ export async function validateScrapeItemForPromotion(itemId: string): Promise<vo
 
   const missing: string[] = []
   const ext = (item.extracted_data ?? {}) as Record<string, unknown>
+  const row = item as unknown as Record<string, unknown>
 
   // evidence_required=false means this item was manually curated — skip evidence checks
   if (item.evidence_required !== false) {
@@ -643,6 +627,54 @@ export async function validateScrapeItemForPromotion(itemId: string): Promise<vo
     // Must be marked verified (or this is an explicit override by admin)
     if (item.extraction_status !== "verified") {
       missing.push(`extraction_status='${item.extraction_status}' — must be 'verified' before promotion`)
+    }
+
+    // Aggregator-origin guard:
+    // If discovered from an aggregator source, the extracted official URL must
+    // resolve to a different host than the aggregator/listing host. This blocks
+    // promoting aggregator/listing URLs as canonical truth.
+    if (item.source_url) {
+      const { data: src } = await supabase
+        .from("source_registry")
+        .select("source_type, official_url")
+        .or(`official_url.eq.${item.source_url},notification_url.eq.${item.source_url},rss_url.eq.${item.source_url}`)
+        .maybeSingle()
+
+      const sourceType = src?.source_type ?? null
+      if (sourceType === "aggregator") {
+        const officialUrl = typeof ext.official_notification_url === "string"
+          ? ext.official_notification_url.trim()
+          : ""
+
+        const toHost = (raw: string | null | undefined): string | null => {
+          if (!raw) return null
+          try {
+            const withProto = raw.startsWith("http") ? raw : `https://${raw}`
+            return new URL(withProto).hostname.replace(/^www\./, "").toLowerCase()
+          } catch {
+            return null
+          }
+        }
+
+        const aggregatorHost =
+          toHost(item.source_url) ??
+          toHost(src?.official_url ?? null)
+        const officialHost = toHost(officialUrl)
+
+        if (!officialHost) {
+          missing.push("aggregator item has invalid official_notification_url host")
+        } else if (aggregatorHost && officialHost === aggregatorHost) {
+          missing.push(
+            `aggregator item official_notification_url host '${officialHost}' matches aggregator host; resolve first-party official notification URL before promotion`
+          )
+        }
+      }
+    }
+
+    // Explicit migration-043 gate: when official confirmation is tracked as not
+    // resolved, never allow promotion.
+    if (row.official_source_resolved === false) {
+      missing.push("official_source_resolved=false — resolve first-party official source before promotion")
     }
   }
 

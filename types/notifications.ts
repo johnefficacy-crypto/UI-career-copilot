@@ -84,8 +84,6 @@ export type GroupedNotification = {
   unread_count: number
   total_events: number
   days_to_deadline: number | null
-  latest_explanation: AlertExplanation | null
-  computed_match_percent: number
 }
 
 // ─── Alert Events ─────────────────────────────────────────────────────────────
