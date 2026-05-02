@@ -1,5 +1,5 @@
 # Career Copilot implementation status checklist
-_Last updated: 2026-04-30 — Sprints 5/6/7 complete_
+_Last updated: 2026-05-02 — Sprint 8 implementation largely complete; follow-up hardening remains_
 
 This file is the single source of truth for implementation status and next build decisions.
 Legend:
@@ -7,6 +7,33 @@ Legend:
 - Effort: S = <=1 day, M = 2-4 days, L = 1+ weeks
 - Owner: frontend / backend / infra / ops / AI / QA
 - Status: [ ] not started, [~] in progress, [x] done
+
+
+## Sprint 8 trust-redesign progress (2026-05-01)
+
+- [x] Replaced user-facing `new_match` label copy with `Confirmed match` in dashboard bell and notifications list.
+- [x] Removed `ProfileCard` from main dashboard shell sidebar to reduce duplicate profile surfaces.
+- [x] Fixed `profileBlockers` summary computation to count `needs_profile_data` instead of mirroring `conditional`.
+- [x] Updated profile-impact onboarding links to route-specific paths (`/onboarding/identity`, `/onboarding/education`) for deterministic CTAs.
+- [x] Replaced static `StatsBar` with collapsible `LiveStatsBar` (collapsed by default, localStorage persistence, mobile defaults to collapsed).
+- [x] Added Sprint 8 notification grouping foundation: `notification_group_state` migration + grouped notification read path with fallback for non-migrated environments.
+- [x] Added `GET /api/dashboard/live-summary` to expose Sprint 8 LiveStats summary shape for API consumers.
+- [x] Added notification feedback capture foundation: migration + `submitRecruitmentFeedback` action + user-facing "Report issue" control on notifications cards.
+- [x] Added admin recruitment feedback queue (`/admin/recruitment-feedback`) with resolve/reject workflow and `logAdminAction('resolve_feedback', ...)` audit logging.
+- [x] Added deadline-status derivation utility and surfaced explicit closed/open status hint in notifications cards.
+- [x] Extended profile-impact missing-field routing to include exam credentials (`/onboarding/exam-credentials`).
+- [x] Added `/onboarding/exam-credentials` step + save action + `aspirant_exam_credentials` persistence migration.
+- [x] Wired notification explanation flags `matched_exam` / `matched_sector` to user preferences + recruitment metadata (removed hardcoded false TODO).
+- [x] Enforced exam-credential gating in eligibility engine: missing mandatory credential now yields conditional/needs-profile-data pathway instead of confirmed-match behavior.
+- [x] Added NotificationDecisionCard UI scaffold with explicit status/deadline/match context in notifications feed.
+- [x] Added education authority + grading conversion schema foundation (authorities and verified conversion rules tables).
+
+## Sprint 8 closeout notes (2026-05-02)
+
+- LiveStats, grouped notifications, feedback capture + admin queue, exam-credential onboarding, and credential-gated eligibility have been implemented.
+- Education authority + grading conversion schema foundation is in place; full engine-enforcement and admin tooling remain follow-up work.
+- Stale trust-surface cleanup migration added (`048_cleanup_stale_trust_data.sql`) to remove orphaned grouping rows and old unresolved feedback.
+- Notification decision cards now compute `match_percent` transparently from deterministic explanation signals (`is_eligible`, tracked status, matched exam/sector/type) instead of scaffold constants.
 
 ## P0 release blockers
 

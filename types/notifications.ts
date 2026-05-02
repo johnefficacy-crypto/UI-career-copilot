@@ -72,6 +72,22 @@ export type AlertExplanation = {
   matched_type:     boolean
 }
 
+
+export type GroupedNotification = {
+  recruitment_id: string
+  recruitment_name: string
+  org_name: string | null
+  latest_sent_at: string
+  latest_alert_type: AlertType
+  latest_priority: AlertPriority
+  latest_is_read: boolean
+  unread_count: number
+  total_events: number
+  days_to_deadline: number | null
+  latest_explanation: AlertExplanation | null
+  computed_match_percent: number
+}
+
 // ─── Alert Events ─────────────────────────────────────────────────────────────
 
 export type AlertEvent = {

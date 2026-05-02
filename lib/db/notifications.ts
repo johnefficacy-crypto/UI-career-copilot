@@ -33,6 +33,7 @@ import type {
   SourceHealthSnapshot,
   SourceTier,
   UserNotificationPrefs,
+  GroupedNotification,
 } from "@/types/notifications"
 import type { ExtractedRecruitment } from "@/types/scraping"
 
@@ -68,6 +69,65 @@ export async function getUserNotifications(
   const { data, error } = await query
   if (error) throw new Error(`getUserNotifications: ${error.message}`)
   return (data ?? []) as unknown as NotificationAlert[]
+}
+
+
+export async function getGroupedUserNotifications(
+  userId: string,
+  opts: { limit?: number } = {}
+): Promise<GroupedNotification[]> {
+  const alerts = await getUserNotifications(userId, { limit: Math.max((opts.limit ?? 50) * 4, 100) })
+  const map = new Map<string, GroupedNotification>()
+
+  const computeMatchPercent = (alert: NotificationAlert): number => {
+    const explanation = alert.explanation
+    if (!explanation) return alert.alert_type === "new_match" ? 65 : 55
+    let score = 40
+    if (explanation.is_eligible) score += 25
+    if (explanation.is_tracked) score += 15
+    if (explanation.matched_exam) score += 10
+    if (explanation.matched_sector) score += 5
+    if (explanation.matched_type) score += 5
+    if ((alert.days_to_deadline ?? 99) <= 0) score -= 10
+    return Math.max(0, Math.min(100, score))
+  }
+
+  for (const a of alerts) {
+    const current = map.get(a.recruitment_id)
+    if (!current) {
+      map.set(a.recruitment_id, {
+        recruitment_id: a.recruitment_id,
+        recruitment_name: a.recruitment_name,
+        org_name: a.org_name ?? null,
+        latest_sent_at: a.sent_at,
+        latest_alert_type: a.alert_type,
+        latest_priority: a.priority,
+        latest_is_read: a.is_read,
+        unread_count: a.is_read ? 0 : 1,
+        total_events: 1,
+        days_to_deadline: a.days_to_deadline ?? null,
+        latest_explanation: a.explanation ?? null,
+        computed_match_percent: computeMatchPercent(a),
+      })
+      continue
+    }
+
+    current.total_events += 1
+    if (!a.is_read) current.unread_count += 1
+    if (new Date(a.sent_at).getTime() > new Date(current.latest_sent_at).getTime()) {
+      current.latest_sent_at = a.sent_at
+      current.latest_alert_type = a.alert_type
+      current.latest_priority = a.priority
+      current.latest_is_read = a.is_read
+      current.days_to_deadline = a.days_to_deadline ?? current.days_to_deadline
+      current.latest_explanation = a.explanation ?? current.latest_explanation
+      current.computed_match_percent = computeMatchPercent(a)
+    }
+  }
+
+  return [...map.values()]
+    .sort((a, b) => new Date(b.latest_sent_at).getTime() - new Date(a.latest_sent_at).getTime())
+    .slice(0, opts.limit ?? 50)
 }
 
 // =============================================================================
@@ -327,6 +387,22 @@ export async function seedNotificationsForNewUser(userId: string): Promise<numbe
     (trackedRows ?? []).map((t) => t.recruitment_id as string),
   )
 
+
+  const { data: prefs } = await supabase
+    .from("aspirant_preferences")
+    .select("target_exams, preferred_sectors")
+    .eq("user_id", userId)
+    .maybeSingle()
+
+  const { data: recMeta } = await supabase
+    .from("recruitments")
+    .select("id, name, organizations(type)")
+    .in("id", Array.from(verdictByRec.keys()))
+
+  const targetExams = ((prefs?.target_exams as string[] | null) ?? []).map((x) => x.toLowerCase())
+  const preferredSectors = ((prefs?.preferred_sectors as string[] | null) ?? []).map((x) => x.toLowerCase())
+  const metaMap = new Map((recMeta ?? []).map((r: { id: string; name?: string | null; organizations?: { type?: string | null } | null }) => [r.id as string, r]))
+
   const now = new Date().toISOString()
   const inserts = Array.from(verdictByRec.entries()).map(
     ([recruitmentId, isEligibleStrict]) => ({
@@ -343,8 +419,8 @@ export async function seedNotificationsForNewUser(userId: string): Promise<numbe
       explanation: {
         is_tracked:     trackedSet.has(recruitmentId),
         is_eligible:    isEligibleStrict === true,
-        matched_exam:   false,   // TODO (P1): wire from preferences.target_exams
-        matched_sector: false,   // TODO (P1): wire from preferences.preferred_sectors
+        matched_exam:   (() => { const m = metaMap.get(recruitmentId); const n = String(m?.name ?? "").toLowerCase(); return targetExams.some((t) => n.includes(t)); })(),
+        matched_sector: (() => { const m = metaMap.get(recruitmentId); const orgType = String((m?.organizations as { type?: string } | null)?.type ?? "").toLowerCase(); return preferredSectors.includes(orgType); })(),
         matched_type:   false,
       },
     }),
