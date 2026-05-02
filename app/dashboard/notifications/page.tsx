@@ -26,21 +26,6 @@ import { submitRecruitmentFeedback } from "@/actions/feedback"
 export const revalidate = 30
 export const metadata = { title: "Notifications — Career Copilot" }
 
-const ALERT_ICONS: Record<string, string> = {
-  new_recruitment:      "🆕",
-  application_open:     "📋",
-  deadline_approaching: "⏰",
-  deadline_changed:     "📅",
-  vacancy_changed:      "👥",
-  status_changed:       "🔄",
-  admit_card_released:  "🎫",
-  result_released:      "📊",
-  new_match:            "🎯",
-  deadline_3day:        "⏰",
-  deadline_1day:        "🔴",
-  status_change:        "📋",
-}
-
 const ALERT_LABELS: Record<string, string> = {
   new_recruitment:      "New recruitment",
   application_open:     "Applications open",
@@ -137,18 +122,6 @@ function NotificationsEmptyState({ readiness }: { readiness: NotificationReadine
       )}
     </div>
   )
-}
-
-function timeAgo(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime()
-  const mins  = Math.floor(diff / 60_000)
-  const hours = Math.floor(diff / 3_600_000)
-  const days  = Math.floor(diff / 86_400_000)
-  if (mins  < 1)  return "Just now"
-  if (mins  < 60) return `${mins}m ago`
-  if (hours < 24) return `${hours}h ago`
-  if (days  < 7)  return `${days}d ago`
-  return new Date(dateStr).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })
 }
 
 export default async function NotificationsPage() {
