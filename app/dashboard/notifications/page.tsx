@@ -241,7 +241,6 @@ export default async function NotificationsPage() {
                       {alert.org_name}
                       {alert.days_to_deadline != null && (
                         <span className="ml-2 text-white/30">
-                          · {alert.days_to_deadline <= 0 ? "Closed" : `${alert.days_to_deadline}d left`}
                           · {alert.days_to_deadline <= 0 ? "Deadline passed" : `${alert.days_to_deadline}d left`}
                         </span>
                       )}
@@ -272,7 +271,6 @@ export default async function NotificationsPage() {
                 <span className="text-xs text-white/25 shrink-0 mt-0.5">
                   {timeAgo(alert.latest_sent_at)}
                 </span>
-              </div>
               </div>
             ))}
           </div>

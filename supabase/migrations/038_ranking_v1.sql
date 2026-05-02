@@ -15,7 +15,7 @@ select
   -- Eligibility component (0-40)
   case
     when er.is_eligible = true  then 40
-    when er.verdict = 'conditional' then 20
+    when coalesce(er.is_conditional, false) = true then 20
     else 0
   end                                                  as eligibility_score,
   -- Urgency component (0-30): higher when deadline is near
@@ -36,7 +36,7 @@ select
   end                                                  as relevance_score,
   -- Computed total
   (
-    case when er.is_eligible = true then 40 when er.verdict = 'conditional' then 20 else 0 end
+    case when er.is_eligible = true then 40 when coalesce(er.is_conditional, false) = true then 20 else 0 end
     +
     case
       when r.apply_end_date is null then 0
