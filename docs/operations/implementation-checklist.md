@@ -17,6 +17,44 @@ Legend:
 - [x] Updated profile-impact onboarding links to route-specific paths (`/onboarding/identity`, `/onboarding/education`) for deterministic CTAs.
 - [x] Published aspirant-centered platform strategy for forum, exam planning, productivity, community, marketplace, AI assistant/chat, and resource governance (`docs/product/aspirant-platform-strategy.md`).
 - [x] Replaced static `StatsBar` with collapsible `LiveStatsBar` (collapsed by default, localStorage persistence, mobile defaults to collapsed).
+- [x] Added admin `Control Support` dashboard (`/admin/control-support`) with operational risk cards for scrape backlog, eligibility failures, unsent alerts, kill-switch state, and unread-notification visibility.
+
+
+## Stakeholder control-support review (2026-05-02)
+
+This review captures control-support tooling required for primary stakeholders and maps current gaps to delivery priorities.
+
+### Aspirants
+
+- [x] Execution control tools are operational: mission-control dashboard, exam summary, apply tracker, focus timer, mock tests, weekly review.
+- [ ] Deterministic-to-human eligibility explanation layer with provenance (required for trust and appeals).
+- [ ] Tracker next-actions integration (users need deterministic “what to do next” guidance by status).
+
+### Managers / Ops
+
+- [x] Core governance surfaces are operational: RBAC manager, audit viewer, eligibility queue monitor, notifications governance console.
+- [ ] SLA-focused control dashboard (queue backlog age, retry spikes, stale alerts, failed sends, pending approvals).
+- [ ] Incident timeline/export view for handoffs and compliance evidence.
+
+### Admin governance owners
+
+- [x] Permission-bucket model and server-side enforcement pattern are established.
+- [ ] Source verification console remains a release-critical control gap (redirect/domain/content-type/suspicious change checks).
+- [ ] Recruitment publish gate validation remains a release-critical control gap (org verification + required-field completeness + provenance gates).
+
+### Community moderators (Phase 8+)
+
+- [ ] `/admin/community` moderation queue with report triage and reversible hide actions.
+- [ ] Mentor verification workflow and badge governance controls.
+- [ ] Resource copyright/DMCA moderation workflow before public library scale-out.
+
+### Priority order reaffirmed
+
+1. P0: source verification console + publish gate validation + incident-ready audit exports.
+2. P1: aspirant explanation layer + tracker next-actions.
+3. P1/P2: community moderation and mentor/resource trust controls.
+
+Strategic rule remains unchanged: `Trust > Speed`, `Control > Automation`, `Determinism > Heuristics`.
 
 ## P0 release blockers
 
