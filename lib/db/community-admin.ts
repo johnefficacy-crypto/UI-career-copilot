@@ -18,7 +18,8 @@ type CommunityReportUpdateRow = {
 
 export async function getCommunityModerationQueue(limit = 100): Promise<CommunityReportRow[]> {
   const supabase = await createClient()
-  const { data, error } = await supabase
+  const db = supabase as any
+  const { data, error } = await db
     .from("community_reports")
     .select("id, created_at, reason, details, status")
     .order("created_at", { ascending: false })
@@ -35,6 +36,7 @@ export async function moderateCommunityReport(input: {
   moderatedBy: string
 }): Promise<CommunityReportUpdateRow> {
   const supabase = await createClient()
+  const db = supabase as any
   const patch = {
     status: input.status,
     moderation_notes: input.moderationNotes ?? null,
@@ -42,7 +44,7 @@ export async function moderateCommunityReport(input: {
     moderated_at: new Date().toISOString(),
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from("community_reports")
     .update(patch)
     .eq("id", input.reportId)

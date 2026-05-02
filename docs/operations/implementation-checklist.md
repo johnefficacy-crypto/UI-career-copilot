@@ -11,6 +11,10 @@ Legend:
 
 ## Sprint 8 trust-redesign progress (2026-05-01)
 
+- [x] Hardened `049_marketplace_setup.sql` replay safety by adding idempotent RLS policy recreation (`DROP POLICY IF EXISTS` before each marketplace `CREATE POLICY`).
+- [x] Hardened `039_ai_chat_setup.sql` for replay by making `chat_sessions` RLS policy creation idempotent (`DROP POLICY IF EXISTS` before `CREATE POLICY`).
+- [x] Fixed migration compatibility in `038_ranking_v1.sql`: replaced legacy `eligibility_results.verdict` usage with `is_conditional` so ranking view applies cleanly on current schema.
+- [x] Hardened migration idempotency for legacy replay: `020_ai_infrastructure.sql` now drops/recreates RLS policies (`user_next_actions_own`, `study_tasks_own`, `study_sessions_own`) to avoid duplicate-policy failure on partially provisioned environments.
 - [x] Replaced user-facing `new_match` label copy with `Confirmed match` in dashboard bell and notifications list.
 - [x] Removed `ProfileCard` from main dashboard shell sidebar to reduce duplicate profile surfaces.
 - [x] Fixed `profileBlockers` summary computation to count `needs_profile_data` instead of mirroring `conditional`.

@@ -137,28 +137,35 @@ ALTER TABLE public.reviews           ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.instructor_payouts ENABLE ROW LEVEL SECURITY;
 
 -- Courses: anyone reads published; instructor manages own
+DROP POLICY IF EXISTS "Public reads published courses" ON public.courses;
 CREATE POLICY "Public reads published courses"
   ON public.courses FOR SELECT USING (status = 'published');
+DROP POLICY IF EXISTS "Instructor manages own courses" ON public.courses;
 CREATE POLICY "Instructor manages own courses"
   ON public.courses FOR ALL
   USING (auth.uid() = instructor_id)
   WITH CHECK (auth.uid() = instructor_id);
+DROP POLICY IF EXISTS "Admin manages all courses" ON public.courses;
 CREATE POLICY "Admin manages all courses"
   ON public.courses FOR ALL
   USING (EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND is_admin = true));
 
 -- Sections: readable with course
+DROP POLICY IF EXISTS "Public reads sections of published courses" ON public.course_sections;
 CREATE POLICY "Public reads sections of published courses"
   ON public.course_sections FOR SELECT
   USING (EXISTS (SELECT 1 FROM public.courses WHERE id = course_id AND status = 'published'));
+DROP POLICY IF EXISTS "Instructor manages own sections" ON public.course_sections;
 CREATE POLICY "Instructor manages own sections"
   ON public.course_sections FOR ALL
   USING (EXISTS (SELECT 1 FROM public.courses WHERE id = course_id AND instructor_id = auth.uid()));
 
 -- Lessons: public reads preview or enrolled reads all
+DROP POLICY IF EXISTS "Public reads free preview lessons" ON public.lessons;
 CREATE POLICY "Public reads free preview lessons"
   ON public.lessons FOR SELECT
   USING (is_free_preview = true);
+DROP POLICY IF EXISTS "Enrolled users read all lessons" ON public.lessons;
 CREATE POLICY "Enrolled users read all lessons"
   ON public.lessons FOR SELECT
   USING (
@@ -168,6 +175,7 @@ CREATE POLICY "Enrolled users read all lessons"
       WHERE cs.id = section_id AND e.user_id = auth.uid() AND e.status = 'active'
     )
   );
+DROP POLICY IF EXISTS "Instructor manages own lessons" ON public.lessons;
 CREATE POLICY "Instructor manages own lessons"
   ON public.lessons FOR ALL
   USING (
@@ -179,24 +187,31 @@ CREATE POLICY "Instructor manages own lessons"
   );
 
 -- Enrollments
+DROP POLICY IF EXISTS "Users read own enrollments" ON public.enrollments;
 CREATE POLICY "Users read own enrollments"
   ON public.enrollments FOR SELECT USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Service role manages enrollments" ON public.enrollments;
 CREATE POLICY "Service role manages enrollments"
   ON public.enrollments FOR ALL USING (true) WITH CHECK (true);
 
 -- Progress
+DROP POLICY IF EXISTS "Users manage own progress" ON public.lesson_progress;
 CREATE POLICY "Users manage own progress"
   ON public.lesson_progress FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 
 -- Reviews
+DROP POLICY IF EXISTS "Public reads reviews" ON public.reviews;
 CREATE POLICY "Public reads reviews"
   ON public.reviews FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Users manage own reviews" ON public.reviews;
 CREATE POLICY "Users manage own reviews"
   ON public.reviews FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 
 -- Payouts: instructor reads own
+DROP POLICY IF EXISTS "Instructor reads own payouts" ON public.instructor_payouts;
 CREATE POLICY "Instructor reads own payouts"
   ON public.instructor_payouts FOR SELECT USING (auth.uid() = instructor_id);
+DROP POLICY IF EXISTS "Admin manages all payouts" ON public.instructor_payouts;
 CREATE POLICY "Admin manages all payouts"
   ON public.instructor_payouts FOR ALL
   USING (EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND is_admin = true));
