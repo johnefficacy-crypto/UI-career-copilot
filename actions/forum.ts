@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use server"
 
 import { redirect } from "next/navigation"
@@ -169,4 +170,42 @@ export async function markBestAnswerAction(formData: FormData) {
 
   revalidatePath(`/forum/post/${postId}`)
   redirect(`/forum/post/${postId}#comments`)
+}
+
+export async function reportForumContentAction(formData: FormData) {
+  const user = await requireUser()
+  const supabase = await createClient() as unknown as { from: (table: string) => any }
+
+  const postId = (formData.get("post_id") as string) || null
+  const commentId = (formData.get("comment_id") as string) || null
+  const postPageId = (formData.get("post_page_id") as string) || postId || ""
+  const reason = String(formData.get("reason") ?? "").trim()
+  const details = String(formData.get("details") ?? "").trim() || null
+
+  if (!reason || (!postId && !commentId)) {
+    redirect(`/forum/post/${postPageId}?error=${encodeURIComponent("Invalid report payload")}`)
+  }
+
+  const lc = reason.toLowerCase()
+  const severity = lc.includes("scam") || lc.includes("abuse") || lc.includes("hate") || lc.includes("threat")
+    ? "p0_harmful"
+    : (lc.includes("mislead") || lc.includes("wrong") || lc.includes("fake") ? "p1_misleading" : "p2_spam_noise")
+
+  const payload: Record<string, unknown> = {
+    reporter_user_id: user.id,
+    reason,
+    details,
+    severity,
+    target_type: commentId ? "comment" : "post",
+    post_id: postId,
+    comment_id: commentId,
+  }
+
+  const { error } = await supabase.from("forum_reports").insert(payload)
+  if (error) {
+    redirect(`/forum/post/${postPageId}?error=${encodeURIComponent(error.message)}`)
+  }
+
+  revalidatePath(`/forum/post/${postPageId}`)
+  redirect(`/forum/post/${postPageId}?reported=1#comments`)
 }

@@ -91,6 +91,16 @@ export default async function MarketplacePage({
           </p>
         </div>
 
+        {/* Trust + disclosure */}
+        <div className="mb-6 rounded-2xl border border-[#e8d5a3]/20 bg-[#e8d5a3]/[0.06] p-4">
+          <p className="text-[#e8d5a3] text-xs font-medium tracking-wide uppercase mb-1">Trust & disclosure</p>
+          <ul className="text-white/60 text-xs space-y-1 list-disc pl-4">
+            <li>Verified mentor/course labels indicate completed identity + quality checks.</li>
+            <li>Promoted listings are explicitly disclosed and never replace trust or relevance ranking.</li>
+            <li>Always compare price, outcomes, and free alternatives before purchase.</li>
+          </ul>
+        </div>
+
         {/* Filters */}
         <MarketplaceFilters
           examTags={EXAM_TAGS}
