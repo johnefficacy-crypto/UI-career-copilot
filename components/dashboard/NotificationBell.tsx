@@ -33,7 +33,7 @@ const ALERT_ICONS: Record<string, string> = {
 }
 
 const ALERT_LABELS: Record<string, string> = {
-  new_match:     "New exam match",
+  new_match:     "Confirmed match",
   deadline_3day: "Deadline in 3 days",
   deadline_1day: "Last day to apply",
   status_change: "Status changed",
