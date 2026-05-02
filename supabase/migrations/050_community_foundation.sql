@@ -196,50 +196,62 @@ alter table public.community_votes enable row level security;
 alter table public.community_reports enable row level security;
 
 -- Read access
-create policy if not exists "Community spaces are readable"
+drop policy if exists "Community spaces are readable" on public.community_spaces;
+create policy "Community spaces are readable"
 on public.community_spaces for select using (is_active = true or public.current_user_is_community_admin());
 
-create policy if not exists "Community channels are readable"
+drop policy if exists "Community channels are readable" on public.community_channels;
+create policy "Community channels are readable"
 on public.community_channels for select using (is_active = true or public.current_user_is_community_admin());
 
-create policy if not exists "Community threads are readable"
+drop policy if exists "Community threads are readable" on public.community_threads;
+create policy "Community threads are readable"
 on public.community_threads for select using (true);
 
-create policy if not exists "Community replies are readable"
+drop policy if exists "Community replies are readable" on public.community_replies;
+create policy "Community replies are readable"
 on public.community_replies for select using (true);
 
-create policy if not exists "Community reports readable by moderators"
+drop policy if exists "Community reports readable by moderators" on public.community_reports;
+create policy "Community reports readable by moderators"
 on public.community_reports for select using (public.current_user_is_community_admin());
 
 -- Write access with governance constraints
-create policy if not exists "Community admins manage spaces"
+drop policy if exists "Community admins manage spaces" on public.community_spaces;
+create policy "Community admins manage spaces"
 on public.community_spaces for all using (public.current_user_is_community_admin()) with check (public.current_user_is_community_admin());
 
-create policy if not exists "Community admins manage channels"
+drop policy if exists "Community admins manage channels" on public.community_channels;
+create policy "Community admins manage channels"
 on public.community_channels for all using (public.current_user_is_community_admin()) with check (public.current_user_is_community_admin());
 
-create policy if not exists "Users create non-official threads"
+drop policy if exists "Users create non-official threads" on public.community_threads;
+create policy "Users create non-official threads"
 on public.community_threads for insert
 with check (
   auth.uid() = user_id
   and not public.community_channel_is_official_updates(channel_id)
 );
 
-create policy if not exists "Users update own non-locked threads"
+drop policy if exists "Users update own non-locked threads" on public.community_threads;
+create policy "Users update own non-locked threads"
 on public.community_threads for update
 using (auth.uid() = user_id and is_locked = false)
 with check (auth.uid() = user_id);
 
-create policy if not exists "Community admins update any thread"
+drop policy if exists "Community admins update any thread" on public.community_threads;
+create policy "Community admins update any thread"
 on public.community_threads for update
 using (public.current_user_is_community_admin())
 with check (public.current_user_is_community_admin());
 
-create policy if not exists "Community admins delete any thread"
+drop policy if exists "Community admins delete any thread" on public.community_threads;
+create policy "Community admins delete any thread"
 on public.community_threads for delete
 using (public.current_user_is_community_admin());
 
-create policy if not exists "Users create replies on non-official threads"
+drop policy if exists "Users create replies on non-official threads" on public.community_replies;
+create policy "Users create replies on non-official threads"
 on public.community_replies for insert
 with check (
   auth.uid() = user_id
@@ -252,54 +264,66 @@ with check (
   )
 );
 
-create policy if not exists "Users update own replies"
+drop policy if exists "Users update own replies" on public.community_replies;
+create policy "Users update own replies"
 on public.community_replies for update
 using (auth.uid() = user_id)
 with check (auth.uid() = user_id);
 
-create policy if not exists "Community admins delete replies"
+drop policy if exists "Community admins delete replies" on public.community_replies;
+create policy "Community admins delete replies"
 on public.community_replies for delete
 using (public.current_user_is_community_admin());
 
-create policy if not exists "Users manage own thread votes"
+drop policy if exists "Users manage own thread votes" on public.community_votes;
+create policy "Users manage own thread votes"
 on public.community_votes for all
 using (auth.uid() = user_id)
 with check (auth.uid() = user_id);
 
-create policy if not exists "Users create reports"
+drop policy if exists "Users create reports" on public.community_reports;
+create policy "Users create reports"
 on public.community_reports for insert
 with check (auth.uid() = reporter_id);
 
-create policy if not exists "Community admins moderate reports"
+drop policy if exists "Community admins moderate reports" on public.community_reports;
+create policy "Community admins moderate reports"
 on public.community_reports for update
 using (public.current_user_is_community_admin())
 with check (public.current_user_is_community_admin());
 
 -- Triggers
-create or replace trigger trg_community_spaces_updated_at
+drop trigger if exists trg_community_spaces_updated_at on public.community_spaces;
+create trigger trg_community_spaces_updated_at
 before update on public.community_spaces
 for each row execute function public.set_updated_at();
 
-create or replace trigger trg_community_channels_updated_at
+drop trigger if exists trg_community_channels_updated_at on public.community_channels;
+create trigger trg_community_channels_updated_at
 before update on public.community_channels
 for each row execute function public.set_updated_at();
 
-create or replace trigger trg_community_threads_updated_at
+drop trigger if exists trg_community_threads_updated_at on public.community_threads;
+create trigger trg_community_threads_updated_at
 before update on public.community_threads
 for each row execute function public.set_updated_at();
 
-create or replace trigger trg_community_replies_updated_at
+drop trigger if exists trg_community_replies_updated_at on public.community_replies;
+create trigger trg_community_replies_updated_at
 before update on public.community_replies
 for each row execute function public.set_updated_at();
 
-create or replace trigger trg_community_reports_updated_at
+drop trigger if exists trg_community_reports_updated_at on public.community_reports;
+create trigger trg_community_reports_updated_at
 before update on public.community_reports
 for each row execute function public.set_updated_at();
 
-create or replace trigger trg_community_replies_count
+drop trigger if exists trg_community_replies_count on public.community_replies;
+create trigger trg_community_replies_count
 after insert or delete on public.community_replies
 for each row execute function public.bump_thread_reply_activity();
 
-create or replace trigger trg_community_votes_count
+drop trigger if exists trg_community_votes_count on public.community_votes;
+create trigger trg_community_votes_count
 after insert or delete on public.community_votes
 for each row execute function public.bump_thread_vote_activity();
