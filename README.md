@@ -26,18 +26,16 @@ Career Copilot is not only a notification tracker. It is intended to become an a
 
 ## Current engineering priority
 
-Automation expansion is blocked until governance is reliable.
+Governance baseline is now operational (Sprints 5/6/7 complete).
 
-Current P0 sequence:
+Current execution sequence:
 
-1. Full RBAC enforcement across admin routes and server actions.
-2. Admin audit viewer.
-3. Eligibility queue monitor.
-4. Source/recruitment/organization verification workflows.
-5. Notification governance.
-6. AI action policy layer.
+1. Sprint 8 trust-redesign hardening (UX trust language + deterministic CTAs).
+2. Documentation truth alignment (`README.md`, implementation checklist, feature registry).
+3. Phase 8 community foundation (forum channels, moderation queue, reply notifications).
+4. AI follow-up hardening (deterministic-to-LLM explanations with provenance, embeddings ETL).
 
-See [`docs/operations/implementation-checklist.md`](docs/operations/implementation-checklist.md)
+See [`docs/operations/implementation-checklist.md`](docs/operations/implementation-checklist.md) and [`docs/product/roadmap.md`](docs/product/roadmap.md).
 
 ## Tech stack
 
@@ -81,7 +79,6 @@ Do not use old phase reports as current implementation truth. Phase reports are 
 | Document | Purpose |
 |---|---|
 | `docs/00-ai-context.md` | Short context pack for ChatGPT, Claude, and other agents |
-| `docs/01-current-status.md` | Human-readable current state snapshot |
 | `docs/feature-registry.md` | Feature-to-code implementation map |
 | `docs/engineering/domain-model.md` | Canonical domain model and migration rules |
 | `docs/operations/implementation-checklist.md` | Current implementation truth and P0/P1/P2 priorities |
@@ -89,7 +86,7 @@ Do not use old phase reports as current implementation truth. Phase reports are 
 | `docs/engineering/admin-strategy.md` | Governance-first admin and automation doctrine |
 | `docs/engineering/source-intelligence.md` | Source, scraper, official/aggregator, trust, and RSS/JSON strategy |
 | `docs/product/roadmap.md` | Broad product and architecture roadmap |
-| `docs/history/README.md` | Architecture Decision Records |
+| `docs/decisions/` | Architecture Decision Records (ADRs) |
 | `docs/history/` | Historical phase reports and chat summaries |
 
 ## Non-negotiable engineering rules

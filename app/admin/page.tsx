@@ -97,6 +97,7 @@ export default async function AdminOverviewPage({
           { href: "/admin/audit",             title: "Audit Log",         desc: "Append-only record of every admin mutation" },
           { href: "/admin/rbac",              title: "RBAC Manager",      desc: "Manage admin roles and super_admin access" },
           { href: "/admin/ai-policy",         title: "AI Policy",         desc: "Control which actions the AI may take autonomously" },
+          { href: "/admin/control-support",  title: "Control Support",   desc: "SLA risk dashboard for backlog, failures, and incident signals" },
         ].map(item => (
           <Link key={item.href} href={item.href}
             className="flex flex-col gap-1 px-5 py-4 rounded-xl bg-white/[0.03] border border-white/[0.07] hover:border-white/[0.14] transition-colors">

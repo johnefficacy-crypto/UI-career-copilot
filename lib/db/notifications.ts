@@ -615,6 +615,7 @@ export async function validateScrapeItemForPromotion(itemId: string): Promise<vo
 
   const missing: string[] = []
   const ext = (item.extracted_data ?? {}) as Record<string, unknown>
+  const row = item as unknown as Record<string, unknown>
 
   // evidence_required=false means this item was manually curated — skip evidence checks
   if (item.evidence_required !== false) {
@@ -626,6 +627,54 @@ export async function validateScrapeItemForPromotion(itemId: string): Promise<vo
     // Must be marked verified (or this is an explicit override by admin)
     if (item.extraction_status !== "verified") {
       missing.push(`extraction_status='${item.extraction_status}' — must be 'verified' before promotion`)
+    }
+
+    // Aggregator-origin guard:
+    // If discovered from an aggregator source, the extracted official URL must
+    // resolve to a different host than the aggregator/listing host. This blocks
+    // promoting aggregator/listing URLs as canonical truth.
+    if (item.source_url) {
+      const { data: src } = await supabase
+        .from("source_registry")
+        .select("source_type, official_url")
+        .or(`official_url.eq.${item.source_url},notification_url.eq.${item.source_url},rss_url.eq.${item.source_url}`)
+        .maybeSingle()
+
+      const sourceType = src?.source_type ?? null
+      if (sourceType === "aggregator") {
+        const officialUrl = typeof ext.official_notification_url === "string"
+          ? ext.official_notification_url.trim()
+          : ""
+
+        const toHost = (raw: string | null | undefined): string | null => {
+          if (!raw) return null
+          try {
+            const withProto = raw.startsWith("http") ? raw : `https://${raw}`
+            return new URL(withProto).hostname.replace(/^www\./, "").toLowerCase()
+          } catch {
+            return null
+          }
+        }
+
+        const aggregatorHost =
+          toHost(item.source_url) ??
+          toHost(src?.official_url ?? null)
+        const officialHost = toHost(officialUrl)
+
+        if (!officialHost) {
+          missing.push("aggregator item has invalid official_notification_url host")
+        } else if (aggregatorHost && officialHost === aggregatorHost) {
+          missing.push(
+            `aggregator item official_notification_url host '${officialHost}' matches aggregator host; resolve first-party official notification URL before promotion`
+          )
+        }
+      }
+    }
+
+    // Explicit migration-043 gate: when official confirmation is tracked as not
+    // resolved, never allow promotion.
+    if (row.official_source_resolved === false) {
+      missing.push("official_source_resolved=false — resolve first-party official source before promotion")
     }
   }
 

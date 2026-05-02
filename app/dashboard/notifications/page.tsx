@@ -20,7 +20,6 @@ import type { GroupedNotification } from "@/types/notifications"
 import type { NotificationReadiness } from "@/lib/db/notifications"
 import { markAllNotificationsRead } from "@/actions/notifications"
 import { submitRecruitmentFeedback } from "@/actions/feedback"
-import { NotificationDecisionCard } from "@/components/dashboard/NotificationDecisionCard"
 
 // Phase 2 report recommendation: revalidate=30 instead of force-dynamic
 // Saves 1 full Supabase RTT (~1.3s from India) on every repeat page load
@@ -207,16 +206,6 @@ export default async function NotificationsPage() {
         ) : (
           <div className="space-y-2">
             {alerts.map((alert: GroupedNotification) => (
-              <div key={alert.recruitment_id} className="space-y-2">
-                <NotificationDecisionCard
-                  recruitmentId={alert.recruitment_id}
-                  recruitmentName={alert.recruitment_name ?? "Recruitment"}
-                  orgName={alert.org_name ?? null}
-                  statusLabel={(ALERT_LABELS[alert.latest_alert_type] ?? alert.latest_alert_type)}
-                  deadlineHint={alert.days_to_deadline == null ? "Deadline unknown" : alert.days_to_deadline <= 0 ? "Closed" : `${alert.days_to_deadline}d left`}
-                  unreadCount={alert.unread_count}
-                  matchPercent={alert.unread_count > 0 ? 75 : 65}
-                />
               <div
                 key={alert.recruitment_id}
                 className="flex items-start gap-4 px-4 py-4 rounded-xl transition-colors"
@@ -253,6 +242,7 @@ export default async function NotificationsPage() {
                       {alert.days_to_deadline != null && (
                         <span className="ml-2 text-white/30">
                           · {alert.days_to_deadline <= 0 ? "Closed" : `${alert.days_to_deadline}d left`}
+                          · {alert.days_to_deadline <= 0 ? "Deadline passed" : `${alert.days_to_deadline}d left`}
                         </span>
                       )}
                     </p>

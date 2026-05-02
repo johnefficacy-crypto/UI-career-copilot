@@ -339,3 +339,32 @@ Trust > Speed
 Control > Automation
 Determinism > Heuristics
 ```
+
+
+## 13. Stakeholder control-support minimums
+
+Use this checklist before enabling broader automation or community scale-up.
+
+### Aspirant-facing controls
+
+- Eligibility explanations must remain deterministic-source-derived (AI may explain, not decide).
+- Application tracker states should map to explicit next actions.
+- Official-link integrity must be preserved in all user-facing recruitment surfaces.
+
+### Manager / operations controls
+
+- Daily review: eligibility queue age buckets, failure/retry distribution, notification send failures, scraper approval backlog.
+- Weekly review: unresolved audit anomalies and policy exceptions.
+- Incident mode: ensure emergency notification kill switch and queue triage playbook are executable without ad-hoc SQL where possible.
+
+### Governance admin controls
+
+- No publish action should bypass org verification, provenance checks, and required-field completeness gates.
+- Source trust checks must include redirect and domain verification before canonical URL acceptance.
+- Admin mutations must remain audit-visible and permission-guarded at server action level.
+
+### Community moderation controls (Phase 8+)
+
+- Keep `official_updates` channels admin-write only.
+- Enforce human-review moderation for AI-flagged content at launch.
+- Require mentor verification and copyright moderation before marketplace/resource expansion.

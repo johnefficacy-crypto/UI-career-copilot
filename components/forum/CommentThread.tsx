@@ -1,7 +1,7 @@
 "use client"
 
 import type { ForumCommentWithAuthor } from "@/types/forum"
-import { upvoteCommentAction, deleteCommentAction, markBestAnswerAction } from "@/actions/forum"
+import { upvoteCommentAction, deleteCommentAction, markBestAnswerAction, reportForumContentAction } from "@/actions/forum"
 import { CommentForm } from "./CommentForm"
 import { timeAgo } from "@/lib/utils/dates"
 
@@ -154,6 +154,19 @@ function CommentItem({
               ✓ Mark answer
             </button>
           </form>
+        )}
+
+        {/* Report comment */}
+        {isLoggedIn && !isCommentAuthor && (
+          <details>
+            <summary className="text-xs cursor-pointer" style={{ color: "var(--text-dim)" }}>Report</summary>
+            <form action={reportForumContentAction} className="mt-2 flex flex-col gap-2 min-w-[220px]">
+              <input type="hidden" name="comment_id" value={comment.id} />
+              <input type="hidden" name="post_page_id" value={postId} />
+              <input name="reason" placeholder="Reason" className="px-2 py-1 rounded-md text-xs bg-black/40 border border-white/20 text-white" required />
+              <button type="submit" className="text-xs px-2 py-1 rounded-md border border-amber-400/40 text-amber-300">Submit</button>
+            </form>
+          </details>
         )}
 
         {/* Delete (comment author) */}
