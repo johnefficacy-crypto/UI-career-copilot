@@ -670,6 +670,12 @@ export async function validateScrapeItemForPromotion(itemId: string): Promise<vo
         }
       }
     }
+
+    // Explicit migration-043 gate: when official confirmation is tracked as not
+    // resolved, never allow promotion.
+    if (row.official_source_resolved === false) {
+      missing.push("official_source_resolved=false — resolve first-party official source before promotion")
+    }
   }
 
   // Required fields always checked

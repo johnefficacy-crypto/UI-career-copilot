@@ -1,5 +1,5 @@
 # Career Copilot implementation status checklist
-_Last updated: 2026-04-30 — Sprints 5/6/7 complete_
+_Last updated: 2026-05-02 — scraper trust hardening in progress_
 
 This file is the single source of truth for implementation status and next build decisions.
 Legend:
@@ -143,6 +143,30 @@ Strategic rule remains unchanged: `Trust > Speed`, `Control > Automation`, `Dete
   - Notes:
     - Prevents treating aggregator/listing URLs as canonical official notifications.
   - Suggested PR title: `fix(scraper): require distinct official host for aggregator promotions`
+
+- [x] Add explicit official-source resolution flags for scrape queue rows
+  - Effort: S
+  - Owner: backend
+  - Paths:
+    - `supabase/migrations/043_aggregator_official_source_gate.sql` ✓ created
+    - `supabase/functions/scheduled-scraper/index.ts` ✓ writes `official_source_resolved` + `official_source_host`
+    - `lib/db/notifications.ts` ✓ promotion validator blocks rows where `official_source_resolved=false`
+  - Notes:
+    - Adds durable database-level state instead of relying only on inline hostname checks.
+  - Suggested PR title: `feat(scraper): persist and enforce official-source resolution before promotion`
+
+- [~] Move from queue-item approval to candidate-centric trusted promotion
+  - Effort: L
+  - Owner: backend + ops
+  - Paths:
+    - `supabase/migrations/044_aggregator_candidate_layers.sql` ✓ foundation tables created
+    - `supabase/functions/scheduled-scraper/index.ts` ✓ writes candidate/listing observation rows
+    - `lib/db/notifications.ts` (pending) — promotion still queue-item-centric
+    - `lib/eligibility/runner.ts` (pending) — no trust-state filter yet
+  - Notes:
+    - Current pipeline is safer than before but still partial: candidate workflow + eligibility trust gating remain required before declaring trusted ingestion complete.
+  - Suggested PR title: `feat(scraper): complete candidate-centric promotion and eligibility trust gating`
+
 
 - [x] Full RBAC enforcement — replace is_admin checks across all admin routes and actions
   - Effort: M
