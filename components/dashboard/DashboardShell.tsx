@@ -4,19 +4,20 @@ import type { NotificationAlert }         from "@/types/notifications"
 import type { NextAction }               from "@/lib/db/next-actions"
 import type { StudyTask }               from "@/lib/db/study-tasks"
 import { DashboardNav }                   from "./DashboardNav"
-import { ProfileCard }                    from "./ProfileCard"
 import { ExamTargetCard }                 from "./ExamTargetCard"
 import { NotificationsFeed }              from "./NotificationsFeed"
-import { StatsBar }                       from "./StatsBar"
+import { LiveStatsBar }                   from "./LiveStatsBar"
 import { StudyPlanWidget }                from "./StudyPlanWidget"
 import { SkillTestWidget }                from "./SkillTestWidget"
 import { MissionControlPanel }            from "./MissionControlPanel"
 import { NextBestActionPanel }            from "./NextBestActionPanel"
+import { TodayPrioritiesPanel }           from "./TodayPrioritiesPanel"
 import { DailyTasksWidget }              from "./DailyTasksWidget"
 import { ProfileImpactCard }              from "./ProfileImpactCard"
 import { AiChatWidget }                   from "@/components/chat/AiChatWidget"
 import type { getUserPlans, getPlanStats } from "@/lib/db/study-planner"
 import type { getEligibleRecruitments }   from "@/lib/eligibility/runner"
+import type { LiveStatsSummary }          from "./LiveStatsBar"
 
 type UserPlansResult            = Awaited<ReturnType<typeof getUserPlans>>
 type EligibleRecruitmentsResult = Awaited<ReturnType<typeof getEligibleRecruitments>>
@@ -34,6 +35,7 @@ interface Props {
   lastChatSessionId:    string | null
   nextActions:          NextAction[]
   todaysTasks:          StudyTask[]
+  liveStats:            LiveStatsSummary
   children?:            React.ReactNode
 }
 
@@ -50,8 +52,9 @@ export function DashboardShell({
   lastChatSessionId,
   nextActions,
   todaysTasks,
+  liveStats,
 }: Props) {
-  const { profile, education, experience, preferences, targets, attempts } = data
+  const { profile, targets, attempts } = data
 
   const firstName = profile?.full_name?.split(" ")[0] ?? "Aspirant"
 
@@ -119,18 +122,16 @@ export function DashboardShell({
         </div>
 
         {/* Stats bar */}
-        <StatsBar
-          targets={targets}
-          attempts={attempts}
-          education={education}
-          preferences={preferences}
-        />
+        <LiveStatsBar summary={liveStats} />
 
         {/* Main grid */}
         <div className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-5">
 
           {/* Left + centre — 2 cols */}
           <div className="lg:col-span-2 flex flex-col gap-5">
+            {/* Unified deterministic daily priorities block */}
+            <TodayPrioritiesPanel missionControlData={missionControlData} todaysTasks={todaysTasks} />
+
             {/* Next-best-action panel — shown only when there are actions */}
             <NextBestActionPanel actions={nextActions} />
 
@@ -170,11 +171,6 @@ export function DashboardShell({
           {/* Right col */}
           <div className="flex flex-col gap-5">
             <ProfileImpactCard />
-            <ProfileCard
-              profile={profile}
-              education={education}
-              experience={experience}
-            />
             <StudyPlanWidget
               plan={
                 primaryPlan
