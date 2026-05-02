@@ -273,6 +273,7 @@ export default async function NotificationsPage() {
                   {timeAgo(alert.latest_sent_at)}
                 </span>
               </div>
+              </div>
             ))}
           </div>
         )}
