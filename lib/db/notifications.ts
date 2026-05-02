@@ -801,6 +801,31 @@ export async function approveScrapeItem(
     throw new Error(`approveScrapeItem: promotion returned no recruitment_id for item ${itemId}`)
   }
 
+  // Link promoted recruitment back to candidate layer when available.
+  let sourceCandidateId: string | null = null
+  try {
+    const { data: candObs } = await (supabase as unknown as {
+      from: (table: string) => {
+        select: (cols: string) => {
+          eq: (col: string, val: string) => {
+            order: (col: string, opts: { ascending: boolean }) => {
+              limit: (n: number) => { maybeSingle: () => Promise<{ data: { candidate_id: string | null } | null }> }
+            }
+          }
+        }
+      }
+    })
+      .from("candidate_observations")
+      .select("candidate_id")
+      .eq("scrape_queue_id", itemId)
+      .order("observed_at", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    sourceCandidateId = candObs?.candidate_id ?? null
+  } catch {
+    sourceCandidateId = null
+  }
+
   // ── 5. Mark approved (+ store recruited_id in duplicate_of for idempotency)
   const { error: updateErr } = await supabase
     .from("scrape_queue")
@@ -815,6 +840,16 @@ export async function approveScrapeItem(
     .eq("id", itemId)
 
   if (updateErr) throw new Error(`approveScrapeItem update: ${updateErr.message}`)
+
+  await (supabase as unknown as {
+    from: (table: string) => { update: (v: Record<string, unknown>) => { eq: (c: string, v: string) => Promise<unknown> } }
+  })
+    .from("recruitments")
+    .update({
+      ingestion_trust_status: "verified",
+      source_candidate_id: sourceCandidateId,
+    })
+    .eq("id", recruitmentId)
 
   // ── 6. Record alert_event for audit trail ────────────────────────────────────
   //
@@ -912,6 +947,53 @@ export async function approveScrapeItem(
   } catch (e) {
     console.error("[approveScrapeItem] eligibility queue non-fatal:", e)
   }
+}
+
+/**
+ * Candidate-centric approval path.
+ * Finds the best promotable queue row linked to a candidate and delegates to
+ * approveScrapeItem() so all existing evidence + queue side effects remain intact.
+ */
+export async function approveCandidate(
+  candidateId: string,
+  reviewerId: string,
+  notes?: string,
+): Promise<{ queue_item_id: string; recruitment_id: string | null }> {
+  const supabase = await createClient()
+
+  const { data: observations, error } = await (supabase as unknown as {
+    from: (table: string) => {
+      select: (cols: string) => {
+        eq: (col: string, val: string) => {
+          not: (c: string, op: string, v: null) => {
+            order: (c1: string, o1: { ascending: boolean; nullsFirst?: boolean }) => {
+              order: (c2: string, o2: { ascending: boolean }) => Promise<{ data: Array<{ scrape_queue_id: string | null; confidence_score: number | null; observed_at: string }> | null; error: { message: string } | null }>
+            }
+          }
+        }
+      }
+    }
+  })
+    .from("candidate_observations")
+    .select("scrape_queue_id, confidence_score, observed_at")
+    .eq("candidate_id", candidateId)
+    .not("scrape_queue_id", "is", null)
+    .order("confidence_score", { ascending: false, nullsFirst: false })
+    .order("observed_at", { ascending: false })
+
+  if (error) throw new Error(`approveCandidate: ${error.message}`)
+  const queueId = (observations ?? []).find(o => o.scrape_queue_id)?.scrape_queue_id
+  if (!queueId) throw new Error(`approveCandidate: no queue row linked to candidate ${candidateId}`)
+
+  await approveScrapeItem(queueId, reviewerId, notes)
+
+  const { data: row } = await supabase
+    .from("scrape_queue")
+    .select("duplicate_of")
+    .eq("id", queueId)
+    .maybeSingle()
+
+  return { queue_item_id: queueId, recruitment_id: row?.duplicate_of ?? null }
 }
 
 export async function rejectScrapeItem(
