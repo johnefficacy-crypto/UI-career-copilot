@@ -110,6 +110,7 @@ export async function runEligibilityForUser(
       recruitment_id,
       recruitments!inner (
         status,
+        ingestion_trust_status,
         organizations ( state )
       ),
       age_criteria ( min_age, max_age, cutoff_date ),
@@ -117,6 +118,7 @@ export async function runEligibilityForUser(
       attempt_limits ( category, max_attempts )
     `)
     .in("recruitments.status", ["open", "upcoming"])
+    .in("recruitments.ingestion_trust_status", ["legacy", "verified", "manual_override"])
 
   if (postsError || !posts) {
     return {

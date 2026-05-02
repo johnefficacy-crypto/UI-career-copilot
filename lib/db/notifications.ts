@@ -556,6 +556,7 @@ export async function validateScrapeItemForPromotion(itemId: string): Promise<vo
 
   const missing: string[] = []
   const ext = (item.extracted_data ?? {}) as Record<string, unknown>
+  const row = item as unknown as Record<string, unknown>
 
   // evidence_required=false means this item was manually curated — skip evidence checks
   if (item.evidence_required !== false) {
@@ -567,6 +568,54 @@ export async function validateScrapeItemForPromotion(itemId: string): Promise<vo
     // Must be marked verified (or this is an explicit override by admin)
     if (item.extraction_status !== "verified") {
       missing.push(`extraction_status='${item.extraction_status}' — must be 'verified' before promotion`)
+    }
+
+    // Aggregator-origin guard:
+    // If discovered from an aggregator source, the extracted official URL must
+    // resolve to a different host than the aggregator/listing host. This blocks
+    // promoting aggregator/listing URLs as canonical truth.
+    if (item.source_url) {
+      const { data: src } = await supabase
+        .from("source_registry")
+        .select("source_type, official_url")
+        .or(`official_url.eq.${item.source_url},notification_url.eq.${item.source_url},rss_url.eq.${item.source_url}`)
+        .maybeSingle()
+
+      const sourceType = src?.source_type ?? null
+      if (sourceType === "aggregator") {
+        const officialUrl = typeof ext.official_notification_url === "string"
+          ? ext.official_notification_url.trim()
+          : ""
+
+        const toHost = (raw: string | null | undefined): string | null => {
+          if (!raw) return null
+          try {
+            const withProto = raw.startsWith("http") ? raw : `https://${raw}`
+            return new URL(withProto).hostname.replace(/^www\./, "").toLowerCase()
+          } catch {
+            return null
+          }
+        }
+
+        const aggregatorHost =
+          toHost(item.source_url) ??
+          toHost(src?.official_url ?? null)
+        const officialHost = toHost(officialUrl)
+
+        if (!officialHost) {
+          missing.push("aggregator item has invalid official_notification_url host")
+        } else if (aggregatorHost && officialHost === aggregatorHost) {
+          missing.push(
+            `aggregator item official_notification_url host '${officialHost}' matches aggregator host; resolve first-party official notification URL before promotion`
+          )
+        }
+      }
+    }
+
+    // Explicit migration-043 gate: when official confirmation is tracked as not
+    // resolved, never allow promotion.
+    if (row.official_source_resolved === false) {
+      missing.push("official_source_resolved=false — resolve first-party official source before promotion")
     }
   }
 
@@ -693,6 +742,31 @@ export async function approveScrapeItem(
     throw new Error(`approveScrapeItem: promotion returned no recruitment_id for item ${itemId}`)
   }
 
+  // Link promoted recruitment back to candidate layer when available.
+  let sourceCandidateId: string | null = null
+  try {
+    const { data: candObs } = await (supabase as unknown as {
+      from: (table: string) => {
+        select: (cols: string) => {
+          eq: (col: string, val: string) => {
+            order: (col: string, opts: { ascending: boolean }) => {
+              limit: (n: number) => { maybeSingle: () => Promise<{ data: { candidate_id: string | null } | null }> }
+            }
+          }
+        }
+      }
+    })
+      .from("candidate_observations")
+      .select("candidate_id")
+      .eq("scrape_queue_id", itemId)
+      .order("observed_at", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    sourceCandidateId = candObs?.candidate_id ?? null
+  } catch {
+    sourceCandidateId = null
+  }
+
   // ── 5. Mark approved (+ store recruited_id in duplicate_of for idempotency)
   const { error: updateErr } = await supabase
     .from("scrape_queue")
@@ -707,6 +781,16 @@ export async function approveScrapeItem(
     .eq("id", itemId)
 
   if (updateErr) throw new Error(`approveScrapeItem update: ${updateErr.message}`)
+
+  await (supabase as unknown as {
+    from: (table: string) => { update: (v: Record<string, unknown>) => { eq: (c: string, v: string) => Promise<unknown> } }
+  })
+    .from("recruitments")
+    .update({
+      ingestion_trust_status: "verified",
+      source_candidate_id: sourceCandidateId,
+    })
+    .eq("id", recruitmentId)
 
   // ── 6. Record alert_event for audit trail ────────────────────────────────────
   //
@@ -804,6 +888,53 @@ export async function approveScrapeItem(
   } catch (e) {
     console.error("[approveScrapeItem] eligibility queue non-fatal:", e)
   }
+}
+
+/**
+ * Candidate-centric approval path.
+ * Finds the best promotable queue row linked to a candidate and delegates to
+ * approveScrapeItem() so all existing evidence + queue side effects remain intact.
+ */
+export async function approveCandidate(
+  candidateId: string,
+  reviewerId: string,
+  notes?: string,
+): Promise<{ queue_item_id: string; recruitment_id: string | null }> {
+  const supabase = await createClient()
+
+  const { data: observations, error } = await (supabase as unknown as {
+    from: (table: string) => {
+      select: (cols: string) => {
+        eq: (col: string, val: string) => {
+          not: (c: string, op: string, v: null) => {
+            order: (c1: string, o1: { ascending: boolean; nullsFirst?: boolean }) => {
+              order: (c2: string, o2: { ascending: boolean }) => Promise<{ data: Array<{ scrape_queue_id: string | null; confidence_score: number | null; observed_at: string }> | null; error: { message: string } | null }>
+            }
+          }
+        }
+      }
+    }
+  })
+    .from("candidate_observations")
+    .select("scrape_queue_id, confidence_score, observed_at")
+    .eq("candidate_id", candidateId)
+    .not("scrape_queue_id", "is", null)
+    .order("confidence_score", { ascending: false, nullsFirst: false })
+    .order("observed_at", { ascending: false })
+
+  if (error) throw new Error(`approveCandidate: ${error.message}`)
+  const queueId = (observations ?? []).find(o => o.scrape_queue_id)?.scrape_queue_id
+  if (!queueId) throw new Error(`approveCandidate: no queue row linked to candidate ${candidateId}`)
+
+  await approveScrapeItem(queueId, reviewerId, notes)
+
+  const { data: row } = await supabase
+    .from("scrape_queue")
+    .select("duplicate_of")
+    .eq("id", queueId)
+    .maybeSingle()
+
+  return { queue_item_id: queueId, recruitment_id: row?.duplicate_of ?? null }
 }
 
 export async function rejectScrapeItem(
