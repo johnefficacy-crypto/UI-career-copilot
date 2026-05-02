@@ -4,13 +4,35 @@ import { requireAdminRole } from "@/lib/db/admin"
 export type ForumReportStatus = "open" | "in_review" | "resolved" | "dismissed" | "escalated"
 export type ForumReportSeverity = "p0_harmful" | "p1_misleading" | "p2_spam_noise"
 
+export type ForumReportRecord = {
+  id: string
+  target_type: "post" | "comment"
+  post_id: string | null
+  comment_id: string | null
+  reason: string
+  details: string | null
+  severity: ForumReportSeverity
+  status: ForumReportStatus
+  assigned_admin_id: string | null
+  action_notes: string | null
+  reporter_user_id: string
+  resolved_at: string | null
+  resolved_by: string | null
+  created_at: string
+  updated_at: string
+  reporter: { full_name: string | null } | null
+  assigned_admin: { full_name: string | null } | null
+  post: { id: string; title: string } | null
+  comment: { id: string; body: string; post_id: string } | null
+}
+
 export async function listForumReports(filters?: {
   status?: ForumReportStatus | "all"
   severity?: ForumReportSeverity | "all"
   limit?: number
-}) {
+}): Promise<ForumReportRecord[]> {
   await requireAdminRole("community")
-  const supabase = (await createClient()) as any
+  const supabase = await createClient()
 
   let q = supabase
     .from("forum_reports")
@@ -30,7 +52,8 @@ export async function listForumReports(filters?: {
   if (filters?.status && filters.status !== "all") q = q.eq("status", filters.status)
   if (filters?.severity && filters.severity !== "all") q = q.eq("severity", filters.severity)
 
-  const { data, error } = await q as { data: any[] | null; error: { message: string } | null }
+  const { data, error } = await q
   if (error) throw new Error(error.message)
-  return data ?? []
+
+  return (data ?? []) as ForumReportRecord[]
 }
