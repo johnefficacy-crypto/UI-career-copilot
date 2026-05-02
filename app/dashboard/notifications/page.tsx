@@ -235,11 +235,13 @@ export default async function NotificationsPage() {
                   <p className="text-sm font-medium text-white/85 truncate">
                     {alert.recruitment_name ?? "Recruitment notification"}
                   </p>
+                  <p className="text-[11px] text-white/35 mt-0.5">Status: {alert.days_to_deadline == null ? "unknown" : alert.days_to_deadline <= 0 ? "closed" : alert.days_to_deadline <= 7 ? "closing_soon" : "open"}</p>
                   {alert.org_name && (
                     <p className="text-xs text-white/40 mt-0.5">
                       {alert.org_name}
                       {alert.days_to_deadline != null && (
                         <span className="ml-2 text-white/30">
+                          · {alert.days_to_deadline <= 0 ? "Closed" : `${alert.days_to_deadline}d left`}
                           · {alert.days_to_deadline <= 0 ? "Deadline passed" : `${alert.days_to_deadline}d left`}
                         </span>
                       )}

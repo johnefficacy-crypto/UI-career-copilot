@@ -1,5 +1,5 @@
 # Career Copilot implementation status checklist
-_Last updated: 2026-04-30 — Sprints 5/6/7 complete_
+_Last updated: 2026-05-02 — scraper trust hardening in progress_
 
 This file is the single source of truth for implementation status and next build decisions.
 Legend:
@@ -15,9 +15,18 @@ Legend:
 - [x] Removed `ProfileCard` from main dashboard shell sidebar to reduce duplicate profile surfaces.
 - [x] Fixed `profileBlockers` summary computation to count `needs_profile_data` instead of mirroring `conditional`.
 - [x] Updated profile-impact onboarding links to route-specific paths (`/onboarding/identity`, `/onboarding/education`) for deterministic CTAs.
+- [x] Replaced static `StatsBar` with collapsible `LiveStatsBar` (collapsed by default, localStorage persistence, mobile defaults to collapsed).
+- [x] Added Sprint 8 notification grouping foundation: `notification_group_state` migration + grouped notification read path with fallback for non-migrated environments.
+- [x] Added `GET /api/dashboard/live-summary` to expose Sprint 8 LiveStats summary shape for API consumers.
+- [x] Added notification feedback capture foundation: migration + `submitRecruitmentFeedback` action + user-facing "Report issue" control on notifications cards.
+- [x] Added admin recruitment feedback queue (`/admin/recruitment-feedback`) with resolve/reject workflow and `logAdminAction('resolve_feedback', ...)` audit logging.
+- [x] Added deadline-status derivation utility and surfaced explicit closed/open status hint in notifications cards.
+- [x] Extended profile-impact missing-field routing to include exam credentials (`/onboarding/exam-credentials`).
+- [x] Added `/onboarding/exam-credentials` step + save action + `aspirant_exam_credentials` persistence migration.
+- [x] Wired notification explanation flags `matched_exam` / `matched_sector` to user preferences + recruitment metadata (removed hardcoded false TODO).
 - [x] Published aspirant-centered platform strategy for forum, exam planning, productivity, community, marketplace, AI assistant/chat, and resource governance (`docs/product/aspirant-platform-strategy.md`).
 - [x] Replaced static `StatsBar` with collapsible `LiveStatsBar` (collapsed by default, localStorage persistence, mobile defaults to collapsed).
-- [x] Added admin `Control Support` dashboard (`/admin/control-support`) with operational risk cards for scrape backlog, eligibility failures, unsent alerts, kill-switch state, and unread-notification visibility.
+- [x] Added dashboard `Today's priorities` deterministic orchestration block combining deadlines, profile blockers/confidence labels, and active study tasks.
 
 
 ## Stakeholder control-support review (2026-05-02)
@@ -134,6 +143,30 @@ Strategic rule remains unchanged: `Trust > Speed`, `Control > Automation`, `Dete
   - Notes:
     - Prevents treating aggregator/listing URLs as canonical official notifications.
   - Suggested PR title: `fix(scraper): require distinct official host for aggregator promotions`
+
+- [x] Add explicit official-source resolution flags for scrape queue rows
+  - Effort: S
+  - Owner: backend
+  - Paths:
+    - `supabase/migrations/043_aggregator_official_source_gate.sql` ✓ created
+    - `supabase/functions/scheduled-scraper/index.ts` ✓ writes `official_source_resolved` + `official_source_host`
+    - `lib/db/notifications.ts` ✓ promotion validator blocks rows where `official_source_resolved=false`
+  - Notes:
+    - Adds durable database-level state instead of relying only on inline hostname checks.
+  - Suggested PR title: `feat(scraper): persist and enforce official-source resolution before promotion`
+
+- [~] Move from queue-item approval to candidate-centric trusted promotion
+  - Effort: L
+  - Owner: backend + ops
+  - Paths:
+    - `supabase/migrations/044_aggregator_candidate_layers.sql` ✓ foundation tables created
+    - `supabase/functions/scheduled-scraper/index.ts` ✓ writes candidate/listing observation rows
+    - `lib/db/notifications.ts` (pending) — promotion still queue-item-centric
+    - `lib/eligibility/runner.ts` (pending) — no trust-state filter yet
+  - Notes:
+    - Current pipeline is safer than before but still partial: candidate workflow + eligibility trust gating remain required before declaring trusted ingestion complete.
+  - Suggested PR title: `feat(scraper): complete candidate-centric promotion and eligibility trust gating`
+
 
 - [x] Full RBAC enforcement — replace is_admin checks across all admin routes and actions
   - Effort: M
@@ -285,6 +318,16 @@ Strategic rule remains unchanged: `Trust > Speed`, `Control > Automation`, `Dete
   - Notes:
     - Embeddings should use `recruitments` as the canonical entity. `exam` remains acceptable as a UI label.
   - Suggested PR title: `feat(ai): add vector embeddings for semantic retrieval`
+
+- [~] Build aggregator discovery and candidate-merge data layers (trusted ingestion Phase 2 foundation)
+  - Effort: M
+  - Owner: backend
+  - Paths:
+    - `supabase/migrations/044_aggregator_candidate_layers.sql` ✓ created
+    - `supabase/functions/scheduled-scraper/index.ts` ✓ writes `aggregator_listings`, `recruitment_candidates`, and `candidate_observations` for aggregator sources
+  - Notes:
+    - This establishes the data model and write-path foundation; admin review UX and promotion via candidates remain pending.
+  - Suggested PR title: `feat(scraper): add aggregator listings and candidate observation layers`
 
 - [x] Add ranking v1 using eligibility, urgency, and org trust
   - Effort: L

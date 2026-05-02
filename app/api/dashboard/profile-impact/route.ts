@@ -35,7 +35,7 @@ const ELIGIBILITY_FIELDS: {
   label:       string
   description: string
   fillHref:    string
-  checkFn:     (p: Record<string, unknown>, edu: unknown[]) => boolean
+  checkFn:     (p: Record<string, unknown>, edu: unknown[], creds: unknown[]) => boolean
 }[] = [
   {
     key:         "dob",
@@ -79,6 +79,13 @@ const ELIGIBILITY_FIELDS: {
     fillHref:    "/onboarding/identity",
     checkFn:     (p) => !!p.pwbd_status,
   },
+  {
+    key:         "gate_score",
+    label:       "GATE / eligibility exam credential",
+    description: "Required for exam-score based recruitments (e.g., GATE-based posts)",
+    fillHref:    "/onboarding/exam-credentials",
+    checkFn:     (_p, _edu, creds) => creds.length > 0,
+  },
 ]
 
 export async function GET() {
@@ -89,7 +96,7 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  const [profileRes, eduRes, openCountRes] = await Promise.all([
+  const [profileRes, eduRes, credsRes, openCountRes] = await Promise.all([
     supabase
       .from("profiles")
       .select("dob, category, domicile_state, gender, pwbd_status, onboarding_completed")
@@ -97,6 +104,10 @@ export async function GET() {
       .maybeSingle(),
     supabase
       .from("education_records")
+      .select("id")
+      .eq("user_id", user.id),
+    (supabase as unknown as { from: (table: string) => { select: (q: string) => { eq: (k: string, v: string) => Promise<{ data: unknown[] | null }> } } })
+      .from("aspirant_exam_credentials")
       .select("id")
       .eq("user_id", user.id),
     supabase
@@ -107,11 +118,12 @@ export async function GET() {
 
   const profile = (profileRes.data ?? {}) as Record<string, unknown>
   const education = eduRes.data ?? []
+  const credentials = credsRes.data ?? []
   const openRecruitments = openCountRes.count ?? 0
 
   // How many total eligibility-critical fields exist
   const totalFields = ELIGIBILITY_FIELDS.length
-  const presentCount = ELIGIBILITY_FIELDS.filter(f => f.checkFn(profile, education)).length
+  const presentCount = ELIGIBILITY_FIELDS.filter(f => f.checkFn(profile, education, credentials)).length
   const profilePct = Math.round((presentCount / totalFields) * 100)
 
   // Build missing fields with estimated impact.
@@ -125,10 +137,11 @@ export async function GET() {
     domicile_state: 0.50,
     gender:        0.25,
     pwbd_status:   0.15,
+    gate_score:    0.60,
   }
 
   const missing: ProfileImpactField[] = ELIGIBILITY_FIELDS
-    .filter(f => !f.checkFn(profile, education))
+    .filter(f => !f.checkFn(profile, education, credentials))
     .map(f => ({
       field:       f.key,
       label:       f.label,
