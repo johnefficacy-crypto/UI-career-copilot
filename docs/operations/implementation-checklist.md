@@ -12,7 +12,6 @@ Legend:
 ## Sprint 8 trust-redesign progress (2026-05-01)
 
 - [x] Fixed `050_community_foundation.sql` enum type creation for broader Postgres compatibility by replacing `create type if not exists` with guarded `DO $$` blocks.
-- [x] Fixed `050_community_foundation.sql` policy/trigger compatibility by replacing unsupported `create policy if not exists` and `create or replace trigger` usage with idempotent `drop ... if exists` + `create ...` patterns.
 - [x] Made `049_marketplace_setup.sql` idempotent for legacy replay by dropping/recreating marketplace RLS policies before `CREATE POLICY` statements (prevents duplicate-policy failures such as `Public reads published courses`).
 - [x] Hardened migration idempotency for legacy replay: `020_ai_infrastructure.sql` now drops/recreates RLS policies (`user_next_actions_own`, `study_tasks_own`, `study_sessions_own`) to avoid duplicate-policy failure on partially provisioned environments.
 - [x] Replaced user-facing `new_match` label copy with `Confirmed match` in dashboard bell and notifications list.
