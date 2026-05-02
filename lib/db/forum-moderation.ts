@@ -33,8 +33,9 @@ export async function listForumReports(filters?: {
 }): Promise<ForumReportRecord[]> {
   await requireAdminRole("community")
   const supabase = await createClient()
+  const db = supabase as any
 
-  let q = supabase
+  let q = db
     .from("forum_reports")
     .select(`
       id, target_type, post_id, comment_id, reason, details,
