@@ -249,6 +249,16 @@ Legend:
     - Embeddings should use `recruitments` as the canonical entity. `exam` remains acceptable as a UI label.
   - Suggested PR title: `feat(ai): add vector embeddings for semantic retrieval`
 
+- [~] Build aggregator discovery and candidate-merge data layers (trusted ingestion Phase 2 foundation)
+  - Effort: M
+  - Owner: backend
+  - Paths:
+    - `supabase/migrations/044_aggregator_candidate_layers.sql` ✓ created
+    - `supabase/functions/scheduled-scraper/index.ts` ✓ writes `aggregator_listings`, `recruitment_candidates`, and `candidate_observations` for aggregator sources
+  - Notes:
+    - This establishes the data model and write-path foundation; admin review UX and promotion via candidates remain pending.
+  - Suggested PR title: `feat(scraper): add aggregator listings and candidate observation layers`
+
 - [x] Add ranking v1 using eligibility, urgency, and org trust
   - Effort: L
   - Owner: AI + backend

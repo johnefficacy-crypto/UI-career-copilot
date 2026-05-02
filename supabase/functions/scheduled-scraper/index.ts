@@ -2160,6 +2160,45 @@ Deno.serve(async (req) => {
           ? Boolean(officialHost && sourceHost && officialHost !== sourceHost)
           : Boolean(officialHost)
 
+        if (src.source_type === "aggregator") {
+          const listingHash = await sha256hex(
+            `${src.id}|${extracted.title}|${extracted.official_notification_url ?? url}|${extracted.apply_end_date ?? ""}`.toLowerCase(),
+          )
+          const listingStatus = officialSourceResolved ? "official_source_found" : "needs_official_source"
+
+          const { data: listingRow } = await supabase
+            .from("aggregator_listings")
+            .upsert({
+              source_id: src.id,
+              listing_url: extracted.official_notification_url ?? url,
+              listing_title: extracted.title,
+              listing_hash: listingHash,
+              listing_published_at: extracted.notification_date
+                ? new Date(extracted.notification_date).toISOString()
+                : null,
+              status: listingStatus,
+              updated_at: new Date().toISOString(),
+            }, { onConflict: "source_id,listing_hash" })
+            .select("id")
+            .single()
+          aggregatorListingId = listingRow?.id ?? null
+
+          const candidateKey = `${(extracted.organization_name ?? "").toLowerCase().replace(/[^a-z0-9]/g, "")}|${(extracted.title ?? "").toLowerCase().replace(/[^a-z0-9]/g, "")}|${extracted.year ?? new Date().getFullYear()}`
+          const { data: candRow } = await supabase
+            .from("recruitment_candidates")
+            .upsert({
+              canonical_key: candidateKey,
+              title_hint: extracted.title,
+              organization_hint: extracted.organization_name,
+              year_hint: extracted.year ?? null,
+              status: officialSourceResolved ? "official_notification_found" : "aggregator_confirmed",
+              updated_at: new Date().toISOString(),
+            }, { onConflict: "canonical_key" })
+            .select("id")
+            .single()
+          candidateId = candRow?.id ?? null
+        }
+
         const { data: queueRow, error: queueErr } = await supabase
           .from("scrape_queue")
           .insert({
@@ -2187,6 +2226,20 @@ Deno.serve(async (req) => {
 
         // Generate field-level evidence rows (non-fatal — don't block the scrape run)
         if (!queueErr && queueRow?.id && documentId) {
+          if (candidateId) {
+            await supabase.from("candidate_observations").insert({
+              candidate_id:     candidateId,
+              listing_id:       aggregatorListingId,
+              source_id:        src.id,
+              scrape_queue_id:  queueRow.id,
+              confidence_score: extracted.confidence ?? null,
+              payload: {
+                title: extracted.title,
+                organization_name: extracted.organization_name,
+                official_notification_url: extracted.official_notification_url,
+              },
+            })
+          }
           try {
             const evidenceRows = buildEvidenceRows(
               documentId,
