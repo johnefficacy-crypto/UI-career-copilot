@@ -200,6 +200,22 @@ export async function runEligibilityForUser(
     }
   }
 
+
+  const { data: prefs } = await supabase
+    .from("aspirant_preferences")
+    .select("target_exams, preferred_sectors")
+    .eq("user_id", userId)
+    .maybeSingle()
+
+  const { data: recMeta } = await supabase
+    .from("recruitments")
+    .select("id, name, organizations(type)")
+    .in("id", Array.from(eligibleByRec.keys()))
+
+  const targetExams = ((prefs?.target_exams as string[] | null) ?? []).map((x) => x.toLowerCase())
+  const preferredSectors = ((prefs?.preferred_sectors as string[] | null) ?? []).map((x) => x.toLowerCase())
+  const metaMap = new Map((recMeta ?? []).map((r: { id: string; name?: string | null; organizations?: { type?: string | null } | null }) => [r.id as string, r]))
+
   let alertsInserted = 0
   if (eligibleByRec.size > 0) {
     const now = new Date().toISOString()
@@ -217,8 +233,8 @@ export async function runEligibilityForUser(
         explanation: {
           is_tracked: trackedSet.has(recruitmentId),
           is_eligible: isEligibleStrict === true,
-          matched_exam: false,     // TODO (P1): wire from preferences.target_exams
-          matched_sector: false,   // TODO (P1): wire from preferences.preferred_sectors
+          matched_exam: (() => { const m = metaMap.get(recruitmentId); const n = String(m?.name ?? "").toLowerCase(); return targetExams.some((t) => n.includes(t)); })(),
+          matched_sector: (() => { const m = metaMap.get(recruitmentId); const orgType = String((m?.organizations as { type?: string } | null)?.type ?? "").toLowerCase(); return preferredSectors.includes(orgType); })(),
           matched_type: false,
         },
       }),
