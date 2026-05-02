@@ -15,7 +15,9 @@ export async function updateForumReportAction(formData: FormData) {
 
   if (!reportId) return
 
-  const { data: before } = await supabase
+  const db = supabase as any
+
+  const { data: before } = await db
     .from("forum_reports")
     .select("id,status,severity,assigned_admin_id,action_notes,resolved_at,resolved_by")
     .eq("id", reportId)
@@ -33,7 +35,7 @@ export async function updateForumReportAction(formData: FormData) {
     patch.resolved_by = ctx.userId
   }
 
-  const { error } = await supabase.from("forum_reports").update(patch).eq("id", reportId)
+  const { error } = await db.from("forum_reports").update(patch).eq("id", reportId)
   if (error) throw new Error(error.message)
 
   await logAdminAction({
