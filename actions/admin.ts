@@ -262,7 +262,7 @@ export async function adminSubmitForReview(formData: FormData) {
   try {
     const ctx = await requireAdminRole("recruitments")
     const supabase = await createClient()
-    await supabase
+    await (supabase as any)
       .from("recruitments")
       .update({ publish_status: "needs_review", updated_at: new Date().toISOString() })
       .eq("id", id)
@@ -286,7 +286,7 @@ export async function adminPublishRecruitment(formData: FormData) {
   try {
     const ctx = await requireAdminRole("recruitments")
     const supabase = await createClient()
-    await supabase
+    await (supabase as any)
       .from("recruitments")
       .update({
         publish_status: "published",
@@ -315,7 +315,7 @@ export async function adminWithdrawRecruitment(formData: FormData) {
   try {
     const ctx = await requireAdminRole("recruitments")
     const supabase = await createClient()
-    await supabase
+    await (supabase as any)
       .from("recruitments")
       .update({ publish_status: "withdrawn", updated_at: new Date().toISOString() })
       .eq("id", id)

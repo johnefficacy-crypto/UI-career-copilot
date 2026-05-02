@@ -41,70 +41,86 @@ $$;
 -- ── 2. RLS Policies ───────────────────────────────────────────────────────────
 
 -- Categories — public read, admin write only
+DROP POLICY IF EXISTS "Forum categories are public" ON public.forum_categories;
 CREATE POLICY "Forum categories are public"
   ON public.forum_categories FOR SELECT USING (true);
 
+DROP POLICY IF EXISTS "Admins manage forum categories" ON public.forum_categories;
 CREATE POLICY "Admins manage forum categories"
   ON public.forum_categories FOR ALL
   USING  (public.is_any_admin())
   WITH CHECK (public.is_any_admin());
 
 -- Posts — public read, authenticated write
+DROP POLICY IF EXISTS "Forum posts are public" ON public.forum_posts;
 CREATE POLICY "Forum posts are public"
   ON public.forum_posts FOR SELECT USING (true);
 
+DROP POLICY IF EXISTS "Authenticated users create posts" ON public.forum_posts;
 CREATE POLICY "Authenticated users create posts"
   ON public.forum_posts FOR INSERT
   WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users update own posts" ON public.forum_posts;
 CREATE POLICY "Users update own posts"
   ON public.forum_posts FOR UPDATE
   USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users delete own posts or admins delete any" ON public.forum_posts;
 CREATE POLICY "Users delete own posts or admins delete any"
   ON public.forum_posts FOR DELETE
   USING (auth.uid() = user_id OR public.is_any_admin());
 
 -- Comments
+DROP POLICY IF EXISTS "Forum comments are public" ON public.forum_comments;
 CREATE POLICY "Forum comments are public"
   ON public.forum_comments FOR SELECT USING (true);
 
+DROP POLICY IF EXISTS "Authenticated users create comments" ON public.forum_comments;
 CREATE POLICY "Authenticated users create comments"
   ON public.forum_comments FOR INSERT
   WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users update own comments" ON public.forum_comments;
 CREATE POLICY "Users update own comments"
   ON public.forum_comments FOR UPDATE
   USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users delete own comments or admins delete any" ON public.forum_comments;
 CREATE POLICY "Users delete own comments or admins delete any"
   ON public.forum_comments FOR DELETE
   USING (auth.uid() = user_id OR public.is_any_admin());
 
 -- Upvotes — users manage their own
+DROP POLICY IF EXISTS "Users manage own post upvotes" ON public.forum_post_upvotes;
 CREATE POLICY "Users manage own post upvotes"
   ON public.forum_post_upvotes FOR ALL
   USING  (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Post upvotes public read" ON public.forum_post_upvotes;
 CREATE POLICY "Post upvotes public read"
   ON public.forum_post_upvotes FOR SELECT USING (true);
 
+DROP POLICY IF EXISTS "Users manage own comment upvotes" ON public.forum_comment_upvotes;
 CREATE POLICY "Users manage own comment upvotes"
   ON public.forum_comment_upvotes FOR ALL
   USING  (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Comment upvotes public read" ON public.forum_comment_upvotes;
 CREATE POLICY "Comment upvotes public read"
   ON public.forum_comment_upvotes FOR SELECT USING (true);
 
 -- Saved posts
+DROP POLICY IF EXISTS "Users manage own saved posts" ON public.forum_saved_posts;
 CREATE POLICY "Users manage own saved posts"
   ON public.forum_saved_posts FOR ALL
   USING  (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
 
 -- Reputation — public read, system write only (triggers only, no user writes)
+DROP POLICY IF EXISTS "Reputation is public" ON public.forum_reputation;
 CREATE POLICY "Reputation is public"
   ON public.forum_reputation FOR SELECT USING (true);
 
