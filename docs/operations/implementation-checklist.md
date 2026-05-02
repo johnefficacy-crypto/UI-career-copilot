@@ -17,6 +17,8 @@ Legend:
 - [x] Updated profile-impact onboarding links to route-specific paths (`/onboarding/identity`, `/onboarding/education`) for deterministic CTAs.
 - [x] Published aspirant-centered platform strategy for forum, exam planning, productivity, community, marketplace, AI assistant/chat, and resource governance (`docs/product/aspirant-platform-strategy.md`).
 - [x] Replaced static `StatsBar` with collapsible `LiveStatsBar` (collapsed by default, localStorage persistence, mobile defaults to collapsed).
+- [x] Added dashboard `Today's priorities` deterministic orchestration block combining deadlines, profile blockers/confidence labels, and active study tasks.
+- [x] Added `/dashboard/support` deterministic support hub for wrong-match reporting, profile-fix routing, and community safety escalation paths.
 
 ## P0 release blockers
 

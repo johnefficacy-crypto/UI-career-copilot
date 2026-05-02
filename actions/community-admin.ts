@@ -6,7 +6,7 @@ import { logAdminAction, requireAdminRole } from "@/lib/db/admin"
 
 export async function updateForumReportAction(formData: FormData) {
   const ctx = await requireAdminRole("community")
-  const supabase = (await createClient()) as any
+  const supabase = await createClient()
 
   const reportId = String(formData.get("report_id") ?? "")
   const status = String(formData.get("status") ?? "open")
