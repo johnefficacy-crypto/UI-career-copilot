@@ -11,6 +11,7 @@ import { StudyPlanWidget }                from "./StudyPlanWidget"
 import { SkillTestWidget }                from "./SkillTestWidget"
 import { MissionControlPanel }            from "./MissionControlPanel"
 import { NextBestActionPanel }            from "./NextBestActionPanel"
+import { TodayPrioritiesPanel }           from "./TodayPrioritiesPanel"
 import { DailyTasksWidget }              from "./DailyTasksWidget"
 import { ProfileImpactCard }              from "./ProfileImpactCard"
 import { AiChatWidget }                   from "@/components/chat/AiChatWidget"
@@ -128,6 +129,9 @@ export function DashboardShell({
 
           {/* Left + centre — 2 cols */}
           <div className="lg:col-span-2 flex flex-col gap-5">
+            {/* Unified deterministic daily priorities block */}
+            <TodayPrioritiesPanel missionControlData={missionControlData} todaysTasks={todaysTasks} />
+
             {/* Next-best-action panel — shown only when there are actions */}
             <NextBestActionPanel actions={nextActions} />
 
