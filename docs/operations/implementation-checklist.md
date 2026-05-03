@@ -11,7 +11,9 @@ Legend:
 
 ## Sprint 8 trust-redesign progress (2026-05-01)
 
+- [x] Fixed Google OAuth sign-in entrypoint mismatch by adding canonical `/api/auth/google` route and retaining `/api/google` compatibility redirect to prevent broken login handoff from auth UI.
 
+- [x] Rebuilt landing page into a commercial product narrative aligned with platform vision (official-source trust, deterministic eligibility, study OS, action loop) while retaining canonical recruitment feed (`app/page.tsx`).
 - [x] Migrated app foundation and dashboard shell to light theme tokens (`app/layout.tsx`, `app/globals.css`, `components/dashboard/DashboardShell.tsx`, `components/dashboard/DashboardNav.tsx`) while preserving existing data flow and governance constraints.
 - [x] Fixed `050_community_foundation.sql` enum type creation for broader Postgres compatibility by replacing `create type if not exists` with guarded `DO $$` blocks.
 - [x] Made `049_marketplace_setup.sql` idempotent for legacy replay by dropping/recreating marketplace RLS policies before `CREATE POLICY` statements (prevents duplicate-policy failures such as `Public reads published courses`).
@@ -181,7 +183,8 @@ Strategic rule remains unchanged: `Trust > Speed`, `Control > Automation`, `Dete
   - Paths:
     - `supabase/migrations/044_aggregator_candidate_layers.sql` ✓ foundation tables created
     - `supabase/functions/scheduled-scraper/index.ts` ✓ writes candidate/listing observation rows
-    - `lib/db/notifications.ts` (pending) — promotion still queue-item-centric
+    - `lib/db/notifications.ts` ✓ `approveCandidate()` delegates to validated queue promotion path
+    - `actions/notifications.ts` ✓ `adminApproveCandidate` server action added for admin workflows
     - `lib/eligibility/runner.ts` (pending) — no trust-state filter yet
   - Notes:
     - Current pipeline is safer than before but still partial: candidate workflow + eligibility trust gating remain required before declaring trusted ingestion complete.

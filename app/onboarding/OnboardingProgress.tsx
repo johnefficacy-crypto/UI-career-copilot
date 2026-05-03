@@ -14,6 +14,7 @@ const STEPS = [
   { label: "Identity",    path: "/onboarding/identity"     },
   { label: "Education",   path: "/onboarding/education"    },
   { label: "Experience",  path: "/onboarding/experience"   },
+  { label: "Attempts",    path: "/onboarding/exam-attempts"},
   { label: "Preferences", path: "/onboarding/preferences"  },
   { label: "Done",        path: "/onboarding/complete"     },
 ]
