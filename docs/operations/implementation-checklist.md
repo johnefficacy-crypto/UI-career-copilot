@@ -11,6 +11,7 @@ Legend:
 
 ## Sprint 8 trust-redesign progress (2026-05-01)
 
+- [x] Admin unauthorized access now routes to explicit `/access-denied` experience instead of silent dashboard fallback redirect.
 - [x] Mission-control data contract expanded with deterministic status fallback (`eligible`/`conditional`/`ineligible`/`needs_profile_data`/`not_computed`) and structured explanation payload plumbing from summary view fields.
 - [x] Auth sign-out now clears onboarding session cookie in canonical auth action module to prevent stale onboarding state after logout.
 - [x] Route-truth hardening pass: root shell navigation now points to canonical surfaces (`/pricing`, `/forum`, `/marketplace`, `/dashboard`) and legacy prototype roots (`/today`, `/exams`, `/study`, `/profile`, `/community`) now redirect to auth intent or dashboard/forum destinations to avoid volatile AppContext-only UX in production.

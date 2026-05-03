@@ -34,7 +34,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     userId = adminContext.userId
   } catch (error) {
     if (error instanceof Error && error.message === "UNAUTHENTICATED") redirect("/auth/login")
-    redirect("/dashboard")
+    redirect("/access-denied?scope=admin")
   }
 
   const visibleNavItems = NAV_ITEMS.filter((item) => !item.permission || hasAdminPermission(adminContext, item.permission))
