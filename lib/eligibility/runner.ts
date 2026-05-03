@@ -272,7 +272,6 @@ export async function runEligibilityForUser(
       .from("notification_alerts")
       .upsert(alertInserts, {
         onConflict: "user_id,recruitment_id,alert_type",
-        ignoreDuplicates: true,
       })
       .select("id")
 
