@@ -48,21 +48,19 @@ export async function getMissionControlData(
     const supabase = await createClient()
 
     const { data: rows, error } = await supabase
-      .from("user_recruitment_state")
+      .from("user_exam_summary")
       .select(`
         recruitment_id,
-        recruitment_name,
-        eligibility_status,
-        reason_codes,
-        explanation,
+        exam_name,
+        has_any_eligible_post,
+        has_conditional_result,
+        fail_reasons,
         apply_end_date,
-        days_to_deadline,
-        latest_alert_priority,
-        saved,
-        applied
+        is_tracked,
+        clicked_apply
       `)
       .eq("user_id", userId)
-      .order("latest_alert_priority", { ascending: false, nullsFirst: false })
+      .order("apply_end_date", { ascending: true, nullsFirst: false })
       .limit(limit)
 
     if (error || !rows) {
@@ -70,18 +68,29 @@ export async function getMissionControlData(
       return { ...EMPTY, degraded: true, errorCode: "query_failed" }
     }
 
-    const feed: MissionControlFeedItem[] = rows.filter((r) => r.recruitment_id != null).map((r) => ({
-      recruitmentId:     r.recruitment_id!,
-      recruitmentName:   r.recruitment_name ?? null,
-      eligibilityStatus: r.eligibility_status ?? "unknown",
-      daysToDeadline:    r.days_to_deadline  ?? null,
-      priority:          r.latest_alert_priority ?? 0,
-      reasonCodes:       (r.reason_codes as string[] | null) ?? null,
-      explanation:       r.explanation ?? null,
-      saved:             r.saved  ?? false,
-      applied:           r.applied ?? false,
-      detailHref:        `/dashboard/recruitments/${r.recruitment_id}`,
-    }))
+    const feed: MissionControlFeedItem[] = rows
+      .filter((r) => r.recruitment_id != null)
+      .map((r) => {
+        const daysToDeadline = getDaysToDeadline(r.apply_end_date)
+        const eligibilityStatus = deriveEligibilityStatus(
+          r.has_any_eligible_post ?? false,
+          r.has_conditional_result ?? false,
+        )
+
+        return {
+          recruitmentId: r.recruitment_id!,
+          recruitmentName: r.exam_name ?? null,
+          eligibilityStatus,
+          daysToDeadline,
+          priority: derivePriority(eligibilityStatus, daysToDeadline),
+          reasonCodes: (r.fail_reasons as string[] | null) ?? null,
+          explanation: null,
+          saved: r.is_tracked ?? false,
+          applied: r.clicked_apply ?? false,
+          detailHref: `/dashboard/recruitments/${r.recruitment_id}`,
+        }
+      })
+      .sort((a, b) => b.priority - a.priority)
 
     const summary: MissionControlSummary = {
       eligibleNow:     feed.filter((x) => x.eligibilityStatus === "eligible").length,
@@ -95,4 +104,26 @@ export async function getMissionControlData(
     console.error("[lib/db/mission-control/getMissionControlData] unexpected", { userId, error })
     return { ...EMPTY, degraded: true, errorCode: "unexpected" }
   }
+}
+
+function deriveEligibilityStatus(hasAnyEligiblePost: boolean, hasConditionalResult: boolean): string {
+  if (hasAnyEligiblePost) return "eligible"
+  if (hasConditionalResult) return "conditional"
+  return "needs_profile_data"
+}
+
+function getDaysToDeadline(applyEndDate: string | null): number | null {
+  if (!applyEndDate) return null
+  const end = new Date(applyEndDate)
+  if (Number.isNaN(end.getTime())) return null
+  const now = new Date()
+  const millis = end.getTime() - now.getTime()
+  if (millis < 0) return null
+  return Math.ceil(millis / (24 * 60 * 60 * 1000))
+}
+
+function derivePriority(eligibilityStatus: string, daysToDeadline: number | null): number {
+  const base = eligibilityStatus === "eligible" ? 60 : eligibilityStatus === "conditional" ? 35 : 15
+  const urgency = daysToDeadline == null ? 0 : Math.max(0, 30 - Math.min(daysToDeadline, 30))
+  return base + urgency
 }
