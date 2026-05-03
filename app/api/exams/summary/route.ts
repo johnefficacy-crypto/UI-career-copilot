@@ -2,7 +2,7 @@
  * GET /api/exams/summary
  *
  * Returns personalized exam summary cards for the authenticated user.
- * Backed by the exam_user_summary view (migration 028).
+ * Backed by the user_exam_summary view (migration 029).
  *
  * Each card includes:
  *   examId, slug, title, currentCycleLabel, vacancyTrend,
@@ -24,7 +24,7 @@ export async function GET() {
   }
 
   const { data, error } = await supabase
-    .from("exam_user_summary")
+    .from("user_exam_summary")
     .select("*")
     .eq("user_id", user.id)
 
@@ -33,20 +33,20 @@ export async function GET() {
   }
 
   const cards = (data ?? []).map((row) => ({
-    examId:             row.exam_id,
-    slug:               row.slug,
-    title:              row.title,
-    currentCycleLabel:  row.current_cycle_label ?? null,
-    vacancyTrend:       row.vacancy_trend as "up" | "down" | "flat" | "insufficient",
-    eligibleCount:      row.eligible_count   ?? 0,
-    conditionalCount:   row.conditional_count ?? 0,
-    blockedCount:       row.blocked_count     ?? 0,
+    examId:             row.recruitment_id,
+    slug:               String(row.recruitment_id),
+    title:              row.exam_name,
+    currentCycleLabel:  row.year ? String(row.year) : null,
+    vacancyTrend:       "insufficient" as const,
+    eligibleCount:      row.has_any_eligible_post ? 1 : 0,
+    conditionalCount:   row.has_conditional_result ? 1 : 0,
+    blockedCount:       row.has_any_eligible_post || row.has_conditional_result ? 0 : 1,
     formStatus:         computeFormStatus({
-                          filledAt:    row.filled_at   ?? null,
-                          declinedAt:  row.declined_at ?? null,
+                          filledAt:    null,
+                          declinedAt:  null,
                           firstShownAt: null,
                         }),
-    detailHref:         `/dashboard/exams/${row.slug}`,
+    detailHref:         `/dashboard/recruitments/${row.recruitment_id}`,
   }))
 
   return NextResponse.json({ cards })

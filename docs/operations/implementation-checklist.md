@@ -48,6 +48,8 @@ Legend:
 
 - [x] Migrated `/admin/control-support` from legacy dark styling to the light admin surface pattern and added quick-action links for queue triage consistency (`app/admin/control-support/page.tsx`).
 
+- [x] Fixed `/api/exams/summary` to query canonical `user_exam_summary` view and map recruitment-backed fields (removed stale `exam_user_summary`/`exam_id` assumptions).
+
 ## Stakeholder control-support review (2026-05-02)
 
 This review captures control-support tooling required for primary stakeholders and maps current gaps to delivery priorities.
