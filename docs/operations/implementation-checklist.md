@@ -39,6 +39,12 @@ Legend:
 
 - [x] Implemented UI-audit P0 shell hardening: root navigation moved from inline styles to tokenized classes and global focus-visible ring standardization (`app/layout.tsx`, `app/globals.css`).
 
+- [x] Added automated root-shell accessibility smoke coverage (skip-link + nav landmark + main landmark assertions) in Vitest (`lib/ui/__tests__/root-layout.a11y-smoke.test.tsx`).
+
+- [x] Published UI pattern map for P1 standardization (`docs/engineering/ui-pattern-map.md`) covering shell patterns, primitive usage, accessibility baseline, and migration policy.
+
+- [x] Simplified admin shell and overview UI to left-side panel style and converted landing (`/`) to matching left-panel structure for consistent light UI baseline (`app/admin/layout.tsx`, `app/admin/page.tsx`, `app/page.tsx`).
+
 ## Stakeholder control-support review (2026-05-02)
 
 This review captures control-support tooling required for primary stakeholders and maps current gaps to delivery priorities.

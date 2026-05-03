@@ -1,36 +1,25 @@
-/**
- * app/admin/layout.tsx
- * Career Copilot — Admin Layout
- *
- * FIXES:
- *  - Added "Scrape Dashboard" → /admin/scrape
- *  - Added "Source Registry"  → /admin/sources
- *  - Active link highlight via pathname comparison
- *  - Removed duplicate /admin/scraping route reference (consolidated to /admin/scrape)
- */
-
-import { redirect }     from "next/navigation"
-import { headers }      from "next/headers"
-import Link             from "next/link"
+import { redirect } from "next/navigation"
+import { headers } from "next/headers"
+import Link from "next/link"
 import { createClient } from "@/utils/supabase/server"
 
 export const metadata = { title: "Admin — Career Copilot" }
 
 const NAV_ITEMS = [
-  { href: "/admin",                   label: "Overview",           icon: "⌘" },
-  { href: "/admin/recruitments",      label: "Recruitments",       icon: "📋" },
-  { href: "/admin/organizations",     label: "Organizations",      icon: "🏛" },
-  { href: "/admin/eligibility",       label: "Eligibility",        icon: "✅" },
-  { href: "/admin/scrape",            label: "Scrape Dashboard",   icon: "🔄" },
-  { href: "/admin/sources",           label: "Source Registry",    icon: "🗂" },
-  { href: "/admin/notifications",     label: "Notifications",      icon: "🔔" },
-  { href: "/admin/recruitment-feedback", label: "Recruitment Feedback", icon: "🧾" },
-  { href: "/admin/eligibility-queue", label: "Eligibility Queue",  icon: "⚙" },
-  { href: "/admin/audit",             label: "Audit Log",          icon: "🗒" },
-  { href: "/admin/rbac",              label: "RBAC",               icon: "🔑" },
-  { href: "/admin/ai-policy",         label: "AI Policy",          icon: "🤖" },
-  { href: "/admin/community",         label: "Community Mod",      icon: "🛡️" },
-  { href: "/admin/control-support",   label: "Control Support",    icon: "📈" },
+  { href: "/admin", label: "Overview" },
+  { href: "/admin/recruitments", label: "Recruitments" },
+  { href: "/admin/organizations", label: "Organizations" },
+  { href: "/admin/eligibility", label: "Eligibility" },
+  { href: "/admin/scrape", label: "Scrape Dashboard" },
+  { href: "/admin/sources", label: "Source Registry" },
+  { href: "/admin/notifications", label: "Notifications" },
+  { href: "/admin/recruitment-feedback", label: "Recruitment Feedback" },
+  { href: "/admin/eligibility-queue", label: "Eligibility Queue" },
+  { href: "/admin/audit", label: "Audit Log" },
+  { href: "/admin/rbac", label: "RBAC" },
+  { href: "/admin/ai-policy", label: "AI Policy" },
+  { href: "/admin/community", label: "Community Mod" },
+  { href: "/admin/control-support", label: "Control Support" },
 ]
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -46,69 +35,45 @@ export default async function AdminLayout({ children }: { children: React.ReactN
 
   if (!profile?.is_admin) redirect("/dashboard")
 
-  // Read current pathname for active link detection
   const headersList = await headers()
-  const pathname    = headersList.get("x-pathname") ?? ""
+  const pathname = headersList.get("x-pathname") ?? ""
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a] flex">
-      {/* Sidebar */}
-      <aside className="w-56 border-r border-white/[0.06] flex flex-col shrink-0 sticky top-0 h-screen">
-        {/* Logo */}
-        <div className="h-14 flex items-center px-5 border-b border-white/[0.06] shrink-0">
-          <span
-            className="text-[#e8d5a3] font-semibold text-sm"
-            style={{ fontFamily: "'Playfair Display', Georgia, serif" }}
-          >
-            Career Copilot
-          </span>
-          <span className="ml-2 text-[10px] uppercase tracking-wider bg-[#e8d5a3]/10 text-[#e8d5a3]/60 border border-[#e8d5a3]/20 px-1.5 py-0.5 rounded">
-            Admin
-          </span>
+    <div className="min-h-screen bg-[#f8fafc] text-slate-900 flex">
+      <aside className="w-64 bg-white border-r border-slate-200 p-4 flex flex-col gap-4 sticky top-0 h-screen">
+        <div className="border-b border-slate-200 pb-3">
+          <p className="text-sm font-semibold text-indigo-700">Career Copilot</p>
+          <p className="text-xs text-slate-500">Admin Panel</p>
         </div>
 
-        {/* Navigation */}
-        <nav className="flex-1 px-3 py-4 flex flex-col gap-0.5 overflow-y-auto">
+        <nav className="flex-1 overflow-auto flex flex-col gap-1" aria-label="Admin sections">
           {NAV_ITEMS.map((item) => {
-            const isActive =
-              item.href === "/admin"
-                ? pathname === "/admin"
-                : pathname.startsWith(item.href)
-
+            const isActive = item.href === "/admin" ? pathname === "/admin" : pathname.startsWith(item.href)
             return (
               <Link
                 key={item.href}
                 href={item.href}
-                className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors"
-                style={{
-                  color:      isActive ? "rgba(255,255,255,0.90)" : "rgba(255,255,255,0.40)",
-                  background: isActive ? "rgba(255,255,255,0.06)" : "transparent",
-                  fontWeight: isActive ? "500" : "400",
-                }}
+                className={`px-3 py-2 rounded-md text-sm transition-colors ${
+                  isActive
+                    ? "bg-indigo-50 text-indigo-700 font-medium border border-indigo-200"
+                    : "text-slate-600 hover:bg-slate-100"
+                }`}
               >
-                <span className="text-base leading-none opacity-70">{item.icon}</span>
                 {item.label}
               </Link>
             )
           })}
         </nav>
 
-        {/* Footer */}
-        <div className="p-4 border-t border-white/[0.06] shrink-0">
-          <p className="text-white/30 text-xs truncate mb-1">{profile.full_name}</p>
-          <Link
-            href="/dashboard"
-            className="text-[#e8d5a3]/40 text-xs hover:text-[#e8d5a3] transition-colors"
-          >
+        <div className="border-t border-slate-200 pt-3 text-xs text-slate-500">
+          <p className="truncate mb-2">{profile.full_name}</p>
+          <Link href="/dashboard" className="text-indigo-600 hover:text-indigo-700">
             ← Back to dashboard
           </Link>
         </div>
       </aside>
 
-      {/* Main content */}
-      <main className="flex-1 overflow-auto">
-        {children}
-      </main>
+      <main className="flex-1 overflow-auto">{children}</main>
     </div>
   )
 }
