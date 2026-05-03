@@ -182,7 +182,8 @@ Strategic rule remains unchanged: `Trust > Speed`, `Control > Automation`, `Dete
   - Paths:
     - `supabase/migrations/044_aggregator_candidate_layers.sql` ✓ foundation tables created
     - `supabase/functions/scheduled-scraper/index.ts` ✓ writes candidate/listing observation rows
-    - `lib/db/notifications.ts` (pending) — promotion still queue-item-centric
+    - `lib/db/notifications.ts` ✓ `approveCandidate()` delegates to validated queue promotion path
+    - `actions/notifications.ts` ✓ `adminApproveCandidate` server action added for admin workflows
     - `lib/eligibility/runner.ts` (pending) — no trust-state filter yet
   - Notes:
     - Current pipeline is safer than before but still partial: candidate workflow + eligibility trust gating remain required before declaring trusted ingestion complete.
