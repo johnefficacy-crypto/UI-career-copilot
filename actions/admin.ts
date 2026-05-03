@@ -10,7 +10,7 @@ import { createClient } from "@/utils/supabase/server"
 
 function adminRedirectOnError(path: string, err: unknown): never {
   const msg = err instanceof Error ? err.message : "Unknown error"
-  if (msg === "UNAUTHENTICATED") redirect("/login")
+  if (msg === "UNAUTHENTICATED") redirect("/auth/login")
   if (msg === "UNAUTHORIZED") redirect("/dashboard")
   redirect(`${path}?error=${encodeURIComponent(msg)}`)
 }

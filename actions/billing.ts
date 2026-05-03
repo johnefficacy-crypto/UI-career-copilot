@@ -10,7 +10,7 @@ import { PLANS, type PlanId } from "@/lib/billing/plans"
 async function requireUser() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect("/login")
+  if (!user) redirect("/auth/login")
   return user
 }
 

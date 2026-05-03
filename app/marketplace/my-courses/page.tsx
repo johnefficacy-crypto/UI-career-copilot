@@ -17,7 +17,7 @@ export default async function MyCoursesPage({
 }) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect("/login")
+  if (!user) redirect("/auth/login")
 
   const { success } = await searchParams
   const enrollments = await getUserEnrollments(user.id)

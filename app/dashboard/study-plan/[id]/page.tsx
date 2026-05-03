@@ -15,7 +15,7 @@ export default async function StudyPlanDetailPage({
   const { id } = await params
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect("/login")
+  if (!user) redirect("/auth/login")
 
   const [plan, stats, logs] = await Promise.all([
     getPlanWithWeeks(id, user.id),

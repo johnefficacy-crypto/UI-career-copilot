@@ -21,7 +21,7 @@ export default async function InstructorDashboardPage({
 }) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect("/login")
+  if (!user) redirect("/auth/login")
 
   const { success, error } = await searchParams
 

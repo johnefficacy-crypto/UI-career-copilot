@@ -13,11 +13,12 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/utils/supabase/server"
+import { safeRedirectPath } from "@/lib/auth/safe-redirect"
 
 export async function GET(request: NextRequest) {
   const supabase  = await createClient()
   const { searchParams } = new URL(request.url)
-  const redirectTo = searchParams.get("redirect") ?? "/dashboard"
+  const redirectTo = safeRedirectPath(searchParams.get("redirect"))
 
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: "google",

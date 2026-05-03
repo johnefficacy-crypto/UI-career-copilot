@@ -66,7 +66,7 @@ export default async function MarketplacePage({
             </Link>
           </div>
         ) : (
-          <Link href="/login"
+          <Link href="/auth/login"
             className="px-4 py-1.5 rounded-lg border border-white/[0.1] text-white/60 text-sm hover:text-white hover:border-white/[0.2] transition-colors">
             Sign in
           </Link>
@@ -84,7 +84,7 @@ export default async function MarketplacePage({
             Hand-picked for UPSC, Banking, SSC, SEBI, RBI and more.
             {!user && " "}
             {!user && (
-              <Link href="/signup" className="text-[#e8d5a3]/70 hover:text-[#e8d5a3] transition-colors ml-1">
+              <Link href="/auth/signup" className="text-[#e8d5a3]/70 hover:text-[#e8d5a3] transition-colors ml-1">
                 Sign up free to enrol →
               </Link>
             )}

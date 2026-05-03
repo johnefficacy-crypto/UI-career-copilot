@@ -26,7 +26,7 @@ export default async function MockTestsPage({
 }) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect("/login")
+  if (!user) redirect("/auth/login")
 
   const params  = await searchParams
   const planId  = params.plan

@@ -12,7 +12,7 @@ import { runEligibilityForUser } from "@/lib/eligibility/runner"
 export async function refreshMyEligibility() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect("/login")
+  if (!user) redirect("/auth/login")
 
   const result = await runEligibilityForUser(user.id)
 
