@@ -1,11 +1,3 @@
-/**
- * app/admin/page.tsx — Admin Overview
- *
- * FIX: Wrapped getAdminStats() in try/catch to prevent 500 on timeout.
- * Added links to scrape dashboard and sources so the overview is useful.
- * Also added scraper status section showing last run info.
- */
-
 import { getAdminStats } from "@/lib/db/admin"
 import { getScrapeRuns, getScraperStats } from "@/lib/db/notifications"
 import { adminTriggerEligibilityRecompute } from "@/actions/admin"
@@ -20,7 +12,6 @@ export default async function AdminOverviewPage({
 }) {
   const { success, error, info } = await searchParams
 
-  // Both wrapped — proxy.ts timeout should not 500 the overview page
   const [stats, scraperStats, recentRuns] = await Promise.allSettled([
     getAdminStats(),
     getScraperStats(),
@@ -35,210 +26,81 @@ export default async function AdminOverviewPage({
   const runs = recentRuns.status === "fulfilled" ? recentRuns.value : []
 
   const statCards = [
-    { label: "Organizations",        value: s.organizations },
-    { label: "Total recruitments",   value: s.recruitments },
-    { label: "Open now",             value: s.openRecruitments,    accent: true },
-    { label: "Upcoming",             value: s.upcomingRecruitments },
-    { label: "Posts defined",        value: s.posts },
-    { label: "Registered users",     value: s.totalUsers },
-    { label: "Eligible matches",     value: s.eligibleMatches,     accent: true },
-    { label: "Pending review",       value: ss?.pendingReview ?? 0, accent: (ss?.pendingReview ?? 0) > 0 },
+    { label: "Organizations", value: s.organizations },
+    { label: "Recruitments", value: s.recruitments },
+    { label: "Open now", value: s.openRecruitments },
+    { label: "Upcoming", value: s.upcomingRecruitments },
+    { label: "Posts", value: s.posts },
+    { label: "Users", value: s.totalUsers },
+    { label: "Eligible matches", value: s.eligibleMatches },
+    { label: "Pending review", value: ss?.pendingReview ?? 0 },
   ]
 
   return (
-    <div className="p-8 space-y-8">
+    <div className="p-8 space-y-6">
       <div>
-        <h1 className="text-white text-2xl font-medium mb-1" style={{ fontFamily: "'Playfair Display', Georgia, serif" }}>
-          Admin overview
-        </h1>
-        <p className="text-white/40 text-sm">Manage notifications, posts, and eligibility.</p>
+        <h1 className="text-2xl font-semibold text-slate-900">Admin overview</h1>
+        <p className="text-sm text-slate-600">Simple control panel for governance and operations.</p>
       </div>
 
-      {/* Alerts */}
-      {success && (
-        <div className="px-4 py-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-sm">
-          {decodeURIComponent(success)}
-        </div>
-      )}
-      {info && (
-        <div className="px-4 py-3 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-400 text-sm">
-          {decodeURIComponent(info)}
-        </div>
-      )}
-      {error && (
-        <div className="px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
-          {decodeURIComponent(error)}
-        </div>
-      )}
+      {success && <div className="p-3 rounded-md border border-emerald-200 bg-emerald-50 text-emerald-700 text-sm">{decodeURIComponent(success)}</div>}
+      {info && <div className="p-3 rounded-md border border-blue-200 bg-blue-50 text-blue-700 text-sm">{decodeURIComponent(info)}</div>}
+      {error && <div className="p-3 rounded-md border border-red-200 bg-red-50 text-red-700 text-sm">{decodeURIComponent(error)}</div>}
 
-      {/* Stats grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {statCards.map((s) => (
-          <div key={s.label}
-            className={`rounded-xl border px-4 py-3 ${s.accent ? "bg-[#e8d5a3]/[0.04] border-[#e8d5a3]/20" : "bg-white/[0.03] border-white/[0.07]"}`}>
-            <p className="text-white/40 text-xs uppercase tracking-widest mb-1">{s.label}</p>
-            <p className={`text-2xl font-semibold leading-none ${s.accent ? "text-[#e8d5a3]" : "text-white"}`}
-              style={{ fontFamily: "'Playfair Display', Georgia, serif" }}>
-              {s.value}
-            </p>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {statCards.map((card) => (
+          <div key={card.label} className="bg-white border border-slate-200 rounded-md p-3">
+            <p className="text-xs uppercase tracking-wide text-slate-500">{card.label}</p>
+            <p className="text-xl font-semibold text-slate-900">{card.value}</p>
           </div>
         ))}
       </div>
 
-      {/* Quick navigation */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        {[
-          { href: "/admin/recruitments/new",  title: "Add recruitment",   desc: "Create a notification with posts, criteria, and deadlines" },
-          { href: "/admin/scrape",            title: "Scrape Dashboard",  desc: `${ss?.pendingReview ?? 0} items pending review · trigger manual run` },
-          { href: "/admin/sources",           title: "Source Registry",   desc: "Manage scraping sources, inspect URLs, add new portals" },
-          { href: "/admin/notifications",     title: "Notifications",     desc: "Send logs, kill switch, role-restricted sending" },
-          { href: "/admin/recruitment-feedback", title: "Recruitment Feedback", desc: "Resolve wrong-match, deadline, and link reports" },
-          { href: "/admin/eligibility-queue", title: "Eligibility Queue", desc: "Monitor recompute jobs — pending, processing, failed" },
-          { href: "/admin/audit",             title: "Audit Log",         desc: "Append-only record of every admin mutation" },
-          { href: "/admin/rbac",              title: "RBAC Manager",      desc: "Manage admin roles and super_admin access" },
-          { href: "/admin/ai-policy",         title: "AI Policy",         desc: "Control which actions the AI may take autonomously" },
-          { href: "/admin/control-support",  title: "Control Support",   desc: "SLA risk dashboard for backlog, failures, and incident signals" },
-        ].map(item => (
-          <Link key={item.href} href={item.href}
-            className="flex flex-col gap-1 px-5 py-4 rounded-xl bg-white/[0.03] border border-white/[0.07] hover:border-white/[0.14] transition-colors">
-            <span className="text-white font-medium text-sm">{item.title}</span>
-            <span className="text-white/40 text-xs">{item.desc}</span>
-          </Link>
-        ))}
+      <div className="bg-white border border-slate-200 rounded-md p-4">
+        <h2 className="text-sm font-semibold text-slate-900 mb-3">Quick links</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+          {[
+            ["/admin/recruitments/new", "Add recruitment"],
+            ["/admin/scrape", "Scrape dashboard"],
+            ["/admin/sources", "Source registry"],
+            ["/admin/notifications", "Notifications"],
+            ["/admin/recruitment-feedback", "Recruitment feedback"],
+            ["/admin/eligibility-queue", "Eligibility queue"],
+            ["/admin/audit", "Audit log"],
+            ["/admin/rbac", "RBAC manager"],
+          ].map(([href, label]) => (
+            <Link key={href} href={href} className="px-3 py-2 rounded border border-slate-200 text-sm text-slate-700 hover:bg-slate-50">
+              {label}
+            </Link>
+          ))}
+        </div>
       </div>
 
-      {/* Scraper status */}
-      <div className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-5">
+      <div className="bg-white border border-slate-200 rounded-md p-4">
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-white text-base font-medium">Scraper status</h2>
-          <Link href="/admin/scrape" className="text-[#e8d5a3]/60 text-xs hover:text-[#e8d5a3]">
-            Full dashboard →
-          </Link>
+          <h2 className="text-sm font-semibold text-slate-900">Recent scraper runs</h2>
+          <Link href="/admin/scrape" className="text-xs text-indigo-600">View all</Link>
         </div>
-        {runs.length === 0 ? (
-          <p className="text-white/30 text-sm">No scrape runs yet. Trigger one from the Scrape Dashboard.</p>
-        ) : (
-          <div className="flex flex-col gap-2">
-            {runs.map(run => (
-              <div key={run.id} className="flex items-center gap-4 text-sm">
-                <span className={`w-2 h-2 rounded-full shrink-0 ${
-                  run.status === "completed" ? "bg-emerald-500" :
-                  run.status === "partial"   ? "bg-amber-400" :
-                  run.status === "failed"    ? "bg-red-500" : "bg-blue-400"
-                }`} />
-                <span className="text-white/60 tabular-nums text-xs">
-                  {new Date(run.started_at).toLocaleString("en-IN", { dateStyle: "short", timeStyle: "short" })}
-                </span>
-                <span className="text-white/40 text-xs">{run.sources_checked ?? 0} sources · {run.items_new ?? 0} new</span>
-                <span className={`text-xs ml-auto ${
-                  run.status === "completed" ? "text-emerald-400" :
-                  run.status === "partial"   ? "text-amber-300" :
-                  run.status === "failed"    ? "text-red-400" : "text-blue-400"
-                }`}>{run.status}</span>
-              </div>
+        {runs.length === 0 ? <p className="text-sm text-slate-500">No runs available.</p> : (
+          <ul className="space-y-2">
+            {runs.map((run) => (
+              <li key={run.id} className="text-sm text-slate-700 border border-slate-200 rounded px-3 py-2 flex items-center gap-3">
+                <span className="font-medium">{run.status}</span>
+                <span className="text-slate-500">{run.sources_checked ?? 0} sources</span>
+                <span className="text-slate-500">{run.items_new ?? 0} new</span>
+              </li>
             ))}
-          </div>
+          </ul>
         )}
       </div>
 
-      {/* Eligibility engine */}
-      <div className="rounded-xl border border-[#e8d5a3]/20 bg-[#e8d5a3]/[0.03] px-6 py-5">
-        <h2 className="text-white text-base font-medium mb-1">Eligibility engine</h2>
-        <p className="text-white/40 text-sm mb-4">
-          Re-run eligibility checks for all users. Run this after adding or updating any recruitment, post, or criteria.
-        </p>
+      <div className="bg-indigo-50 border border-indigo-200 rounded-md p-4">
+        <h2 className="text-sm font-semibold text-indigo-900 mb-1">Eligibility engine</h2>
+        <p className="text-sm text-indigo-800 mb-3">Recompute deterministic eligibility after recruitment or criteria updates.</p>
         <form action={adminTriggerEligibilityRecompute}>
-          <button type="submit"
-            className="px-5 py-2.5 rounded-lg bg-[#e8d5a3] text-[#0a0a0a] text-sm font-medium hover:bg-[#f0dfa8] transition-colors">
-            Recompute all eligibility
-          </button>
+          <button type="submit" className="px-4 py-2 rounded bg-indigo-600 text-white text-sm hover:bg-indigo-700">Recompute all eligibility</button>
         </form>
       </div>
     </div>
   )
 }
-// below code is created by `Claude-Code Design` which is to be applied.
-/* AdminOverview — app/admin/page.tsx recreation */
-
-// const STATS = [
-//   { label: "Organizations",       value: 524 },
-//   { label: "Total recruitments",  value: "1,842" },
-//   { label: "Open now",            value: 96,   accent: true },
-//   { label: "Upcoming",            value: 31 },
-//   { label: "Posts defined",       value: "12,406" },
-//   { label: "Registered users",    value: "51,290" },
-//   { label: "Eligible matches",    value: "8,214", accent: true },
-//   { label: "Pending review",      value: 4,    accent: true },
-// ];
-
-// const RUNS = [
-//   { status: "completed", source: "rbi.org.in/careers",          items: 3,  changed: 0, ts: "12 min ago",  duration: "4.2s" },
-//   { status: "partial",   source: "sebi.gov.in/careers",         items: 5,  changed: 2, ts: "1h ago",      duration: "11.8s" },
-//   { status: "failed",    source: "upsc.gov.in/notifications",   items: 0,  changed: 0, ts: "2h ago",      duration: "—", err: "HTTP 504 gateway timeout" },
-// ];
-
-// function AdminOverview() {
-//   return (
-//     <div style={{ padding: "32px 40px", display: "flex", flexDirection: "column", gap: 28 }}>
-//       <div>
-//         <h1 className="a-serif" style={{ fontSize: 26, margin: "0 0 4px" }}>Admin overview</h1>
-//         <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0 }}>Manage notifications, posts, and eligibility.</p>
-//       </div>
-
-//       <div style={{ padding: "10px 16px", borderRadius: 14, background: "var(--success-bg)", border: "1px solid var(--success-border)", color: "var(--success)", fontSize: 13 }}>
-//         Eligibility recompute completed — 8,214 matches updated across 51,290 aspirants.
-//       </div>
-
-//       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
-//         {STATS.map(s => (
-//           <div key={s.label} className={`a-stat ${s.accent ? "accent" : ""}`}>
-//             <div className="lbl">{s.label}</div>
-//             <div className="val">{s.value}</div>
-//           </div>
-//         ))}
-//       </div>
-
-//       <div>
-//         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-//           <h2 className="a-serif" style={{ fontSize: 16, margin: 0 }}>Quick actions</h2>
-//         </div>
-//         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
-//           {[
-//             { title: "Add recruitment", desc: "Create a notification with posts, criteria, deadlines", icon: "plus" },
-//             { title: "Scrape dashboard", desc: "4 items pending review · trigger manual run", icon: "refresh-cw" },
-//             { title: "Source registry", desc: "Manage scraping sources, inspect URLs, add portals", icon: "folder-tree" },
-//           ].map((a, i) => (
-//             <div key={i} className="a-card tight" style={{ cursor: "pointer" }}>
-//               <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 8 }}>
-//                 <span style={{ color: "var(--gold)", background: "var(--gold-faint)", border: "1px solid var(--gold-border)", width: 28, height: 28, borderRadius: 8, display: "grid", placeItems: "center" }}><Icon name={a.icon} size={14} /></span>
-//                 <span style={{ fontSize: 14, fontWeight: 500 }}>{a.title}</span>
-//               </div>
-//               <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0 }}>{a.desc}</p>
-//             </div>
-//           ))}
-//         </div>
-//       </div>
-
-//       <div className="a-card">
-//         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-//           <h2 className="a-serif" style={{ fontSize: 16, margin: 0 }}>Scraper status</h2>
-//           <a style={{ fontSize: 12, color: "rgba(232,213,163,0.6)", cursor: "pointer" }}>Full dashboard →</a>
-//         </div>
-//         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-//           {RUNS.map((r, i) => (
-//             <div key={i} style={{ display: "flex", gap: 12, alignItems: "center", padding: "10px 12px", border: "1px solid var(--border)", borderRadius: 10 }}>
-//               <span style={{ width: 8, height: 8, borderRadius: 9999, background: r.status === "completed" ? "var(--success)" : r.status === "partial" ? "#f59e0b" : "var(--danger)", flexShrink: 0 }} />
-//               <span className="a-mono" style={{ fontSize: 12, color: "var(--text-body)", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.source}</span>
-//               <span className="a-mono" style={{ fontSize: 11, color: "var(--text-muted)", minWidth: 90 }}>{r.items} items · {r.changed} changed</span>
-//               <span className="a-mono" style={{ fontSize: 11, color: "var(--text-dim)", minWidth: 70 }}>{r.duration}</span>
-//               <span className="a-mono" style={{ fontSize: 11, color: "var(--text-dim)", minWidth: 80, textAlign: "right" }}>{r.ts}</span>
-//               <Pill tone={r.status === "completed" ? "success" : r.status === "partial" ? "warning" : "danger"}>{r.status}</Pill>
-//             </div>
-//           ))}
-//         </div>
-//       </div>
-//     </div>
-//   );
-// }
-
-// window.AdminOverview = AdminOverview;
