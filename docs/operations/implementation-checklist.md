@@ -47,6 +47,7 @@ Legend:
 - [x] Replaced landing-page static recruitment preview with database-backed `public.recruitments` feed and reusable list component (`lib/db/landing.ts`, `components/landing/LandingRecruitmentList.tsx`, `app/page.tsx`).
 
 - [x] Migrated `/admin/control-support` from legacy dark styling to the light admin surface pattern and added quick-action links for queue triage consistency (`app/admin/control-support/page.tsx`).
+- [x] Refreshed dashboard user menu (`components/nav/UserNav.tsx`) for the light shell (readable contrast, token-aligned surfaces, and keyboard Escape close support).
 
 ## Stakeholder control-support review (2026-05-02)
 
