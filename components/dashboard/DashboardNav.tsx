@@ -19,7 +19,7 @@ export function DashboardNav({ fullName, planId, avatarUrl, isAdmin }: Props) {
       }}
     >
       <div
-        className="max-w-7xl mx-auto px-6 h-full flex items-center justify-between"
+        className="max-w-[1040px] mx-auto px-6 h-full flex items-center justify-between"
       >
         {/* Left — logo + page nav */}
         <div className="flex items-center gap-6">
@@ -34,13 +34,12 @@ export function DashboardNav({ fullName, planId, avatarUrl, isAdmin }: Props) {
           {/* Primary nav links — hidden on mobile */}
           <div className="hidden md:flex items-center gap-1">
             {[
-              { href: "/dashboard",           label: "Dashboard"    },
-              { href: "/dashboard/exams",      label: "Exams"        },
-              { href: "/dashboard/tracker",    label: "Tracker"      },
-              { href: "/dashboard/chat",       label: "AI Chat"      },
-              { href: "/dashboard/study-plan", label: "Study Plan"   },
-              { href: "/marketplace",          label: "Marketplace"  },
-              { href: "/dashboard/support",   label: "Support"      },
+              { href: "/dashboard", label: "Today" },
+              { href: "/dashboard/exams", label: "Exams" },
+              { href: "/dashboard/study", label: "Study" },
+              { href: "/dashboard/community", label: "Community" },
+              { href: "/marketplace", label: "Marketplace" },
+              { href: "/dashboard/profile", label: "Profile" },
             ].map((item) => (
               <Link
                 key={item.href}
