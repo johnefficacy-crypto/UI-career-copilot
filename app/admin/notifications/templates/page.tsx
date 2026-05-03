@@ -33,7 +33,7 @@ async function saveTemplateAction(formData: FormData) {
     revalidatePath("/admin/notifications/templates")
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Error"
-    if (msg === "UNAUTHENTICATED") redirect("/login")
+    if (msg === "UNAUTHENTICATED") redirect("/auth/login")
     redirect(`/admin/notifications/templates?error=${encodeURIComponent(msg)}`)
   }
   redirect("/admin/notifications/templates?success=Template+saved")

@@ -51,7 +51,7 @@ async function updatePolicyAction(formData: FormData) {
     revalidatePath("/admin/ai-policy")
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Unknown error"
-    if (msg === "UNAUTHENTICATED") redirect("/login")
+    if (msg === "UNAUTHENTICATED") redirect("/auth/login")
     redirect(`/admin/ai-policy?error=${encodeURIComponent(msg)}`)
   }
   redirect("/admin/ai-policy")

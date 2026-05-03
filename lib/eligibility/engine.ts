@@ -379,6 +379,20 @@ export function checkEligibility(
     }
   }
 
+  // ── 4. Required exam credential check ───────────────────────────────────
+  if (criteria.required_exam_keys && criteria.required_exam_keys.length > 0) {
+    const userKeys = new Set(examCredentials.map((c) => c.exam_key.toLowerCase().trim()))
+    const missing = criteria.required_exam_keys.filter((key) => !userKeys.has(key.toLowerCase().trim()))
+
+    checks.push({
+      rule: "exam_credential",
+      passed: missing.length === 0,
+      detail: missing.length === 0
+        ? `Required exam credentials present (${criteria.required_exam_keys.join(", ")}).`
+        : `Missing required exam credentials: ${missing.join(", ")}.`,
+    })
+  }
+
   // ── 4. Nationality check (basic) ─────────────────────────────────────────
   {
     const nat = profile.nationality?.toLowerCase() ?? "indian"

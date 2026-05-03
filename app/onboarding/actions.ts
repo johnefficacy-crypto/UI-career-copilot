@@ -26,7 +26,7 @@ export async function getAuthenticatedUser() {
     error,
   } = await supabase.auth.getUser()
 
-  if (error || !user) redirect("/login")
+  if (error || !user) redirect("/auth/login")
 
   return { user, supabase }
 }

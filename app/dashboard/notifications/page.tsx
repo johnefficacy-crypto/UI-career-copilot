@@ -26,6 +26,36 @@ import { submitRecruitmentFeedback } from "@/actions/feedback"
 export const revalidate = 30
 export const metadata = { title: "Notifications — Career Copilot" }
 
+
+const ALERT_ICONS: Record<string, string> = {
+  new_recruitment: "🆕",
+  application_open: "📝",
+  deadline_approaching: "⏰",
+  deadline_changed: "📆",
+  vacancy_changed: "📊",
+  status_changed: "🔄",
+  admit_card_released: "🎫",
+  result_released: "🏁",
+  new_match: "✅",
+  deadline_3day: "⏳",
+  deadline_1day: "🚨",
+  status_change: "🔄",
+}
+
+function timeAgo(value: string | null): string {
+  if (!value) return "Unknown"
+  const ms = Date.now() - new Date(value).getTime()
+  if (Number.isNaN(ms) || ms < 0) return "Just now"
+  const mins = Math.floor(ms / 60000)
+  if (mins < 1) return "Just now"
+  if (mins < 60) return `${mins}m ago`
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  if (days < 7) return `${days}d ago`
+  return new Date(value).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })
+}
+
 const ALERT_LABELS: Record<string, string> = {
   new_recruitment:      "New recruitment",
   application_open:     "Applications open",

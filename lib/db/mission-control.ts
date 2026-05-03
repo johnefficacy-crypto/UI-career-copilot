@@ -22,12 +22,16 @@ export type MissionControlSummary = {
 
 export type MissionControlData = {
   summary: MissionControlSummary
-  feed:    MissionControlFeedItem[]
+  feed: MissionControlFeedItem[]
+  degraded: boolean
+  errorCode: "query_failed" | "unexpected" | null
 }
 
 const EMPTY: MissionControlData = {
   summary: { eligibleNow: 0, closingThisWeek: 0, conditional: 0, profileBlockers: 0 },
-  feed:    [],
+  feed: [],
+  degraded: false,
+  errorCode: null,
 }
 
 /**
@@ -61,7 +65,10 @@ export async function getMissionControlData(
       .order("latest_alert_priority", { ascending: false, nullsFirst: false })
       .limit(limit)
 
-    if (error || !rows) return EMPTY
+    if (error || !rows) {
+      console.error("[lib/db/mission-control/getMissionControlData] query_failed", { userId, error })
+      return { ...EMPTY, degraded: true, errorCode: "query_failed" }
+    }
 
     const feed: MissionControlFeedItem[] = rows.filter((r) => r.recruitment_id != null).map((r) => ({
       recruitmentId:     r.recruitment_id!,
@@ -83,8 +90,9 @@ export async function getMissionControlData(
       profileBlockers: feed.filter((x) => x.eligibilityStatus === "needs_profile_data").length,
     }
 
-    return { summary, feed }
-  } catch {
-    return EMPTY
+    return { summary, feed, degraded: false, errorCode: null }
+  } catch (error) {
+    console.error("[lib/db/mission-control/getMissionControlData] unexpected", { userId, error })
+    return { ...EMPTY, degraded: true, errorCode: "unexpected" }
   }
 }
