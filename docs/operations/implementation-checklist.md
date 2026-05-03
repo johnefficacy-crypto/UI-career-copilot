@@ -47,6 +47,7 @@ Legend:
 - [x] Replaced landing-page static recruitment preview with database-backed `public.recruitments` feed and reusable list component (`lib/db/landing.ts`, `components/landing/LandingRecruitmentList.tsx`, `app/page.tsx`).
 
 - [x] Migrated `/admin/control-support` from legacy dark styling to the light admin surface pattern and added quick-action links for queue triage consistency (`app/admin/control-support/page.tsx`).
+- [x] Fixed onboarding flow continuity and profile-completion UX: experience step now routes to exam-attempts before preferences, progress tracker includes the attempts step, and attempts-step error redirects stay on the correct route (`actions/onboarding.ts`, `app/onboarding/OnboardingProgress.tsx`, `app/onboarding/exam-attempts/action.ts`).
 
 ## Stakeholder control-support review (2026-05-02)
 

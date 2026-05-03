@@ -13,7 +13,8 @@
 //  *   /onboarding          → saveProfile()     → /onboarding/identity
 //  *   /onboarding/identity → saveIdentity()    → /onboarding/education
 //  *   /onboarding/certifications→ (action.ts) → /onboarding/experience
-//  *   /onboarding/experience → saveExperience()→ /onboarding/preferences
+//  *   /onboarding/experience → saveExperience()→ /onboarding/exam-attempts
+//  *   /onboarding/exam-attempts → saveExamAttempts()→ /onboarding/preferences
 //  *   /onboarding/preferences→ savePreferences()→ /onboarding/complete
 //  *   /onboarding/complete → finishOnboarding()→ /dashboard
 //  */
@@ -156,7 +157,7 @@ export async function saveExperience(formData: FormData) {
     redirect(`/onboarding/experience?error=${encodeURIComponent(msg)}`)
   }
 
-  redirect("/onboarding/preferences")
+  redirect("/onboarding/exam-attempts")
 }
 
 // ─── Step 5: Preferences ──────────────────────────────────────────────────────
