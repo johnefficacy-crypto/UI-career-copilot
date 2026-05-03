@@ -11,6 +11,13 @@ Legend:
 
 ## Sprint 8 trust-redesign progress (2026-05-01)
 
+- [x] Admin unauthorized access now routes to explicit `/access-denied` experience instead of silent dashboard fallback redirect.
+- [x] Mission-control data contract expanded with deterministic status fallback (`eligible`/`conditional`/`ineligible`/`needs_profile_data`/`not_computed`) and structured explanation payload plumbing from summary view fields.
+- [x] Auth sign-out now clears onboarding session cookie in canonical auth action module to prevent stale onboarding state after logout.
+- [x] Route-truth hardening pass: root shell navigation now points to canonical surfaces (`/pricing`, `/forum`, `/marketplace`, `/dashboard`) and legacy prototype roots (`/today`, `/exams`, `/study`, `/profile`, `/community`) now redirect to auth intent or dashboard/forum destinations to avoid volatile AppContext-only UX in production.
+- [x] Auth action consolidation: `app/auth/actions.ts` now delegates to canonical `actions/auth.ts` to prevent signup/login drift across profile bootstrapping and redirect-safety behavior.
+- [x] Admin navigation visibility is now permission-aware using role bucket checks (`hasAdminPermission`) so admins only see sections aligned with their RBAC grants.
+
 - [x] Fixed Google OAuth sign-in entrypoint mismatch by adding canonical `/api/auth/google` route and retaining `/api/google` compatibility redirect to prevent broken login handoff from auth UI.
 
 - [x] Fixed eligibility alert upsert behavior in shared runner so `new_match` alerts refresh deterministically on recompute (no duplicate-ignore path that could preserve stale explanation/state).
