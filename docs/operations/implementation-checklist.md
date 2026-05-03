@@ -11,6 +11,10 @@ Legend:
 
 ## Sprint 8 trust-redesign progress (2026-05-01)
 
+- [x] Route-truth hardening pass: root shell navigation now points to canonical surfaces (`/pricing`, `/forum`, `/marketplace`, `/dashboard`) and legacy prototype roots (`/today`, `/exams`, `/study`, `/profile`, `/community`) now redirect to auth intent or dashboard/forum destinations to avoid volatile AppContext-only UX in production.
+- [x] Auth action consolidation: `app/auth/actions.ts` now delegates to canonical `actions/auth.ts` to prevent signup/login drift across profile bootstrapping and redirect-safety behavior.
+- [x] Admin navigation visibility is now permission-aware using role bucket checks (`hasAdminPermission`) so admins only see sections aligned with their RBAC grants.
+
 - [x] Fixed Google OAuth sign-in entrypoint mismatch by adding canonical `/api/auth/google` route and retaining `/api/google` compatibility redirect to prevent broken login handoff from auth UI.
 
 - [x] Fixed eligibility alert upsert behavior in shared runner so `new_match` alerts refresh deterministically on recompute (no duplicate-ignore path that could preserve stale explanation/state).
