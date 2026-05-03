@@ -30,7 +30,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${playfair.variable} ${dmSans.variable} ${dmMono.variable}`}>
-      <body className="min-h-screen bg-[#0c0c0c] text-white antialiased font-sans">
+      <body className="min-h-screen bg-[#f5f6fa] text-[#1a1a2e] antialiased font-sans">
         {children}
       </body>
     </html>
