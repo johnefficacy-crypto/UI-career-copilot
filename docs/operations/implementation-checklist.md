@@ -43,6 +43,10 @@ Legend:
 
 - [x] Published UI pattern map for P1 standardization (`docs/engineering/ui-pattern-map.md`) covering shell patterns, primitive usage, accessibility baseline, and migration policy.
 
+- [x] Simplified admin shell and overview UI to left-side panel style and converted landing (`/`) to matching left-panel structure for consistent light UI baseline (`app/admin/layout.tsx`, `app/admin/page.tsx`, `app/page.tsx`).
+
+- [x] Migrated `/admin/control-support` from legacy dark styling to the light admin surface pattern and added quick-action links for queue triage consistency (`app/admin/control-support/page.tsx`).
+
 ## Stakeholder control-support review (2026-05-02)
 
 This review captures control-support tooling required for primary stakeholders and maps current gaps to delivery priorities.
