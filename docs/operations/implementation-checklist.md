@@ -35,6 +35,8 @@ Legend:
 - [x] Rebased top-level App Router shell and core aspirant routes (`/today`, `/exams`, `/study`, `/community`, `/marketplace`, `/profile`) to match `_prototype` baseline for UX restructuring.
 
 
+- [x] Completed full codebase UI audit and prioritized action plan (`docs/operations/ui-audit-2026-05-03.md`).
+
 ## Stakeholder control-support review (2026-05-02)
 
 This review captures control-support tooling required for primary stakeholders and maps current gaps to delivery priorities.
