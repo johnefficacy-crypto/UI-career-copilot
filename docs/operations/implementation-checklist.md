@@ -37,6 +37,8 @@ Legend:
 
 - [x] Completed full codebase UI audit and prioritized action plan (`docs/operations/ui-audit-2026-05-03.md`).
 
+- [x] Implemented UI-audit P0 shell hardening: root navigation moved from inline styles to tokenized classes and global focus-visible ring standardization (`app/layout.tsx`, `app/globals.css`).
+
 ## Stakeholder control-support review (2026-05-02)
 
 This review captures control-support tooling required for primary stakeholders and maps current gaps to delivery priorities.
