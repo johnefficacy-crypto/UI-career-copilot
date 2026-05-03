@@ -1,4 +1,4 @@
-import { getAdminStats } from "@/lib/db/admin"
+import { getAdminStats, requireAdmin } from "@/lib/db/admin"
 import { getScrapeRuns, getScraperStats } from "@/lib/db/notifications"
 import { adminTriggerEligibilityRecompute } from "@/actions/admin"
 import Link from "next/link"
@@ -11,6 +11,8 @@ export default async function AdminOverviewPage({
   searchParams: Promise<{ success?: string; error?: string; info?: string }>
 }) {
   const { success, error, info } = await searchParams
+
+  await requireAdmin()
 
   const [stats, scraperStats, recentRuns] = await Promise.allSettled([
     getAdminStats(),

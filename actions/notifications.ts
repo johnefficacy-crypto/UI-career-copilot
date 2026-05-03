@@ -24,6 +24,7 @@ import {
   markAlertRead,
   markAllAlertsRead,
   approveScrapeItem,
+  approveCandidate,
   rejectScrapeItem,
   toggleScrapeSource,
   toggleSourceRegistry,
@@ -130,6 +131,34 @@ export async function adminApproveQueueItem(formData: FormData) {
     // the correct data will be shown.
     revalidatePath("/admin/recruitments")   // admin recruitment list
     revalidatePath("/dashboard")            // user dashboard feed
+  } catch (err) {
+    redirect(`/admin/scrape?error=${encodeURIComponent(err instanceof Error ? err.message : "Error")}`)
+  }
+}
+
+export async function adminApproveCandidate(formData: FormData) {
+  const admin = await requireAdmin()
+  const candidateId = formData.get("candidate_id") as string
+  const notes = (formData.get("notes") as string) || undefined
+  if (!candidateId) redirect("/admin/scrape?error=Missing+candidate_id")
+
+  try {
+    const result = await approveCandidate(candidateId, admin.id, notes)
+    void logAdminAction({
+      actorId: admin.id,
+      actorEmail: admin.email,
+      action: "approve_candidate",
+      entityType: "recruitment_candidate",
+      entityId: candidateId,
+      newValue: {
+        queue_item_id: result.queue_item_id,
+        recruitment_id: result.recruitment_id,
+        notes,
+      },
+    })
+    revalidatePath("/admin/scrape")
+    revalidatePath("/admin/recruitments")
+    revalidatePath("/dashboard")
   } catch (err) {
     redirect(`/admin/scrape?error=${encodeURIComponent(err instanceof Error ? err.message : "Error")}`)
   }
