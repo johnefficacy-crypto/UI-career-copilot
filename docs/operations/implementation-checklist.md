@@ -39,8 +39,6 @@ Legend:
 
 - [x] Implemented UI-audit P0 shell hardening: root navigation moved from inline styles to tokenized classes and global focus-visible ring standardization (`app/layout.tsx`, `app/globals.css`).
 
-- [x] Added automated root-shell accessibility smoke coverage (skip-link + nav landmark + main landmark assertions) in Vitest (`lib/ui/__tests__/root-layout.a11y-smoke.test.tsx`).
-
 ## Stakeholder control-support review (2026-05-02)
 
 This review captures control-support tooling required for primary stakeholders and maps current gaps to delivery priorities.
