@@ -44,6 +44,7 @@ Legend:
 - [x] Published UI pattern map for P1 standardization (`docs/engineering/ui-pattern-map.md`) covering shell patterns, primitive usage, accessibility baseline, and migration policy.
 
 - [x] Simplified admin shell and overview UI to left-side panel style and converted landing (`/`) to matching left-panel structure for consistent light UI baseline (`app/admin/layout.tsx`, `app/admin/page.tsx`, `app/page.tsx`).
+- [x] Replaced landing-page static recruitment preview with database-backed `public.recruitments` feed and reusable list component (`lib/db/landing.ts`, `components/landing/LandingRecruitmentList.tsx`, `app/page.tsx`).
 
 ## Stakeholder control-support review (2026-05-02)
 
