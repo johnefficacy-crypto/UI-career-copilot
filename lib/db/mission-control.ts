@@ -1,13 +1,32 @@
 import { createClient } from "@/utils/supabase/server"
 
+export type MissionControlStatus =
+  | "eligible"
+  | "conditional"
+  | "ineligible"
+  | "needs_profile_data"
+  | "not_computed"
+
+export type MissionControlExplanation = {
+  whyMatch: string[]
+  whyNotMatch: string[]
+  missingProfileData: string[]
+  failedRules: string[]
+  sourceEvidence: string[]
+  lastComputedAt: string | null
+}
+
 export type MissionControlFeedItem = {
   recruitmentId:    string
   recruitmentName:  string | null
-  eligibilityStatus: string
+  eligibilityStatus: MissionControlStatus
   daysToDeadline:   number | null
   priority:         number
   reasonCodes:      string[] | null
   explanation:      string | null
+  explanationDetails?: MissionControlExplanation | null
+  sourceEvidenceRefs?: string[]
+  lastComputedAt?: string | null
   saved:            boolean
   applied:          boolean
   detailHref:       string
@@ -73,8 +92,10 @@ export async function getMissionControlData(
       .map((r) => {
         const daysToDeadline = getDaysToDeadline(r.apply_end_date)
         const eligibilityStatus = deriveEligibilityStatus(
+          null,
           r.has_any_eligible_post ?? false,
           r.has_conditional_result ?? false,
+          (r.fail_reasons as string[] | null) ?? null,
         )
 
         return {
@@ -84,7 +105,14 @@ export async function getMissionControlData(
           daysToDeadline,
           priority: derivePriority(eligibilityStatus, daysToDeadline),
           reasonCodes: (r.fail_reasons as string[] | null) ?? null,
-          explanation: null,
+          explanation: formatExplanationText(eligibilityStatus, (r.fail_reasons as string[] | null) ?? null),
+          explanationDetails: buildExplanation({
+            status: eligibilityStatus,
+            reasonCodes: (r.fail_reasons as string[] | null) ?? null,
+            lastComputedAt: null,
+          }),
+          sourceEvidenceRefs: deriveEvidenceRefs((r.fail_reasons as string[] | null) ?? null),
+          lastComputedAt: null,
           saved: r.is_tracked ?? false,
           applied: r.clicked_apply ?? false,
           detailHref: `/dashboard/recruitments/${r.recruitment_id}`,
@@ -106,10 +134,38 @@ export async function getMissionControlData(
   }
 }
 
-function deriveEligibilityStatus(hasAnyEligiblePost: boolean, hasConditionalResult: boolean): string {
+function deriveEligibilityStatus(
+  explicitStatus: string | null,
+  hasAnyEligiblePost: boolean,
+  hasConditionalResult: boolean,
+  reasonCodes: string[] | null,
+): MissionControlStatus {
+  if (explicitStatus === "eligible" || explicitStatus === "conditional" || explicitStatus === "ineligible" || explicitStatus === "needs_profile_data" || explicitStatus === "not_computed") {
+    return explicitStatus
+  }
+
   if (hasAnyEligiblePost) return "eligible"
   if (hasConditionalResult) return "conditional"
+  if ((reasonCodes ?? []).length > 0) return "ineligible"
   return "needs_profile_data"
+}
+
+function buildExplanation(input: {
+  status: MissionControlStatus
+  reasonCodes: string[] | null
+  lastComputedAt: string | null
+}): MissionControlExplanation | null {
+  const reasons = input.reasonCodes ?? []
+  if (input.status === "not_computed" && reasons.length === 0) return null
+
+  return {
+    whyMatch: input.status === "eligible" ? ["At least one post is currently eligible."] : [],
+    whyNotMatch: input.status === "ineligible" ? reasons : [],
+    missingProfileData: input.status === "needs_profile_data" ? reasons : [],
+    failedRules: input.status === "ineligible" || input.status === "conditional" ? reasons : [],
+    sourceEvidence: [],
+    lastComputedAt: input.lastComputedAt,
+  }
 }
 
 function getDaysToDeadline(applyEndDate: string | null): number | null {
@@ -126,4 +182,19 @@ function derivePriority(eligibilityStatus: string, daysToDeadline: number | null
   const base = eligibilityStatus === "eligible" ? 60 : eligibilityStatus === "conditional" ? 35 : 15
   const urgency = daysToDeadline == null ? 0 : Math.max(0, 30 - Math.min(daysToDeadline, 30))
   return base + urgency
+}
+
+
+function formatExplanationText(status: MissionControlStatus, reasonCodes: string[] | null): string | null {
+  const reasons = reasonCodes ?? []
+  if (status === "conditional") return reasons[0] ?? "Eligibility is conditional based on pending criteria."
+  if (status === "needs_profile_data") return reasons[0] ?? "Complete missing profile fields to compute eligibility."
+  if (status === "ineligible") return reasons[0] ?? "Current profile does not satisfy required rules."
+  return null
+}
+
+
+function deriveEvidenceRefs(reasonCodes: string[] | null): string[] {
+  const reasons = reasonCodes ?? []
+  return reasons.map((code) => `rule:${code}`)
 }
