@@ -14,7 +14,7 @@ export function DashboardNav({ fullName, planId, avatarUrl, isAdmin }: Props) {
       className="border-b sticky top-0 z-40 backdrop-blur-md"
       style={{
         borderColor: "var(--border)",
-        background: "rgba(15,15,15,0.85)",
+        background: "rgba(255,255,255,0.88)",
         height: "56px",
       }}
     >
@@ -26,7 +26,7 @@ export function DashboardNav({ fullName, planId, avatarUrl, isAdmin }: Props) {
           <Link
             href="/dashboard"
             className="text-lg font-semibold tracking-tight shrink-0"
-            style={{ fontFamily: "var(--font-serif)", color: "var(--gold)" }}
+            style={{ fontFamily: "var(--font-serif)", color: "var(--brand)" }}
           >
             Career Copilot
           </Link>
@@ -34,12 +34,13 @@ export function DashboardNav({ fullName, planId, avatarUrl, isAdmin }: Props) {
           {/* Primary nav links — hidden on mobile */}
           <div className="hidden md:flex items-center gap-1">
             {[
-              { href: "/dashboard",           label: "Dashboard"    },
-              { href: "/dashboard/exams",      label: "Exams"        },
-              { href: "/dashboard/tracker",    label: "Tracker"      },
-              { href: "/dashboard/chat",       label: "AI Chat"      },
-              { href: "/dashboard/study-plan", label: "Study Plan"   },
-              { href: "/marketplace",          label: "Marketplace"  },
+              { href: "/dashboard",           label: "Today"       },
+              { href: "/dashboard/exams",      label: "Discover"    },
+              { href: "/dashboard/tracker",    label: "Tracker"     },
+              { href: "/dashboard/chat",       label: "AI Copilot"  },
+              { href: "/dashboard/study-plan", label: "Study"       },
+              { href: "/marketplace",          label: "Marketplace" },
+              { href: "/dashboard/support",    label: "Support"     },
             ].map((item) => (
               <Link
                 key={item.href}
