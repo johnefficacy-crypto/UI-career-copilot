@@ -11,6 +11,8 @@ Legend:
 
 ## Sprint 8 trust-redesign progress (2026-05-01)
 
+- [x] Added auth integration tests covering callback redirect sanitization, first-login profile row bootstrap, sign-in redirect sanitization, and sign-out onboarding cookie cleanup invariants.
+- [x] Mission-control feed now reads canonical `last_eligibility_computed_at` plus official/source URLs from `user_exam_summary` to backfill real `lastComputedAt` and deterministic evidence references.
 - [x] Critical admin-action audit observability added: non-blocking audit writes now return success, and critical action audit failures emit error logs plus optional webhook alert via `ADMIN_ALERT_WEBHOOK_URL`.
 - [x] Introduced concrete `/demo/*` prototype destinations (`/demo/today`, `/demo/exams`, `/demo/study`, `/demo/community`, `/demo/marketplace`) to complete route-trust separation between production and preview surfaces.
 - [x] Mission-control cards now surface deterministic evidence references and `last computed` metadata placeholder for explicit explainability affordance.

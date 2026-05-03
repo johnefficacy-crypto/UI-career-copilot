@@ -74,6 +74,9 @@ export async function getMissionControlData(
         has_any_eligible_post,
         has_conditional_result,
         fail_reasons,
+        last_eligibility_computed_at,
+        official_notification_url,
+        source_pdf_url,
         apply_end_date,
         is_tracked,
         clicked_apply
@@ -109,10 +112,10 @@ export async function getMissionControlData(
           explanationDetails: buildExplanation({
             status: eligibilityStatus,
             reasonCodes: (r.fail_reasons as string[] | null) ?? null,
-            lastComputedAt: null,
+            lastComputedAt: (r.last_eligibility_computed_at as string | null) ?? null,
           }),
-          sourceEvidenceRefs: deriveEvidenceRefs((r.fail_reasons as string[] | null) ?? null),
-          lastComputedAt: null,
+          sourceEvidenceRefs: deriveEvidenceRefs((r.fail_reasons as string[] | null) ?? null, (r.official_notification_url as string | null) ?? null, (r.source_pdf_url as string | null) ?? null),
+          lastComputedAt: (r.last_eligibility_computed_at as string | null) ?? null,
           saved: r.is_tracked ?? false,
           applied: r.clicked_apply ?? false,
           detailHref: `/dashboard/recruitments/${r.recruitment_id}`,
@@ -194,7 +197,10 @@ function formatExplanationText(status: MissionControlStatus, reasonCodes: string
 }
 
 
-function deriveEvidenceRefs(reasonCodes: string[] | null): string[] {
+function deriveEvidenceRefs(reasonCodes: string[] | null, officialNotificationUrl: string | null, sourcePdfUrl: string | null): string[] {
   const reasons = reasonCodes ?? []
-  return reasons.map((code) => `rule:${code}`)
+  const refs = reasons.map((code) => `rule:${code}`)
+  if (officialNotificationUrl) refs.push(`official:${officialNotificationUrl}`)
+  if (sourcePdfUrl) refs.push(`source_pdf:${sourcePdfUrl}`)
+  return refs
 }
