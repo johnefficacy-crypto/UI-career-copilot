@@ -106,10 +106,10 @@ export interface AuditParams {
  * logAdminAction — non-throwing audit log write.
  * NEVER throws: audit failures must never break the primary operation.
  */
-export async function logAdminAction(params: AuditParams): Promise<void> {
+export async function logAdminAction(params: AuditParams): Promise<boolean> {
   try {
     const supabase = await createClient()
-    await supabase.from("admin_audit_logs").insert({
+    const { error } = await supabase.from("admin_audit_logs").insert({
       actor_id:    params.actorId,
       actor_email: params.actorEmail ?? null,
       action:      params.action,
@@ -127,8 +127,11 @@ export async function logAdminAction(params: AuditParams): Promise<void> {
         : null) as never,
       notes:       params.notes ?? null,
     })
+    if (error) return false
+    return true
   } catch {
     // Intentionally swallowed — audit log failure is non-fatal
+    return false
   }
 }
 

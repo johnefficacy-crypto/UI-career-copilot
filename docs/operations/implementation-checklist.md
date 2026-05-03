@@ -11,6 +11,9 @@ Legend:
 
 ## Sprint 8 trust-redesign progress (2026-05-01)
 
+- [x] Critical admin-action audit observability added: non-blocking audit writes now return success, and critical action audit failures emit error logs plus optional webhook alert via `ADMIN_ALERT_WEBHOOK_URL`.
+- [x] Introduced concrete `/demo/*` prototype destinations (`/demo/today`, `/demo/exams`, `/demo/study`, `/demo/community`, `/demo/marketplace`) to complete route-trust separation between production and preview surfaces.
+- [x] Mission-control cards now surface deterministic evidence references and `last computed` metadata placeholder for explicit explainability affordance.
 - [x] Admin unauthorized access now routes to explicit `/access-denied` experience instead of silent dashboard fallback redirect.
 - [x] Mission-control data contract expanded with deterministic status fallback (`eligible`/`conditional`/`ineligible`/`needs_profile_data`/`not_computed`) and structured explanation payload plumbing from summary view fields.
 - [x] Auth sign-out now clears onboarding session cookie in canonical auth action module to prevent stale onboarding state after logout.

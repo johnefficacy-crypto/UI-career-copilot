@@ -25,6 +25,8 @@ export type MissionControlFeedItem = {
   reasonCodes:      string[] | null
   explanation:      string | null
   explanationDetails?: MissionControlExplanation | null
+  sourceEvidenceRefs?: string[]
+  lastComputedAt?: string | null
   saved:            boolean
   applied:          boolean
   detailHref:       string
@@ -109,6 +111,8 @@ export async function getMissionControlData(
             reasonCodes: (r.fail_reasons as string[] | null) ?? null,
             lastComputedAt: null,
           }),
+          sourceEvidenceRefs: deriveEvidenceRefs((r.fail_reasons as string[] | null) ?? null),
+          lastComputedAt: null,
           saved: r.is_tracked ?? false,
           applied: r.clicked_apply ?? false,
           detailHref: `/dashboard/recruitments/${r.recruitment_id}`,
@@ -187,4 +191,10 @@ function formatExplanationText(status: MissionControlStatus, reasonCodes: string
   if (status === "needs_profile_data") return reasons[0] ?? "Complete missing profile fields to compute eligibility."
   if (status === "ineligible") return reasons[0] ?? "Current profile does not satisfy required rules."
   return null
+}
+
+
+function deriveEvidenceRefs(reasonCodes: string[] | null): string[] {
+  const reasons = reasonCodes ?? []
+  return reasons.map((code) => `rule:${code}`)
 }
