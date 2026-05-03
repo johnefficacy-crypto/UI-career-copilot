@@ -11,6 +11,7 @@ Legend:
 
 ## Sprint 8 trust-redesign progress (2026-05-01)
 
+- [x] Fixed Google OAuth sign-in entrypoint mismatch by adding canonical `/api/auth/google` route and retaining `/api/google` compatibility redirect to prevent broken login handoff from auth UI.
 
 - [x] Fixed eligibility alert upsert behavior in shared runner so `new_match` alerts refresh deterministically on recompute (no duplicate-ignore path that could preserve stale explanation/state).
 - [x] Migrated app foundation and dashboard shell to light theme tokens (`app/layout.tsx`, `app/globals.css`, `components/dashboard/DashboardShell.tsx`, `components/dashboard/DashboardNav.tsx`) while preserving existing data flow and governance constraints.
@@ -48,6 +49,7 @@ Legend:
 - [x] Replaced landing-page static recruitment preview with database-backed `public.recruitments` feed and reusable list component (`lib/db/landing.ts`, `components/landing/LandingRecruitmentList.tsx`, `app/page.tsx`).
 
 - [x] Migrated `/admin/control-support` from legacy dark styling to the light admin surface pattern and added quick-action links for queue triage consistency (`app/admin/control-support/page.tsx`).
+- [x] Fixed admin dashboard authorization to accept role-based admins (not only legacy `is_admin`) by guarding `/admin` shell and overview with `requireAdmin` (`app/admin/layout.tsx`, `app/admin/page.tsx`).
 
 ## Stakeholder control-support review (2026-05-02)
 
@@ -181,7 +183,8 @@ Strategic rule remains unchanged: `Trust > Speed`, `Control > Automation`, `Dete
   - Paths:
     - `supabase/migrations/044_aggregator_candidate_layers.sql` ✓ foundation tables created
     - `supabase/functions/scheduled-scraper/index.ts` ✓ writes candidate/listing observation rows
-    - `lib/db/notifications.ts` (pending) — promotion still queue-item-centric
+    - `lib/db/notifications.ts` ✓ `approveCandidate()` delegates to validated queue promotion path
+    - `actions/notifications.ts` ✓ `adminApproveCandidate` server action added for admin workflows
     - `lib/eligibility/runner.ts` (pending) — no trust-state filter yet
   - Notes:
     - Current pipeline is safer than before but still partial: candidate workflow + eligibility trust gating remain required before declaring trusted ingestion complete.

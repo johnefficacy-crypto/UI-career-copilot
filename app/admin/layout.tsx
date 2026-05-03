@@ -2,6 +2,7 @@ import { redirect } from "next/navigation"
 import { headers } from "next/headers"
 import Link from "next/link"
 import { createClient } from "@/utils/supabase/server"
+import { requireAdmin } from "@/lib/db/admin"
 
 export const metadata = { title: "Admin — Career Copilot" }
 
@@ -23,17 +24,20 @@ const NAV_ITEMS = [
 ]
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect("/auth/login")
+  let userId: string
+  try {
+    userId = await requireAdmin()
+  } catch (error) {
+    if (error instanceof Error && error.message === "UNAUTHENTICATED") redirect("/auth/login")
+    redirect("/dashboard")
+  }
 
+  const supabase = await createClient()
   const { data: profile } = await supabase
     .from("profiles")
-    .select("is_admin, full_name")
-    .eq("id", user.id)
+    .select("full_name")
+    .eq("id", userId)
     .single()
-
-  if (!profile?.is_admin) redirect("/dashboard")
 
   const headersList = await headers()
   const pathname = headersList.get("x-pathname") ?? ""
@@ -66,7 +70,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         </nav>
 
         <div className="border-t border-slate-200 pt-3 text-xs text-slate-500">
-          <p className="truncate mb-2">{profile.full_name}</p>
+          <p className="truncate mb-2">{profile?.full_name ?? "Admin user"}</p>
           <Link href="/dashboard" className="text-indigo-600 hover:text-indigo-700">
             ← Back to dashboard
           </Link>
