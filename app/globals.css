@@ -284,23 +284,6 @@ textarea:focus-visible {
   outline-offset: 2px;
 }
 
-.cc-skip-link {
-  position: absolute;
-  left: 0.75rem;
-  top: -999px;
-  z-index: 300;
-  background: #111827;
-  color: #fff;
-  border-radius: 8px;
-  padding: 0.55rem 0.8rem;
-  font-size: 0.85rem;
-  font-weight: 600;
-}
-
-.cc-skip-link:focus-visible {
-  top: 0.75rem;
-}
-
 /* ── Root shell navigation (tokenized replacement for inline styles) ── */
 .root-shell-header {
   background: #fff;

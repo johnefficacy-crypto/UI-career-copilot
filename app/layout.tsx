@@ -27,10 +27,6 @@ export default function RootLayout({
     <html lang="en">
       <body>
         <AppProvider>
-          <a href="#main-content" className="cc-skip-link cc-focus-ring">
-            Skip to main content
-          </a>
-
           <header className="root-shell-header">
             <nav className="root-shell-nav" aria-label="Primary">
               <Link href="/today" className="root-shell-brand cc-focus-ring">
@@ -53,7 +49,7 @@ export default function RootLayout({
             </nav>
           </header>
 
-          <main id="main-content">{children}</main>
+          <main>{children}</main>
         </AppProvider>
       </body>
     </html>
