@@ -1,5 +1,5 @@
 # Career Copilot implementation status checklist
-_Last updated: 2026-05-02 — scraper trust hardening in progress_
+_Last updated: 2026-05-03 — light-theme migration phases 1-2 landed; scraper trust hardening in progress_
 
 This file is the single source of truth for implementation status and next build decisions.
 Legend:
@@ -11,6 +11,8 @@ Legend:
 
 ## Sprint 8 trust-redesign progress (2026-05-01)
 
+
+- [x] Migrated app foundation and dashboard shell to light theme tokens (`app/layout.tsx`, `app/globals.css`, `components/dashboard/DashboardShell.tsx`, `components/dashboard/DashboardNav.tsx`) while preserving existing data flow and governance constraints.
 - [x] Fixed `050_community_foundation.sql` enum type creation for broader Postgres compatibility by replacing `create type if not exists` with guarded `DO $$` blocks.
 - [x] Made `049_marketplace_setup.sql` idempotent for legacy replay by dropping/recreating marketplace RLS policies before `CREATE POLICY` statements (prevents duplicate-policy failures such as `Public reads published courses`).
 - [x] Hardened migration idempotency for legacy replay: `020_ai_infrastructure.sql` now drops/recreates RLS policies (`user_next_actions_own`, `study_tasks_own`, `study_sessions_own`) to avoid duplicate-policy failure on partially provisioned environments.

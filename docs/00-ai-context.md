@@ -1,6 +1,6 @@
 # Career Copilot — AI/Agent Context
 
-_Last updated: 2026-04-30 — Sprints 5/6/7 complete, community platform in design_
+_Last updated: 2026-05-03 — Sprint 8 in progress, light-theme migration phases 1-2 complete_
 
 This file gives AI agents and new contributors the minimum context needed to work effectively on this codebase. Read this first, then follow the links for depth.
 
@@ -42,7 +42,7 @@ See [engineering/domain-model.md](engineering/domain-model.md).
 
 ---
 
-## Current implementation state (Sprint 7 complete)
+## Current implementation state (Sprint 8 in progress)
 
 ### Done and operational
 
@@ -54,6 +54,7 @@ See [engineering/domain-model.md](engineering/domain-model.md).
 - Recruitment publish workflow (draft → needs_review → verified → published)
 - Organization trust fields and verification
 - Mission-control dashboard, exam summary cards, recruitment detail pages
+- Light-theme foundation + dashboard shell migrated (Phase 1-2), with page-by-page light migration pending
 - Apply tracker (durable application state, fee, notes)
 - Study OS: focus timer, mock-test log, subject breakdowns, weekly review
 - Ranking v1 (eligibility × urgency × org trust × behavior)
