@@ -94,7 +94,7 @@ export function DashboardShell({
   const percentComplete = planStats?.percentComplete ?? 0
 
   return (
-    <div className="min-h-screen bg-[#0f0f0f]">
+    <div className="min-h-screen bg-[var(--bg-app)] text-[var(--text-primary)]">
       <DashboardNav
         fullName={profile?.full_name ?? null}
         planId={profile?.plan_id ?? "free"}
@@ -106,8 +106,8 @@ export function DashboardShell({
         {/* Greeting */}
         <div className="mb-8">
           <h1
-            className="text-3xl text-white font-semibold tracking-tight mb-1"
-            style={{ fontFamily: "var(--font-serif)" }}
+            className="text-3xl font-semibold tracking-tight mb-1"
+            style={{ fontFamily: "var(--font-serif)", color: "var(--text-primary)" }}
           >
             {getGreeting()}, {firstName}
           </h1>
