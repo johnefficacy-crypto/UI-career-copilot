@@ -1,6 +1,6 @@
 import Link from "next/link"
 import { redirectIfUser } from "@/utils/supabase/redirectIfUser"
-import { signUp } from "../actions"
+import { signUp } from "@/actions/auth"
 
 export const metadata = { title: "Create account — Career Copilot" }
 
