@@ -566,3 +566,29 @@ input:-webkit-autofill:focus {
 .cc-bounce > i { display: inline-block; width: 5px; height: 5px; border-radius: 9999px; background: var(--gold); margin: 0 2px; animation: ccBounce 1.2s infinite ease-in-out; }
 .cc-bounce > i:nth-child(2) { animation-delay: 0.18s; }
 .cc-bounce > i:nth-child(3) { animation-delay: 0.36s; }
+/* ── Prototype parity utility classes (Phase 1 scaffold) ─────────────────── */
+.page{max-width:1200px;margin:0 auto;padding:24px 20px 80px}
+.page-header{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:20px}
+.card{background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:16px}
+.grid-2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.grid-3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.btn{display:inline-flex;align-items:center;justify-content:center;border-radius:10px;padding:10px 14px;font-size:14px;font-weight:600;border:1px solid transparent}
+.btn-primary{background:#4f46e5;color:#fff}.btn-outline{background:#fff;border-color:#d1d5db;color:#1f2937}.btn-danger{background:#dc2626;color:#fff}.btn-success{background:#16a34a;color:#fff}.btn-upgrade{background:linear-gradient(90deg,#7c3aed,#4f46e5);color:#fff}
+.tag{display:inline-flex;padding:4px 8px;border-radius:999px;font-size:12px;font-weight:600}.tag-red{background:#fee2e2;color:#991b1b}.tag-yellow{background:#fef3c7;color:#92400e}.tag-green{background:#dcfce7;color:#166534}.tag-blue{background:#dbeafe;color:#1e40af}.tag-purple{background:#ede9fe;color:#5b21b6}.tag-gray{background:#f3f4f6;color:#374151}.tag-orange{background:#ffedd5;color:#9a3412}
+.progress-bar-track{height:8px;background:#e5e7eb;border-radius:999px;overflow:hidden}.progress-bar-fill{height:100%;background:#4f46e5}
+.list-item{padding:10px 0;border-bottom:1px solid #f3f4f6}.list-item-title{font-size:14px;font-weight:600;color:#111827}.list-item-sub{font-size:12px;color:#6b7280}
+.avatar{width:36px;height:36px;border-radius:999px;background:#e5e7eb;display:inline-flex;align-items:center;justify-content:center;font-weight:700}
+.tier-badge{display:inline-flex;padding:4px 8px;border-radius:999px;font-size:11px;font-weight:700}.tier-free{background:#f3f4f6;color:#374151}.tier-pro{background:#dbeafe;color:#1e40af}.tier-elite{background:#ede9fe;color:#5b21b6}
+.verified-badge{display:inline-flex;align-items:center;gap:4px;color:#166534;background:#dcfce7;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700}
+.upgrade-gate{position:relative}.upgrade-gate-blur{filter:blur(2px);pointer-events:none;user-select:none}.upgrade-gate-cta{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
+.quota-bar{height:6px;background:#e5e7eb;border-radius:999px;overflow:hidden}.channel-tabs{display:flex;gap:8px;flex-wrap:wrap}.channel-tab{padding:8px 12px;border-radius:999px;font-size:13px}.channel-tab-active{background:#111827;color:#fff}.channel-tab-inactive{background:#f3f4f6;color:#374151}
+.official-lock-banner{border:1px solid #f59e0b;background:#fffbeb;color:#92400e;padding:10px 12px;border-radius:10px}
+.space-sidebar{display:flex;flex-direction:column;gap:8px}.space-tab{padding:10px 12px;border-radius:10px}.space-tab-active{background:#eef2ff;color:#3730a3;font-weight:600}
+.truth-panel{display:grid;gap:10px}.truth-panel-item{display:flex;justify-content:space-between;padding:10px;border:1px solid #f3f4f6;border-radius:10px}
+.app-lifecycle{display:flex;align-items:center;gap:8px}.app-lifecycle-step{display:flex;align-items:center;gap:8px}.app-lifecycle-dot{width:10px;height:10px;border-radius:999px;background:#d1d5db}.app-lifecycle-line{height:2px;width:32px;background:#d1d5db}
+.risk-low{color:#166534}.risk-medium{color:#92400e}.risk-high{color:#991b1b}
+.toggle-switch{width:42px;height:24px;border-radius:999px;background:#d1d5db;position:relative}.toggle-switch::after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:999px;background:#fff}
+.completion-bar-wrap{height:10px;background:#e5e7eb;border-radius:999px;overflow:hidden}.completion-bar-fill{height:100%;background:#22c55e}
+.disclosure-badge{font-size:11px;padding:3px 8px;border-radius:999px;background:#fef3c7;color:#92400e}
+.session-card{border:1px solid #e5e7eb;border-radius:14px;padding:14px;background:#fff}
+.next-action-card{border:1px solid #c7d2fe;background:#eef2ff;border-radius:14px;padding:16px}
+@media (max-width:960px){.grid-2,.grid-3{grid-template-columns:1fr}.page{padding:16px 12px 60px}}
