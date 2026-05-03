@@ -3,6 +3,7 @@
 import { redirect }       from "next/navigation"
 import { createClient }   from "@/utils/supabase/server"
 import { ensureProfileRow } from "@/lib/db/profiles"
+import { cookies } from "next/headers"
 
 // ─── Sign up ──────────────────────────────────────────────────────────────────
 
@@ -87,5 +88,9 @@ export async function signIn(formData: FormData) {
 export async function signOut() {
   const supabase = await createClient()
   await supabase.auth.signOut()
+
+  const cookieStore = await cookies()
+  cookieStore.delete("onboarding_completed")
+
   redirect("/auth/login")
 }

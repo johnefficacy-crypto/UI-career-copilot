@@ -10,12 +10,10 @@ export const metadata = {
 };
 
 const ROOT_NAV_ITEMS = [
-  { href: "/today", label: "Today" },
-  { href: "/exams", label: "Exams" },
-  { href: "/study", label: "Study" },
-  { href: "/community", label: "Community" },
+  { href: "/pricing", label: "Pricing" },
+  { href: "/forum", label: "Forum" },
   { href: "/marketplace", label: "Marketplace" },
-  { href: "/profile", label: "Profile" },
+  { href: "/dashboard", label: "Dashboard" },
 ] as const;
 
 export default function RootLayout({
@@ -33,7 +31,7 @@ export default function RootLayout({
 
           <header className="root-shell-header">
             <nav className="root-shell-nav" aria-label="Primary">
-              <Link href="/today" className="root-shell-brand cc-focus-ring">
+              <Link href="/" className="root-shell-brand cc-focus-ring">
                 Career Copilot
               </Link>
 
