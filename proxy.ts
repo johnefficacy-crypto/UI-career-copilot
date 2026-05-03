@@ -46,6 +46,7 @@ const PUBLIC_PREFIXES = [
   "/pricing",
   "/marketplace",
   "/forum",
+  "/demo",
 ]
 
 function isPublicPath(pathname: string): boolean {

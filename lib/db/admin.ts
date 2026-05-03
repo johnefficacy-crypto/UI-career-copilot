@@ -82,6 +82,13 @@ async function getAdminContext(): Promise<AdminContext> {
   }
 }
 
+
+export function hasAdminPermission(ctx: AdminContext, permission: string): boolean {
+  if (ctx.isLegacyAdmin || ctx.role === null) return true
+  const allowed = ROLE_PERMISSIONS[ctx.role] ?? []
+  return allowed.includes("*") || allowed.includes(permission)
+}
+
 // ─── Audit log ────────────────────────────────────────────────────────────────
 
 export interface AuditParams {
