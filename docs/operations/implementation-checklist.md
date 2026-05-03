@@ -32,6 +32,7 @@ Legend:
 - [x] Published aspirant-centered platform strategy for forum, exam planning, productivity, community, marketplace, AI assistant/chat, and resource governance (`docs/product/aspirant-platform-strategy.md`).
 - [x] Replaced static `StatsBar` with collapsible `LiveStatsBar` (collapsed by default, localStorage persistence, mobile defaults to collapsed).
 - [x] Added dashboard `Today's priorities` deterministic orchestration block combining deadlines, profile blockers/confidence labels, and active study tasks.
+- [x] Rebased top-level App Router shell and core aspirant routes (`/today`, `/exams`, `/study`, `/community`, `/marketplace`, `/profile`) to match `_prototype` baseline for UX restructuring.
 
 
 ## Stakeholder control-support review (2026-05-02)
