@@ -12,6 +12,7 @@ Legend:
 ## Sprint 8 trust-redesign progress (2026-05-01)
 
 
+- [x] Rebuilt landing page into a commercial product narrative aligned with platform vision (official-source trust, deterministic eligibility, study OS, action loop) while retaining canonical recruitment feed (`app/page.tsx`).
 - [x] Migrated app foundation and dashboard shell to light theme tokens (`app/layout.tsx`, `app/globals.css`, `components/dashboard/DashboardShell.tsx`, `components/dashboard/DashboardNav.tsx`) while preserving existing data flow and governance constraints.
 - [x] Fixed `050_community_foundation.sql` enum type creation for broader Postgres compatibility by replacing `create type if not exists` with guarded `DO $$` blocks.
 - [x] Made `049_marketplace_setup.sql` idempotent for legacy replay by dropping/recreating marketplace RLS policies before `CREATE POLICY` statements (prevents duplicate-policy failures such as `Public reads published courses`).
