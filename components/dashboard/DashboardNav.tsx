@@ -11,10 +11,10 @@ interface Props {
 export function DashboardNav({ fullName, planId, avatarUrl, isAdmin }: Props) {
   return (
     <nav
-      className="border-b sticky top-0 z-40 backdrop-blur-md"
+      className="border-b sticky top-0 z-40 backdrop-blur-md shadow-sm"
       style={{
         borderColor: "var(--border)",
-        background: "rgba(15,15,15,0.85)",
+        background: "rgba(245,246,250,0.92)",
         height: "56px",
       }}
     >
@@ -26,7 +26,7 @@ export function DashboardNav({ fullName, planId, avatarUrl, isAdmin }: Props) {
           <Link
             href="/dashboard"
             className="text-lg font-semibold tracking-tight shrink-0"
-            style={{ fontFamily: "var(--font-serif)", color: "var(--gold)" }}
+            style={{ fontFamily: "var(--font-serif)", color: "var(--brand)" }}
           >
             Career Copilot
           </Link>
