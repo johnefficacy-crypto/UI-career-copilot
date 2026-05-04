@@ -1,38 +1,57 @@
-import type { Metadata } from "next"
-import { Playfair_Display, DM_Sans, DM_Mono } from "next/font/google"
-import "./globals.css"
+import React from "react";
+import Link from "next/link";
+import { AppProvider } from "./context/AppContext";
+import { TierBadgeInner } from "./components/TierBadge";
+import "./globals.css";
 
-const playfair = Playfair_Display({
-  subsets: ["latin"],
-  variable: "--font-serif",
-  weight: ["400", "500", "600"],
-})
+export const metadata = {
+  title: "Career Copilot",
+  description: "Your unified career preparation dashboard",
+};
 
-const dmSans = DM_Sans({
-  subsets: ["latin"],
-  variable: "--font-sans",
-  weight: ["300", "400", "500"],
-})
-
-const dmMono = DM_Mono({
-  subsets: ["latin"],
-  variable: "--font-mono",
-  weight: ["400", "500"],
-})
-
-export const metadata: Metadata = {
-  title: "Career Copilot — Your AI Govt Exam Companion",
-  description:
-    "Track notifications, match eligibility, get a personalised study plan, and prepare smarter for UPSC, SEBI, RBI, SSC, IBPS and every other government exam.",
-  keywords: "government exam, UPSC, SEBI, RBI, SSC, IBPS, study plan, eligibility, notifications",
-}
+const ROOT_NAV_ITEMS = [
+  { href: "/dashboard", label: "Today" },
+  { href: "/dashboard/exams", label: "Exams" },
+  { href: "/dashboard/study", label: "Study" },
+  { href: "/dashboard/community", label: "Community" },
+  { href: "/marketplace", label: "Marketplace" },
+  { href: "/dashboard/profile", label: "Profile" },
+] as const;
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${playfair.variable} ${dmSans.variable} ${dmMono.variable}`}>
-      <body className="min-h-screen bg-[#0c0c0c] text-white antialiased font-sans">
-        {children}
+    <html lang="en">
+      <body>
+        <AppProvider>
+          <a href="#main-content" className="cc-skip-link cc-focus-ring">
+            Skip to main content
+          </a>
+
+          <header className="root-shell-header">
+            <nav className="root-shell-nav" aria-label="Primary">
+              <Link href="/" className="root-shell-brand cc-focus-ring">
+                Career Copilot
+              </Link>
+
+              <ul className="root-shell-nav-list">
+                {ROOT_NAV_ITEMS.map(({ href, label }) => (
+                  <li key={href}>
+                    <Link href={href} className="root-shell-nav-link cc-focus-ring">
+                      {label}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+
+              <div className="root-shell-tier">
+                <TierBadgeInner />
+              </div>
+            </nav>
+          </header>
+
+          <main id="main-content">{children}</main>
+        </AppProvider>
       </body>
     </html>
-  )
+  );
 }

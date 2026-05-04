@@ -82,9 +82,15 @@ function OpportunityRow({ item }: { item: MissionControlFeedItem }) {
           )}
 
           {/* Conditional explanation */}
-          {isConditional && item.explanation && (
+          {item.explanation && (
             <p className="text-amber-300/60 text-xs mt-1 truncate">{item.explanation}</p>
           )}
+
+          {item.sourceEvidence && item.sourceEvidence.length > 0 && (
+            <p className="text-white/30 text-[11px] mt-1 truncate">Evidence: {item.sourceEvidence.slice(0, 2).map((e) => e.label).join(" · ")}</p>
+          )}
+
+          <p className="text-white/25 text-[11px] mt-1">Last computed: {item.lastComputedAt ? new Date(item.lastComputedAt).toLocaleString() : "Pending"}</p>
         </div>
 
         <div className="flex flex-col items-end gap-1.5 shrink-0">

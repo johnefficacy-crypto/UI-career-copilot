@@ -38,39 +38,43 @@ export default async function ControlSupportPage() {
   const riskCards = [
     { label: "Scrape review backlog", value: pendingScrapeReview, danger: pendingScrapeReview > 0, href: "/admin/scrape" },
     { label: "Eligibility failed", value: eligibilityFailed, danger: eligibilityFailed > 0, href: "/admin/eligibility-queue?status=failed" },
-        { label: "Email unsent alerts", value: notificationUnsent, danger: notificationUnsent > 0, href: "/admin/notifications" },
+    { label: "Email unsent alerts", value: notificationUnsent, danger: notificationUnsent > 0, href: "/admin/notifications" },
   ]
 
   return (
     <div className="p-8 space-y-6">
       <div>
-        <h1 className="text-white text-2xl font-medium" style={{ fontFamily: "'Playfair Display', Georgia, serif" }}>
-          Control support dashboard
-        </h1>
-        <p className="text-white/40 text-sm mt-0.5">
-          Ops-first visibility for backlog, SLA risk, and governance controls.
-        </p>
+        <h1 className="text-2xl font-semibold text-slate-900">Control support dashboard</h1>
+        <p className="text-sm text-slate-600">Ops-first visibility for backlog, SLA risk, and governance controls.</p>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {riskCards.map((card) => (
           <Link key={card.label} href={card.href}
-            className={`rounded-xl border px-4 py-3 transition-colors ${card.danger ? "bg-red-500/[0.04] border-red-500/25" : "bg-white/[0.02] border-white/[0.07] hover:border-white/[0.15]"}`}>
-            <p className="text-white/35 text-xs uppercase tracking-widest mb-1">{card.label}</p>
-            <p className={`text-2xl font-semibold leading-none ${card.danger ? "text-red-400" : "text-white"}`}
-              style={{ fontFamily: "'Playfair Display', Georgia, serif" }}>
+            className={`rounded-md border px-4 py-3 transition-colors ${card.danger ? "border-red-200 bg-red-50 hover:bg-red-100" : "border-slate-200 bg-white hover:bg-slate-50"}`}>
+            <p className="text-xs uppercase tracking-wide text-slate-500 mb-1">{card.label}</p>
+            <p className={`text-2xl font-semibold leading-none ${card.danger ? "text-red-700" : "text-slate-900"}`}>
               {card.value.toLocaleString()}
             </p>
           </Link>
         ))}
       </div>
 
-      <div className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-5">
-        <h2 className="text-white text-sm font-medium mb-3">Operational signals</h2>
+      <div className="rounded-md border border-slate-200 bg-white p-5">
+        <h2 className="text-sm font-semibold text-slate-900 mb-3">Operational signals</h2>
         <div className="grid sm:grid-cols-2 gap-3 text-xs">
-          <p className="text-white/60">Eligibility pending queue: <span className="text-white">{eligibilityPending.toLocaleString()}</span></p>
-          <p className="text-white/60">Unread notifications: <span className="text-white">{notificationUnread.toLocaleString()}</span></p>
-          <p className="text-white/60">Notification kill switch: <span className={notificationsPaused ? "text-red-400" : "text-emerald-400"}>{notificationsPaused ? "paused" : "active"}</span></p>
+          <p className="text-slate-600">Eligibility pending queue: <span className="text-slate-900">{eligibilityPending.toLocaleString()}</span></p>
+          <p className="text-slate-600">Unread notifications: <span className="text-slate-900">{notificationUnread.toLocaleString()}</span></p>
+          <p className="text-slate-600">Notification kill switch: <span className={notificationsPaused ? "text-red-700" : "text-emerald-700"}>{notificationsPaused ? "paused" : "active"}</span></p>
+        </div>
+      </div>
+
+      <div className="rounded-md border border-slate-200 bg-white p-5">
+        <h2 className="text-sm font-semibold text-slate-900 mb-3">Quick actions</h2>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <Link href="/admin/scrape" className="rounded border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">Review scrape queue</Link>
+          <Link href="/admin/eligibility-queue" className="rounded border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">Inspect eligibility queue</Link>
+          <Link href="/admin/notifications" className="rounded border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">Manage notifications</Link>
         </div>
       </div>
     </div>

@@ -1,6 +1,6 @@
 # Career Copilot — Feature Registry
 
-_Last updated: 2026-05-01_
+_Last updated: 2026-05-03_
 
 This document maps product capabilities to their current implementation anchors.
 
@@ -21,6 +21,7 @@ This document maps product capabilities to their current implementation anchors.
 | Exam summary cards (UI term) | `app/dashboard/exams/page.tsx`, `app/api/exams/summary/route.ts`, `029_exam_summary_support.sql` | ✅ |
 | Recruitment detail + timeline | `app/dashboard/recruitments/[id]/page.tsx`, `components/recruitments/Timeline.tsx` | ✅ |
 | Apply tracker lifecycle | `app/dashboard/tracker/page.tsx`, `actions/apply-tracker.ts`, `lib/db/apply-tracker.ts` | ✅ |
+| Light-theme foundation + dashboard shell | `app/layout.tsx`, `app/globals.css`, `components/dashboard/DashboardShell.tsx`, `components/dashboard/DashboardNav.tsx` | ✅ (Phase 1-2) |
 
 ## Intelligence and AI
 

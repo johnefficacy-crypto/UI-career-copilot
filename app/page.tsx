@@ -1,313 +1,137 @@
 import Link from "next/link"
-import { createClient } from "@/utils/supabase/server"
+import { LandingRecruitmentList } from "@/components/landing/LandingRecruitmentList"
+import { getLandingRecruitments } from "@/lib/db/landing"
 
-// ─── Data ─────────────────────────────────────────────────────────────────────
-
-const EXAM_LOGOS = [
-  "UPSC", "SEBI", "RBI", "SSC", "IBPS",
-  "NABARD", "IRDAI", "Railways", "State PSC",
+const landingNav = [
+  { href: "/today", label: "Today" },
+  { href: "/exams", label: "Exams" },
+  { href: "/study", label: "Study OS" },
+  { href: "/community", label: "Community" },
+  { href: "/marketplace", label: "Mentors" },
 ]
 
-const FEATURES = [
+const pillars = [
   {
-    icon: "🔔",
-    title: "Notification tracker",
-    desc:  "Every recruitment notification from 500+ bodies — auto-tracked, deduplicated, and delivered to your feed the moment it drops.",
+    title: "Discover official recruitments",
+    body: "Verified notifications from trusted government sources with canonical apply links.",
   },
   {
-    icon: "✓",
-    title: "Eligibility engine",
-    desc:  "Your age, category, education, and attempt history matched against each post's exact criteria. No manual checking, ever again.",
+    title: "Match with deterministic eligibility",
+    body: "Know exactly where you qualify, why you qualify, and what profile data is missing.",
   },
   {
-    icon: "📅",
-    title: "AI study planner",
-    desc:  "Claude AI builds a week-by-week schedule tailored to your exam, your deadline, and your weak subjects. Adjusts as you log sessions.",
+    title: "Prepare with a daily execution system",
+    body: "Run your preparation with study tasks, focus sessions, mock tracking, and weekly reviews.",
   },
   {
-    icon: "📚",
-    title: "Course marketplace",
-    desc:  "Buy test series, notes, and video courses from toppers and educators. Sell your own. Zero setup.",
-  },
-  {
-    icon: "💬",
-    title: "Structured forum",
-    desc:  "Exam-specific discussion — not scattered across 40 Telegram groups. Searchable, moderated, permanent.",
-  },
-  {
-    icon: "📊",
-    title: "Progress tracker",
-    desc:  "Daily study logs, streak tracking, and week completion — so you know exactly where you stand at any moment.",
+    title: "Act before deadlines",
+    body: "Stay on top of applications, reminders, and next actions from one mission-control dashboard.",
   },
 ]
 
-const TESTIMONIALS = [
-  {
-    name: "Sankar Ganesan",
-    role: "SSC CGL",
-    quote: "Career-Copilot solved this exact problem and told me exactly which exams I am eligible for right now, based on my specific age, category, education, attempts, and domicile — automatically, without me having to read 30 PDFs"
-  },
-  {
-    name:  "Priya Sharma",
-    role:  "RBI Grade B 2024",
-    quote: "I was tracking 6 exams manually on a spreadsheet. Career Copilot collapsed it into one feed. The eligibility check alone saved me 3 pointless applications.",
-  },
-  {
-    name:  "Arjun Mehta",
-    role:  "SEBI Grade A aspirant",
-    quote: "The AI study plan actually accounted for my weak spots in Quant and gave me 3 extra weeks on it. First time I felt like I had a real coach.",
-  },
-  {
-    name:  "Sneha Patel",
-    role:  "SSC CGL 2023 qualifier",
-    quote: "Stopped using four different apps and three Telegram channels. Everything I need is here. Especially the deadline countdown — saved me once already.",
-  },
+const trustMetrics = [
+  { label: "Official-source-first links", value: "100%" },
+  { label: "Deterministic eligibility core", value: "P0" },
+  { label: "Daily execution surfaces", value: "4" },
 ]
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
-
-export default async function LandingPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+export default async function Home() {
+  const recruitments = await getLandingRecruitments()
 
   return (
-    <div className="grain min-h-screen bg-[#0c0c0c] overflow-x-hidden">
-
-      {/* ── Nav ───────────────────────────────────────────────────────────── */}
-      <nav className="fixed top-0 left-0 right-0 z-50 border-b border-white/[0.06] bg-[#0c0c0c]/80 backdrop-blur-md">
-        <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
-          <span className="text-[#e8d5a3] font-serif text-xl font-medium tracking-tight">
-            Career Copilot
-          </span>
-          <div className="flex items-center gap-5">
-            <Link href="/pricing" className="text-white/40 text-sm hover:text-white transition-colors hidden sm:block">
-              Pricing
-            </Link>
-            <Link href="/marketplace" className="text-white/40 text-sm hover:text-white transition-colors hidden sm:block">
-              Marketplace
-            </Link>
-            {user ? (
+    <main className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-indigo-50/40 text-slate-900">
+      <section className="mx-auto grid w-full max-w-7xl grid-cols-1 gap-6 px-6 py-10 lg:grid-cols-[290px_1fr]">
+        <aside className="h-fit rounded-2xl border border-slate-200 bg-white/95 p-6 shadow-sm backdrop-blur">
+          <div className="rounded-xl border border-indigo-100 bg-indigo-50/80 p-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700">Career Copilot</p>
+            <h2 className="mt-1 text-lg font-semibold leading-tight">Exam preparation operating system</h2>
+          </div>
+          <p className="mt-4 text-sm text-slate-600">
+            Eligibility-first workflow for serious aspirants preparing for Indian government jobs.
+          </p>
+          <nav className="mt-5 flex flex-col gap-2" aria-label="Landing navigation">
+            {landingNav.map((item) => (
               <Link
-                href="/dashboard"
-                className="px-4 py-1.5 rounded-lg bg-[#e8d5a3] text-[#0c0c0c] text-sm font-medium hover:bg-[#f0dfa8] transition-colors"
+                key={item.href}
+                href={item.href}
+                className="group rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:border-indigo-200 hover:bg-indigo-50"
               >
-                Dashboard →
+                <span className="inline-flex items-center gap-2">
+                  <span className="h-1.5 w-1.5 rounded-full bg-slate-300 transition group-hover:bg-indigo-500" aria-hidden />
+                  {item.label}
+                </span>
               </Link>
-            ) : (
-              <div className="flex items-center gap-3">
-                <Link href="/auth/login" className="text-white/50 text-sm hover:text-white transition-colors">
-                  Sign in
-                </Link>
-                <Link
-                  href="/auth/signup"
-                  className="px-4 py-1.5 rounded-lg bg-[#e8d5a3] text-[#0c0c0c] text-sm font-medium hover:bg-[#f0dfa8] transition-colors"
-                >
-                  Get started
-                </Link>
-              </div>
-            )}
-          </div>
-        </div>
-      </nav>
-
-      {/* ── Hero ──────────────────────────────────────────────────────────── */}
-      <section className="relative min-h-screen flex flex-col items-center justify-center px-6 pt-14">
-
-        {/* Radial glow */}
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <div className="w-[600px] h-[600px] rounded-full bg-[#e8d5a3] opacity-[0.04] blur-[120px]" />
-        </div>
-
-        {/* Subtle grid lines */}
-        <div
-          className="absolute inset-0 pointer-events-none opacity-[0.03]"
-          style={{
-            backgroundImage: `
-              linear-gradient(rgba(255,255,255,0.5) 1px, transparent 1px),
-              linear-gradient(90deg, rgba(255,255,255,0.5) 1px, transparent 1px)
-            `,
-            backgroundSize: "80px 80px",
-          }}
-        />
-
-        <div className="relative max-w-4xl mx-auto text-center animate-fadeUp">
-
-          {/* Pill badge */}
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-[#e8d5a3]/20 bg-[#e8d5a3]/[0.06] mb-8">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#e8d5a3] animate-pulse" />
-            <span className="text-[#e8d5a3]/70 text-xs tracking-wider uppercase">
-              AI-powered exam prep for India
-            </span>
-          </div>
-
-          {/* Headline */}
-          <h1 className="font-serif text-5xl sm:text-6xl lg:text-7xl font-medium leading-[1.1] tracking-tight text-white mb-6">
-            One platform for
-            <br />
-            <span className="text-[#e8d5a3]">every govt exam</span>
-            <br />
-            you&apos;re targeting
-          </h1>
-
-          <p className="text-white/45 text-lg sm:text-xl leading-relaxed max-w-2xl mx-auto mb-10">
-            Track notifications, verify eligibility, get an AI study plan, and
-            prepare alongside 50,000+ aspirants — for UPSC, SEBI, RBI, SSC,
-            IBPS, and hundreds more.
-          </p>
-
-          {/* CTAs */}
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <Link
-              href="/auth/signup"
-              className="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-[#e8d5a3] text-[#0c0c0c] text-base font-medium hover:bg-[#f0dfa8] transition-colors"
-            >
-              Start for free →
-            </Link>
-            <Link
-              href="#features"
-              className="w-full sm:w-auto px-8 py-3.5 rounded-xl border border-white/[0.12] text-white/60 text-base hover:text-white hover:border-white/[0.25] transition-colors"
-            >
-              See how it works
-            </Link>
-          </div>
-
-          <p className="text-white/25 text-xs mt-5">
-            No credit card · Free plan forever · 2-minute setup
-          </p>
-        </div>
-
-        {/* Exam logos strip */}
-        <div className="relative mt-20 w-full max-w-4xl mx-auto">
-          <p className="text-white/20 text-xs uppercase tracking-widest text-center mb-5">
-            Tracking notifications for
-          </p>
-          <div className="flex flex-wrap items-center justify-center gap-3">
-            {EXAM_LOGOS.map((name) => (
-              <span
-                key={name}
-                className="px-4 py-2 rounded-lg border border-white/[0.07] bg-white/[0.02] text-white/35 text-sm font-mono"
-              >
-                {name}
-              </span>
             ))}
-            <span className="text-white/20 text-sm">+ 490 more</span>
-          </div>
-        </div>
-      </section>
+          </nav>
+        </aside>
 
-      {/* ── Features ──────────────────────────────────────────────────────── */}
-      <section id="features" className="py-28 px-6">
-        <div className="max-w-6xl mx-auto">
-          <div className="text-center mb-16">
-            <p className="text-[#e8d5a3]/50 text-xs uppercase tracking-widest mb-3">
-              What Career Copilot does
-            </p>
-            <h2 className="font-serif text-4xl sm:text-5xl font-medium text-white leading-tight">
-              Everything scattered across<br />Telegram groups, in one place
-            </h2>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-            {FEATURES.map((f, i) => (
-              <div
-                key={f.title}
-                className="group rounded-2xl border border-white/[0.07] bg-white/[0.02] p-6 hover:border-[#e8d5a3]/20 hover:bg-[#e8d5a3]/[0.03] transition-colors"
-                style={{ animationDelay: `${i * 80}ms` }}
-              >
-                <div className="text-2xl mb-4 opacity-70">{f.icon}</div>
-                <h3 className="text-white font-medium text-base mb-2 font-serif">{f.title}</h3>
-                <p className="text-white/40 text-sm leading-relaxed">{f.desc}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── How it works ──────────────────────────────────────────────────── */}
-      <section className="py-28 px-6 border-t border-white/[0.05]">
-        <div className="max-w-4xl mx-auto">
-          <div className="text-center mb-16">
-            <h2 className="font-serif text-4xl font-medium text-white mb-3">
-              Ready in under 3 minutes
-            </h2>
-            <p className="text-white/40">Sign up, complete onboarding, and your feed is live.</p>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-            {[
-              { step: "01", title: "Create your profile", desc: "Tell us your education, category, state, and target exams. Takes 2 minutes." },
-              { step: "02", title: "Get your matches", desc: "Our eligibility engine instantly shows you every exam you qualify for — with countdown timers." },
-              { step: "03", title: "Start your plan", desc: "Claude AI builds a week-by-week study plan. Log sessions daily and track your progress." },
-            ].map((s) => (
-              <div key={s.step} className="relative">
-                <div className="font-mono text-[#e8d5a3]/20 text-4xl font-medium mb-4">{s.step}</div>
-                <h3 className="text-white font-medium text-base mb-2">{s.title}</h3>
-                <p className="text-white/40 text-sm leading-relaxed">{s.desc}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── Testimonials ──────────────────────────────────────────────────── */}
-      <section className="py-28 px-6 border-t border-white/[0.05]">
-        <div className="max-w-5xl mx-auto">
-          <p className="text-white/20 text-xs uppercase tracking-widest text-center mb-12">
-            What aspirants say
-          </p>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-            {TESTIMONIALS.map((t) => (
-              <div
-                key={t.name}
-                className="rounded-2xl border border-white/[0.07] bg-white/[0.02] p-6"
-              >
-                <p className="text-white/55 text-sm leading-relaxed mb-5 italic">
-                  &ldquo;{t.quote}&rdquo;
+        <div className="space-y-6">
+          <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div className="grid gap-6 p-8 lg:grid-cols-[1.2fr_0.8fr] lg:p-10">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700">Official-source-first platform</p>
+                <h1 className="mt-2 text-3xl font-semibold leading-tight md:text-4xl">
+                  One modern workspace for every government exam goal.
+                </h1>
+                <p className="mt-4 max-w-3xl text-base text-slate-600">
+                  Career Copilot gives you one trusted system to discover recruitments, check eligibility, plan preparation,
+                  and track execution from notification to application.
                 </p>
-                <div>
-                  <p className="text-white/70 text-sm font-medium">{t.name}</p>
-                  <p className="text-white/30 text-xs">{t.role}</p>
+                <div className="mt-6 flex flex-wrap gap-3">
+                  <Link
+                    href="/auth/signup"
+                    className="rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-700"
+                  >
+                    Start free
+                  </Link>
+                  <Link
+                    href="/auth/login"
+                    className="rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                  >
+                    Sign in
+                  </Link>
                 </div>
               </div>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-5">
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-700">Trust + control</h2>
+                <div className="mt-4 space-y-3">
+                  {trustMetrics.map((metric) => (
+                    <div key={metric.label} className="flex items-center justify-between rounded-lg bg-white px-3 py-2 shadow-sm">
+                      <span className="text-sm text-slate-600">{metric.label}</span>
+                      <span className="text-sm font-semibold text-indigo-700">{metric.value}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section className="grid gap-4 md:grid-cols-2">
+            {pillars.map((pillar) => (
+              <article
+                key={pillar.title}
+                className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-indigo-200"
+              >
+                <h2 className="text-base font-semibold text-slate-900">{pillar.title}</h2>
+                <p className="mt-2 text-sm leading-relaxed text-slate-600">{pillar.body}</p>
+              </article>
             ))}
-          </div>
+          </section>
+
+          <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h2 className="text-xl font-semibold text-slate-900">Latest verified recruitments</h2>
+              <Link href="/exams" className="text-sm font-medium text-indigo-700 hover:text-indigo-800">
+                View all exams →
+              </Link>
+            </div>
+            <p className="mt-2 text-sm text-slate-600">User-facing listings prioritize official notifications and application links.</p>
+            <div className="mt-5">
+              <LandingRecruitmentList items={recruitments} />
+            </div>
+          </section>
         </div>
       </section>
-
-      {/* ── CTA banner ────────────────────────────────────────────────────── */}
-      <section className="py-28 px-6 border-t border-white/[0.05]">
-        <div className="max-w-2xl mx-auto text-center">
-          <h2 className="font-serif text-4xl sm:text-5xl font-medium text-white leading-tight mb-5">
-            Your next exam notification
-            <br />
-            <span className="text-[#e8d5a3]">won&apos;t slip past you</span>
-          </h2>
-          <p className="text-white/40 mb-8 leading-relaxed">
-            Join thousands of aspirants who stopped relying on Telegram alerts
-            and started preparing with a system.
-          </p>
-          <Link
-            href="/auth/signup"
-            className="inline-block px-10 py-4 rounded-xl bg-[#e8d5a3] text-[#0c0c0c] text-base font-medium hover:bg-[#f0dfa8] transition-colors"
-          >
-            Create free account →
-          </Link>
-        </div>
-      </section>
-
-      {/* ── Footer ────────────────────────────────────────────────────────── */}
-      <footer className="border-t border-white/[0.05] py-10 px-6">
-        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
-          <span className="text-[#e8d5a3]/60 font-serif text-base">Career Copilot</span>
-          <div className="flex items-center gap-6 text-white/25 text-sm">
-            <Link href="/pricing"    className="hover:text-white/50 transition-colors">Pricing</Link>
-            <Link href="/marketplace" className="hover:text-white/50 transition-colors">Marketplace</Link>
-            <Link href="/auth/login"  className="hover:text-white/50 transition-colors">Sign in</Link>
-          </div>
-          <p className="text-white/15 text-xs">© {new Date().getFullYear()} Career Copilot</p>
-        </div>
-      </footer>
-
-    </div>
+    </main>
   )
 }

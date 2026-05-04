@@ -1,0 +1,7 @@
+Audit Drill Timestamp: 2026-05-04T00:30:10Z
+Webhook URL configured: yes
+Step 1: In staging, revoke insert on admin_audit_logs for app role temporarily.
+Step 2: Trigger critical action: publish_recruitment.
+Step 3: Verify app log includes [audit-failure].
+Step 4: Verify webhook receives payload source=admin_action_audit.
+Step 5: Restore permissions and re-run action to verify alert silence.

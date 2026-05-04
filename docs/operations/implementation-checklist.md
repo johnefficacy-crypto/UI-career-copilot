@@ -1,5 +1,5 @@
 # Career Copilot implementation status checklist
-_Last updated: 2026-05-02 — scraper trust hardening in progress_
+_Last updated: 2026-05-03 — light-theme migration phases 1-2 landed; scraper trust hardening in progress_
 
 This file is the single source of truth for implementation status and next build decisions.
 Legend:
@@ -11,6 +11,22 @@ Legend:
 
 ## Sprint 8 trust-redesign progress (2026-05-01)
 
+- [x] Removed `/demo/*` prototype routes after decommissioning prototype surface from mainline; production routing now relies only on canonical public/dashboard/admin paths.
+- [x] Added auth integration tests covering callback redirect sanitization, first-login profile row bootstrap, sign-in redirect sanitization, and sign-out onboarding cookie cleanup invariants.
+- [x] Mission-control feed now reads canonical `last_eligibility_computed_at` plus official/source URLs from `user_exam_summary` to backfill real `lastComputedAt` and deterministic evidence references.
+- [x] Critical admin-action audit observability added: non-blocking audit writes now return success, and critical action audit failures emit error logs plus optional webhook alert via `ADMIN_ALERT_WEBHOOK_URL`.
+- [x] Mission-control cards now surface deterministic evidence references and `last computed` metadata placeholder for explicit explainability affordance.
+- [x] Admin unauthorized access now routes to explicit `/access-denied` experience instead of silent dashboard fallback redirect.
+- [x] Mission-control data contract expanded with deterministic status fallback (`eligible`/`conditional`/`ineligible`/`needs_profile_data`/`not_computed`) and structured explanation payload plumbing from summary view fields.
+- [x] Auth sign-out now clears onboarding session cookie in canonical auth action module to prevent stale onboarding state after logout.
+- [x] Route-truth hardening pass: root shell navigation now points to canonical surfaces (`/pricing`, `/forum`, `/marketplace`, `/dashboard`) and legacy prototype roots (`/today`, `/exams`, `/study`, `/profile`, `/community`) now redirect to auth intent or dashboard/forum destinations to avoid volatile AppContext-only UX in production.
+- [x] Auth action consolidation: `app/auth/actions.ts` now delegates to canonical `actions/auth.ts` to prevent signup/login drift across profile bootstrapping and redirect-safety behavior.
+- [x] Admin navigation visibility is now permission-aware using role bucket checks (`hasAdminPermission`) so admins only see sections aligned with their RBAC grants.
+
+- [x] Fixed Google OAuth sign-in entrypoint mismatch by adding canonical `/api/auth/google` route and retaining `/api/google` compatibility redirect to prevent broken login handoff from auth UI.
+
+- [x] Fixed eligibility alert upsert behavior in shared runner so `new_match` alerts refresh deterministically on recompute (no duplicate-ignore path that could preserve stale explanation/state).
+- [x] Migrated app foundation and dashboard shell to light theme tokens (`app/layout.tsx`, `app/globals.css`, `components/dashboard/DashboardShell.tsx`, `components/dashboard/DashboardNav.tsx`) while preserving existing data flow and governance constraints.
 - [x] Fixed `050_community_foundation.sql` enum type creation for broader Postgres compatibility by replacing `create type if not exists` with guarded `DO $$` blocks.
 - [x] Made `049_marketplace_setup.sql` idempotent for legacy replay by dropping/recreating marketplace RLS policies before `CREATE POLICY` statements (prevents duplicate-policy failures such as `Public reads published courses`).
 - [x] Hardened migration idempotency for legacy replay: `020_ai_infrastructure.sql` now drops/recreates RLS policies (`user_next_actions_own`, `study_tasks_own`, `study_sessions_own`) to avoid duplicate-policy failure on partially provisioned environments.
@@ -30,7 +46,26 @@ Legend:
 - [x] Published aspirant-centered platform strategy for forum, exam planning, productivity, community, marketplace, AI assistant/chat, and resource governance (`docs/product/aspirant-platform-strategy.md`).
 - [x] Replaced static `StatsBar` with collapsible `LiveStatsBar` (collapsed by default, localStorage persistence, mobile defaults to collapsed).
 - [x] Added dashboard `Today's priorities` deterministic orchestration block combining deadlines, profile blockers/confidence labels, and active study tasks.
+- [x] Rebased top-level App Router shell and core aspirant routes (`/today`, `/exams`, `/study`, `/community`, `/marketplace`, `/profile`) to match `_prototype` baseline for UX restructuring.
 
+
+- [x] Completed full codebase UI audit and prioritized action plan (`docs/operations/ui-audit-2026-05-03.md`).
+
+- [x] Implemented UI-audit P0 shell hardening: root navigation moved from inline styles to tokenized classes and global focus-visible ring standardization (`app/layout.tsx`, `app/globals.css`).
+
+- [x] Added automated root-shell accessibility smoke coverage (skip-link + nav landmark + main landmark assertions) in Vitest (`lib/ui/__tests__/root-layout.a11y-smoke.test.tsx`).
+- [x] Added shared responsive UI baseline polish across global surfaces (control typography/inputs, media scaling, card overflow handling, and tighter mobile paddings) to reduce cross-screen layout regressions (`app/globals.css`).
+
+- [x] Published UI pattern map for P1 standardization (`docs/engineering/ui-pattern-map.md`) covering shell patterns, primitive usage, accessibility baseline, and migration policy.
+
+- [x] Simplified admin shell and overview UI to left-side panel style and converted landing (`/`) to matching left-panel structure for consistent light UI baseline (`app/admin/layout.tsx`, `app/admin/page.tsx`, `app/page.tsx`).
+- [x] Replaced landing-page static recruitment preview with database-backed `public.recruitments` feed and reusable list component (`lib/db/landing.ts`, `components/landing/LandingRecruitmentList.tsx`, `app/page.tsx`).
+
+- [x] Migrated `/admin/control-support` from legacy dark styling to the light admin surface pattern and added quick-action links for queue triage consistency (`app/admin/control-support/page.tsx`).
+- [x] Replaced `/dashboard/community` preview shell with live forum-powered community hub (exam-space links, latest threads, and actionable resource-sharing guidance) to restore user-facing community functionality.
+
+- [x] Fixed `/api/exams/summary` to query canonical `user_exam_summary` view and map recruitment-backed fields (removed stale `exam_user_summary`/`exam_id` assumptions).
+- [x] Modernized the public landing experience with a refreshed light-theme hero, trust metrics panel, and upgraded card/navigation styling while preserving canonical recruitment feed wiring (`app/page.tsx`).
 
 ## Stakeholder control-support review (2026-05-02)
 
@@ -164,7 +199,8 @@ Strategic rule remains unchanged: `Trust > Speed`, `Control > Automation`, `Dete
   - Paths:
     - `supabase/migrations/044_aggregator_candidate_layers.sql` ✓ foundation tables created
     - `supabase/functions/scheduled-scraper/index.ts` ✓ writes candidate/listing observation rows
-    - `lib/db/notifications.ts` (pending) — promotion still queue-item-centric
+    - `lib/db/notifications.ts` ✓ `approveCandidate()` delegates to validated queue promotion path
+    - `actions/notifications.ts` ✓ `adminApproveCandidate` server action added for admin workflows
     - `lib/eligibility/runner.ts` (pending) — no trust-state filter yet
   - Notes:
     - Current pipeline is safer than before but still partial: candidate workflow + eligibility trust gating remain required before declaring trusted ingestion complete.
@@ -727,3 +763,13 @@ Trust > Speed
 Control > Automation
 Determinism > Heuristics
 ```
+
+
+## Pending P1/P2 tasks
+
+- [ ] P1: Execute real environment rollout for `ADMIN_ALERT_WEBHOOK_URL` across dev/staging/prod.
+- [ ] P1: Run staging forced audit-failure drill and archive log/webhook artifacts.
+- [ ] P1: Regenerate `types/supabase.ts` from connected live schema and remove dynamic table bridges for `community_reports` / `forum_reports`.
+- [ ] P2: Optional warning-free lint baseline cleanup (unused vars, image optimization refactors, hook dependency audits).
+
+- [x] Standardized root product shell navigation and dashboard exams screen to light-indigo UI baseline (sticky white nav, compact cards/table, and tokenized styling) for screenshot parity pass.

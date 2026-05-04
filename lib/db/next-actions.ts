@@ -75,7 +75,7 @@ export async function markNextActionDone(actionId: string, userId: string): Prom
   const { error } = await supabase
     .from("user_next_actions")
     .update({ status: "done", completed_at: new Date().toISOString() })
-    .eq("id", userId === "" ? actionId : actionId)
+    .eq("id", actionId)
     .eq("user_id", userId)
   if (error) throw new Error(`markNextActionDone: ${error.message}`)
 }

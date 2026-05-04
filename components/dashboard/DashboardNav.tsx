@@ -11,22 +11,22 @@ interface Props {
 export function DashboardNav({ fullName, planId, avatarUrl, isAdmin }: Props) {
   return (
     <nav
-      className="border-b sticky top-0 z-40 backdrop-blur-md"
+      className="border-b sticky top-0 z-40 backdrop-blur-md shadow-sm"
       style={{
         borderColor: "var(--border)",
-        background: "rgba(15,15,15,0.85)",
+        background: "rgba(245,246,250,0.92)",
         height: "56px",
       }}
     >
       <div
-        className="max-w-7xl mx-auto px-6 h-full flex items-center justify-between"
+        className="max-w-[1040px] mx-auto px-6 h-full flex items-center justify-between"
       >
         {/* Left — logo + page nav */}
         <div className="flex items-center gap-6">
           <Link
             href="/dashboard"
             className="text-lg font-semibold tracking-tight shrink-0"
-            style={{ fontFamily: "var(--font-serif)", color: "var(--gold)" }}
+            style={{ fontFamily: "var(--font-serif)", color: "var(--brand)" }}
           >
             Career Copilot
           </Link>
@@ -34,13 +34,12 @@ export function DashboardNav({ fullName, planId, avatarUrl, isAdmin }: Props) {
           {/* Primary nav links — hidden on mobile */}
           <div className="hidden md:flex items-center gap-1">
             {[
-              { href: "/dashboard",           label: "Dashboard"    },
-              { href: "/dashboard/exams",      label: "Exams"        },
-              { href: "/dashboard/tracker",    label: "Tracker"      },
-              { href: "/dashboard/chat",       label: "AI Chat"      },
-              { href: "/dashboard/study-plan", label: "Study Plan"   },
-              { href: "/marketplace",          label: "Marketplace"  },
-              { href: "/dashboard/support",   label: "Support"      },
+              { href: "/dashboard", label: "Today" },
+              { href: "/dashboard/exams", label: "Exams" },
+              { href: "/dashboard/study", label: "Study" },
+              { href: "/dashboard/community", label: "Community" },
+              { href: "/marketplace", label: "Marketplace" },
+              { href: "/dashboard/profile", label: "Profile" },
             ].map((item) => (
               <Link
                 key={item.href}

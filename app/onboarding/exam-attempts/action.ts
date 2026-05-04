@@ -35,7 +35,7 @@ export async function saveExamAttempts(formData: FormData) {
       .upsert(rows, { onConflict: "user_id,exam_name" })
 
     if (error) {
-      redirect(`/onboarding/attempts?error=${encodeURIComponent(error.message)}`)
+      redirect(`/onboarding/exam-attempts?error=${encodeURIComponent(error.message)}`)
     }
   }
 

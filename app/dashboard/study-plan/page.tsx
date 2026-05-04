@@ -10,7 +10,7 @@ export const metadata = { title: "Study Plan — Career Copilot" }
 export default async function StudyPlanIndexPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect("/login")
+  if (!user) redirect("/auth/login")
 
   const plans = await getUserPlans(user.id)
 

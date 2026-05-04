@@ -49,7 +49,7 @@ async function updateAdminRoleAction(formData: FormData) {
     revalidatePath("/admin/rbac")
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Unknown error"
-    if (msg === "UNAUTHENTICATED") redirect("/login")
+    if (msg === "UNAUTHENTICATED") redirect("/auth/login")
     redirect(`/admin/rbac?error=${encodeURIComponent(msg)}`)
   }
   redirect("/admin/rbac")
