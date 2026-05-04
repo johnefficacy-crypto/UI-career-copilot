@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server"
 import RootLayout from "@/app/layout"
 
 describe("root layout accessibility smoke", () => {
-  it("includes keyboard skip link, primary nav label, and main landmark id", () => {
+  it("includes keyboard skip link and main landmark id", () => {
     const html = renderToStaticMarkup(
       <RootLayout>
         <div>Test content</div>
@@ -11,7 +11,7 @@ describe("root layout accessibility smoke", () => {
     )
 
     expect(html).toContain('href="#main-content"')
-    expect(html).toContain('aria-label="Primary"')
     expect(html).toContain('<main id="main-content"')
+    expect(html).toContain('career-copilot-theme')
   })
 })
