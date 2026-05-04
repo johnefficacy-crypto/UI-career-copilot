@@ -779,3 +779,5 @@ Determinism > Heuristics
 - [x] Added project-wide dark/light theme architecture with hydration-safe init script, ThemeProvider/useTheme, landing nav toggle, and tokenized legacy class theming (`app/layout.tsx`, `app/components/ThemeProvider.tsx`, `app/components/ThemeToggle.tsx`, `app/globals.css`).
 
 - [x] Modernized public landing with premium interactive storytelling (hero 3D product stack, carousel, mission-control visuals, trust pipeline, lifecycle, and aspirant mode preview) while preserving app-wide dark/light theme system.
+
+- [x] Refined landing visual polish with modern glow overlays, stronger section hierarchy, richer gradient surfaces, and cleaner comparison/mode-selector styling while preserving theme architecture.

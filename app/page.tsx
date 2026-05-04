@@ -11,9 +11,9 @@ export default function LandingPage() {
     <div className="cc-page-shell cc-grid-bg">
       <header className="cc-nav"><div className="cc-nav-inner"><Link href="/" className="cc-logo">Career Copilot</Link><nav className="cc-nav-links" aria-label="Marketing"><a href="#product" className="cc-nav-link">Product</a><a href="#eligibility" className="cc-nav-link">Eligibility</a><a href="#pricing" className="cc-nav-link">Pricing</a><Link href="/auth/login" className="cc-nav-link">Sign in</Link><ThemeToggle /><Link href="/auth/signup" className="cc-btn-primary">Get started</Link></nav></div></header>
       <main>
-        <section className="cc-section cc-hero cc-hero-layout">
+        <section className="cc-section cc-hero cc-hero-layout cc-hero-modern">
           <div>
-            <div className="cc-pill cc-gold-glow">Official-source-first exam intelligence</div>
+            <div className="cc-pill cc-gold-glow">Official-source-first exam intelligence</div><div className="cc-hero-kicker">Mission Control for Indian government exam aspirants</div>
             <h1 className="cc-hero-title">Stop missing the right government exams.</h1>
             <p className="cc-hero-subtitle">Career Copilot tracks official recruitment notifications, checks your eligibility post-wise, and turns every deadline into a clear next action.</p>
             <p className="cc-hero-support">For UPSC, SSC, Banking, Railways, Regulatory bodies, State PSCs, PSUs and more.</p>
@@ -23,7 +23,7 @@ export default function LandingPage() {
           <HeroProductStack />
         </section>
 
-        <section id="product" className="cc-section"><p className="cc-section-label">Interactive workflow preview</p><LandingProductCarousel /></section>
+        <section id="product" className="cc-section"><p className="cc-section-label">Interactive workflow preview</p><p className="cc-section-lead">Explore how Career Copilot moves you from discovery to action with official-source trust and deterministic eligibility.</p><LandingProductCarousel /></section>
 
         <section className="cc-section"><p className="cc-section-label">Mission Control sample preview</p><div className="cc-dashboard-preview"><div className="cc-stats-grid"><div className="cc-stat-tile"><strong>12</strong><span>Eligible now</span></div><div className="cc-stat-tile"><strong>3</strong><span>Urgent deadlines</span></div><div className="cc-stat-tile"><strong>Domicile, PwBD status</strong><span>Missing fields</span></div></div><p><strong>Next action:</strong> Complete SEBI Grade A application.</p><p><strong>Today’s study target:</strong> Quant mock analysis, 90 minutes.</p><div className="cc-stat-visual"><div><span>Readiness</span><div className="cc-progress"><i style={{ width: '68%' }} /></div></div><div><span>Application tracker</span><div className="cc-lifecycle"><span className="is-done">Not started</span><span className="is-active">Draft</span><span>Submitted</span><span>Admit card</span><span>Result</span></div></div></div></div></section>
 
@@ -33,7 +33,7 @@ export default function LandingPage() {
 
         <section className="cc-section"><p className="cc-section-label">Official-source trust pipeline</p><div className="cc-pipeline"><span>Official source detected</span><span>Scraper captures evidence</span><span>Admin verifies recruitment</span><span>Deterministic engine matches profile</span><span>User gets action alert</span></div><div className="cc-chip-row"><span className="cc-pill">Official link</span><span className="cc-pill">Admin verified</span><span className="cc-pill">Deterministic engine</span><span className="cc-pill">Canonical apply URL</span><span className="cc-pill">No aggregator dependency</span></div></section>
 
-        <section className="cc-section cc-before-after"><article className="cc-card"><h3>Before</h3><ul><li>12 Telegram groups</li><li>PDFs saved randomly</li><li>Manual eligibility confusion</li><li>Missed deadlines</li><li>No application state</li></ul></article><article className="cc-card"><h3>After Career Copilot</h3><ul><li>Official notification feed</li><li>Post-wise eligibility</li><li>Deadline-first action plan</li><li>Application tracker</li><li>AI study OS</li><li>Exam-specific community</li></ul></article></section>
+        <section className="cc-section cc-before-after cc-compare-modern"><article className="cc-card"><h3>Before</h3><ul><li>12 Telegram groups</li><li>PDFs saved randomly</li><li>Manual eligibility confusion</li><li>Missed deadlines</li><li>No application state</li></ul></article><article className="cc-card"><h3>After Career Copilot</h3><ul><li>Official notification feed</li><li>Post-wise eligibility</li><li>Deadline-first action plan</li><li>Application tracker</li><li>AI study OS</li><li>Exam-specific community</li></ul></article></section>
 
         <section className="cc-section"><p className="cc-section-label">Aspirant mode sample preview</p><AspirantModePreview /></section>
 

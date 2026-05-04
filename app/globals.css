@@ -586,3 +586,22 @@ input, select, textarea { background: var(--cc-bg-elevated); border-color: var(-
 .cc-mode-selector{border:1px solid var(--cc-border);border-radius:14px;background:var(--cc-card);padding:1rem}.cc-mode-chips{display:flex;flex-wrap:wrap;gap:.5rem;margin-bottom:.6rem}.cc-mode-chips button{padding:.35rem .6rem;border-radius:999px;border:1px solid var(--cc-border);background:var(--cc-surface-strong);color:var(--cc-text)}.cc-mode-chips .is-active{background:var(--cc-brand);color:var(--cc-brand-contrast)}
 @media (max-width:900px){.cc-hero-layout,.cc-stat-visual,.cc-before-after,.cc-pipeline{grid-template-columns:1fr}}
 @media (prefers-reduced-motion: reduce){.cc-float-card{animation:none!important;transform:none!important}}
+
+.cc-hero-modern{position:relative;overflow:hidden}
+.cc-hero-modern::before,.cc-hero-modern::after{content:"";position:absolute;border-radius:999px;filter:blur(48px);pointer-events:none;z-index:0}
+.cc-hero-modern::before{width:260px;height:260px;background:color-mix(in srgb,var(--cc-brand) 32%, transparent);top:-80px;right:12%}
+.cc-hero-modern::after{width:220px;height:220px;background:color-mix(in srgb,var(--cc-info) 20%, transparent);bottom:-60px;left:4%}
+.cc-hero-modern > *{position:relative;z-index:1}
+.cc-hero-kicker{margin-top:.7rem;color:var(--cc-brand);font-size:.82rem;letter-spacing:.05em;text-transform:uppercase}
+.cc-section-lead{max-width:70ch;color:var(--cc-muted);margin-bottom:.8rem}
+.cc-card h3{font-size:1.03rem;margin-bottom:.35rem}
+.cc-card p, .cc-card li{line-height:1.55}
+.cc-dashboard-preview{background:linear-gradient(145deg,var(--cc-card),color-mix(in srgb,var(--cc-card) 78%,var(--cc-subtle)))}
+.cc-carousel{background:linear-gradient(160deg,var(--cc-card),color-mix(in srgb,var(--cc-surface) 70%,var(--cc-subtle)));box-shadow:var(--cc-shadow)}
+.cc-carousel-controls button:hover{border-color:var(--cc-focus)}
+.cc-before-after .cc-card{position:relative}
+.cc-before-after .cc-card::before{content:"";position:absolute;left:0;top:0;height:100%;width:3px;background:var(--cc-brand);border-radius:12px 0 0 12px;opacity:.6}
+.cc-compare-modern{align-items:stretch}
+.cc-mode-selector ul{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.45rem;list-style:none;padding:0;margin:0}
+.cc-mode-selector li{border:1px solid var(--cc-border);padding:.42rem .55rem;border-radius:8px;background:var(--cc-surface)}
+@media (max-width:640px){.cc-mode-selector ul{grid-template-columns:1fr}}
