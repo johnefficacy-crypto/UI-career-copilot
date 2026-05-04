@@ -65,6 +65,7 @@ Legend:
 - [x] Replaced `/dashboard/community` preview shell with live forum-powered community hub (exam-space links, latest threads, and actionable resource-sharing guidance) to restore user-facing community functionality.
 
 - [x] Fixed `/api/exams/summary` to query canonical `user_exam_summary` view and map recruitment-backed fields (removed stale `exam_user_summary`/`exam_id` assumptions).
+- [x] Modernized the public landing experience with a refreshed light-theme hero, trust metrics panel, and upgraded card/navigation styling while preserving canonical recruitment feed wiring (`app/page.tsx`).
 
 ## Stakeholder control-support review (2026-05-02)
 
