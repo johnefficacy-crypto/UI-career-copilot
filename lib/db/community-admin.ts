@@ -16,23 +16,10 @@ type CommunityReportUpdateRow = {
   moderated_at: string | null
 }
 
-type DynamicQuery = {
-  select: (fields: string) => DynamicQuery
-  order: (column: string, opts: { ascending: boolean }) => DynamicQuery
-  limit: (limit: number) => Promise<{ data: unknown; error: { message: string } | null }>
-  update: (patch: Record<string, unknown>) => DynamicQuery
-  eq: (column: string, value: unknown) => DynamicQuery
-  single: () => Promise<{ data: unknown; error: { message: string } | null }>
-}
-
-function fromUnknownTable(supabase: unknown, table: string): DynamicQuery {
-  const fromFn = (supabase as { from: (name: string) => DynamicQuery }).from
-  return fromFn(table)
-}
-
 export async function getCommunityModerationQueue(limit = 100): Promise<CommunityReportRow[]> {
   const supabase = await createClient()
-  const { data, error } = await fromUnknownTable(supabase, "community_reports")
+  const { data, error } = await supabase
+    .from("community_reports" as never)
     .select("id, created_at, reason, details, status")
     .order("created_at", { ascending: false })
     .limit(limit)
@@ -55,8 +42,9 @@ export async function moderateCommunityReport(input: {
     moderated_at: new Date().toISOString(),
   }
 
-  const { data, error } = await fromUnknownTable(supabase, "community_reports")
-    .update(patch)
+  const { data, error } = await supabase
+    .from("community_reports" as never)
+    .update(patch as never)
     .eq("id", input.reportId)
     .select("id, status, moderation_notes, moderated_by, moderated_at")
     .single()

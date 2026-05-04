@@ -26,19 +26,6 @@ export type ForumReportRecord = {
   comment: { id: string; body: string; post_id: string } | null
 }
 
-type DynamicQuery = {
-  select: (fields: string) => DynamicQuery
-  order: (column: string, opts: { ascending: boolean }) => DynamicQuery
-  limit: (limit: number) => DynamicQuery
-  eq: (column: string, value: unknown) => DynamicQuery
-  then?: unknown
-}
-
-function fromUnknownTable(supabase: unknown, table: string): DynamicQuery {
-  const fromFn = (supabase as { from: (name: string) => DynamicQuery }).from
-  return fromFn(table)
-}
-
 export async function listForumReports(filters?: {
   status?: ForumReportStatus | "all"
   severity?: ForumReportSeverity | "all"
@@ -47,7 +34,8 @@ export async function listForumReports(filters?: {
   await requireAdminRole("community")
   const supabase = await createClient()
 
-  let q = fromUnknownTable(supabase, "forum_reports")
+  let q = supabase
+    .from("forum_reports" as never)
     .select(`
       id, target_type, post_id, comment_id, reason, details,
       severity, status, assigned_admin_id, action_notes,
@@ -64,7 +52,7 @@ export async function listForumReports(filters?: {
   if (filters?.status && filters.status !== "all") q = q.eq("status", filters.status)
   if (filters?.severity && filters.severity !== "all") q = q.eq("severity", filters.severity)
 
-  const { data, error } = (await (q as unknown as Promise<{ data: unknown; error: { message: string } | null }>))
+  const { data, error } = await q
   if (error) throw new Error(error.message)
 
   return ((data ?? []) as unknown) as ForumReportRecord[]
