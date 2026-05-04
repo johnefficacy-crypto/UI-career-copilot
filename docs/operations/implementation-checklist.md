@@ -777,3 +777,5 @@ Determinism > Heuristics
 - [x] Redesigned public root landing (`/`) to premium dark/gold mission-control positioning with marketing-only nav and eligibility-first messaging (`app/page.tsx`, `app/globals.css`, `app/layout.tsx`).
 
 - [x] Added project-wide dark/light theme architecture with hydration-safe init script, ThemeProvider/useTheme, landing nav toggle, and tokenized legacy class theming (`app/layout.tsx`, `app/components/ThemeProvider.tsx`, `app/components/ThemeToggle.tsx`, `app/globals.css`).
+
+- [x] Modernized public landing with premium interactive storytelling (hero 3D product stack, carousel, mission-control visuals, trust pipeline, lifecycle, and aspirant mode preview) while preserving app-wide dark/light theme system.
