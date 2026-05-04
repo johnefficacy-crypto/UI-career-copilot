@@ -2,35 +2,42 @@ import { redirect } from "next/navigation"
 import { headers } from "next/headers"
 import Link from "next/link"
 import { createClient } from "@/utils/supabase/server"
-import { requireAdmin } from "@/lib/db/admin"
+import { hasAdminPermission, requireAdminRole } from "@/lib/db/admin"
 
 export const metadata = { title: "Admin — Career Copilot" }
 
-const NAV_ITEMS = [
+type AdminNavItem = { href: string; label: string; permission?: string }
+
+const NAV_ITEMS: AdminNavItem[] = [
   { href: "/admin", label: "Overview" },
-  { href: "/admin/recruitments", label: "Recruitments" },
-  { href: "/admin/organizations", label: "Organizations" },
-  { href: "/admin/eligibility", label: "Eligibility" },
-  { href: "/admin/scrape", label: "Scrape Dashboard" },
-  { href: "/admin/sources", label: "Source Registry" },
-  { href: "/admin/notifications", label: "Notifications" },
-  { href: "/admin/recruitment-feedback", label: "Recruitment Feedback" },
-  { href: "/admin/eligibility-queue", label: "Eligibility Queue" },
-  { href: "/admin/audit", label: "Audit Log" },
-  { href: "/admin/rbac", label: "RBAC" },
-  { href: "/admin/ai-policy", label: "AI Policy" },
-  { href: "/admin/community", label: "Community Mod" },
+  { href: "/admin/recruitments", label: "Recruitments", permission: "recruitments" },
+  { href: "/admin/organizations", label: "Organizations", permission: "organizations" },
+  { href: "/admin/eligibility", label: "Eligibility", permission: "eligibility" },
+  { href: "/admin/scrape", label: "Scrape Dashboard", permission: "scrape" },
+  { href: "/admin/sources", label: "Source Registry", permission: "sources" },
+  { href: "/admin/notifications", label: "Notifications", permission: "notifications" },
+  { href: "/admin/recruitment-feedback", label: "Recruitment Feedback", permission: "community" },
+  { href: "/admin/eligibility-queue", label: "Eligibility Queue", permission: "queue" },
+  { href: "/admin/audit", label: "Audit Log", permission: "audit" },
+  { href: "/admin/rbac", label: "RBAC", permission: "rbac" },
+  { href: "/admin/ai-policy", label: "AI Policy", permission: "ai_policy" },
+  { href: "/admin/community", label: "Community Mod", permission: "community" },
   { href: "/admin/control-support", label: "Control Support" },
-]
+] as const
+
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   let userId: string
+  let adminContext: Awaited<ReturnType<typeof requireAdminRole>>
   try {
-    userId = await requireAdmin()
+    adminContext = await requireAdminRole()
+    userId = adminContext.userId
   } catch (error) {
     if (error instanceof Error && error.message === "UNAUTHENTICATED") redirect("/auth/login")
-    redirect("/dashboard")
+    redirect("/access-denied?scope=admin")
   }
+
+  const visibleNavItems = NAV_ITEMS.filter((item) => !item.permission || hasAdminPermission(adminContext, item.permission))
 
   const supabase = await createClient()
   const { data: profile } = await supabase
@@ -51,7 +58,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         </div>
 
         <nav className="flex-1 overflow-auto flex flex-col gap-1" aria-label="Admin sections">
-          {NAV_ITEMS.map((item) => {
+          {visibleNavItems.map((item) => {
             const isActive = item.href === "/admin" ? pathname === "/admin" : pathname.startsWith(item.href)
             return (
               <Link
