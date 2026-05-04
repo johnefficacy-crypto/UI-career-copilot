@@ -10,17 +10,15 @@ export const metadata = {
 };
 
 const ROOT_NAV_ITEMS = [
-  { href: "/pricing", label: "Pricing" },
-  { href: "/forum", label: "Forum" },
+  { href: "/dashboard", label: "Today" },
+  { href: "/dashboard/exams", label: "Exams" },
+  { href: "/dashboard/study", label: "Study" },
+  { href: "/dashboard/community", label: "Community" },
   { href: "/marketplace", label: "Marketplace" },
-  { href: "/dashboard", label: "Dashboard" },
+  { href: "/dashboard/profile", label: "Profile" },
 ] as const;
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
       <body>

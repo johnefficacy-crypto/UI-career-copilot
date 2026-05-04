@@ -771,3 +771,5 @@ Determinism > Heuristics
 - [ ] P1: Run staging forced audit-failure drill and archive log/webhook artifacts.
 - [ ] P1: Regenerate `types/supabase.ts` from connected live schema and remove dynamic table bridges for `community_reports` / `forum_reports`.
 - [ ] P2: Optional warning-free lint baseline cleanup (unused vars, image optimization refactors, hook dependency audits).
+
+- [x] Standardized root product shell navigation and dashboard exams screen to light-indigo UI baseline (sticky white nav, compact cards/table, and tokenized styling) for screenshot parity pass.
