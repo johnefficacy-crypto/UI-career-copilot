@@ -4,6 +4,18 @@ import { revalidatePath } from "next/cache"
 import { createClient } from "@/utils/supabase/server"
 import { logAdminAction, requireAdminRole } from "@/lib/db/admin"
 
+type DynamicQuery = {
+  select: (fields: string) => DynamicQuery
+  eq: (column: string, value: unknown) => DynamicQuery
+  maybeSingle: () => Promise<{ data: unknown; error: { message: string } | null }>
+  update: (patch: Record<string, string | null>) => DynamicQuery
+}
+
+function fromUnknownTable(supabase: unknown, table: string): DynamicQuery {
+  const fromFn = (supabase as { from: (name: string) => DynamicQuery }).from
+  return fromFn(table)
+}
+
 export async function updateForumReportAction(formData: FormData) {
   const ctx = await requireAdminRole("community")
   const supabase = await createClient()
