@@ -298,7 +298,7 @@ export default function MarketplacePage() {
               </div>
               <div style={{ textAlign: 'right', flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.3rem' }}>
                 <span style={{ fontWeight: 700, color: r.price === 0 ? '#16a34a' : '#1f2937', fontSize: '0.9rem' }}>
-                  {r.price === 0 ? 'Free' : (r as any).display}
+                  {r.price === 0 ? 'Free' : r.display}
                 </span>
                 <button className="btn btn-outline" style={{ fontSize: '0.75rem', padding: '0.2rem 0.6rem' }}
                   onClick={() => showToast(r.price === 0 ? `Downloading ${r.title}…` : `Opening checkout for ${r.title}`)}>

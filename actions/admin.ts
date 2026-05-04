@@ -8,6 +8,49 @@ import { createClient } from "@/utils/supabase/server"
 
 // ─── Helper ───────────────────────────────────────────────────────────────────
 
+const CRITICAL_AUDIT_ACTIONS = new Set([
+  "publish_recruitment",
+  "withdraw_recruitment",
+  "delete_recruitment",
+  "verify_organization",
+  "update_rbac_role",
+  "update_ai_policy",
+])
+
+async function notifyCriticalAuditFailure(input: { action: string; entityType: string; entityId?: string; actorId: string }) {
+  const message = `[audit-failure] critical admin action logged without durable audit row: ${input.action} (${input.entityType}:${input.entityId ?? "n/a"}) by ${input.actorId}`
+  console.error(message)
+
+  const webhook = process.env.ADMIN_ALERT_WEBHOOK_URL
+  if (!webhook) return
+
+  try {
+    await fetch(webhook, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        level: "critical",
+        source: "admin_action_audit",
+        message,
+        action: input.action,
+        entityType: input.entityType,
+        entityId: input.entityId ?? null,
+        actorId: input.actorId,
+        at: new Date().toISOString(),
+      }),
+    })
+  } catch (error) {
+    console.error("[audit-failure] failed to notify webhook", error)
+  }
+}
+
+async function logAdminActionObserved(params: Parameters<typeof logAdminAction>[0]) {
+  const ok = await logAdminAction(params)
+  if (!ok && CRITICAL_AUDIT_ACTIONS.has(params.action)) {
+    await notifyCriticalAuditFailure({ action: params.action, entityType: params.entityType, entityId: params.entityId, actorId: params.actorId })
+  }
+}
+
 function adminRedirectOnError(path: string, err: unknown): never {
   const msg = err instanceof Error ? err.message : "Unknown error"
   if (msg === "UNAUTHENTICATED") redirect("/auth/login")
@@ -25,7 +68,7 @@ export async function adminCreateOrganization(formData: FormData) {
       type: formData.get("type") as string,
       state: (formData.get("state") as string) || null,
     })
-    void logAdminAction({ actorId: ctx.userId, actorEmail: ctx.userEmail, action: "create_organization", entityType: "organizations" })
+    void logAdminActionObserved({ actorId: ctx.userId, actorEmail: ctx.userEmail, action: "create_organization", entityType: "organizations" })
     revalidatePath("/admin/organizations")
   } catch (err) {
     adminRedirectOnError("/admin/organizations/new", err)
@@ -46,7 +89,7 @@ export async function adminUpdateOrganization(formData: FormData) {
       trust_tier:           (formData.get("trust_tier") as string) || "unknown",
       verification_notes:   (formData.get("verification_notes") as string) || null,
     })
-    void logAdminAction({ actorId: ctx.userId, actorEmail: ctx.userEmail, action: "update_organization", entityType: "organizations", entityId: id })
+    void logAdminActionObserved({ actorId: ctx.userId, actorEmail: ctx.userEmail, action: "update_organization", entityType: "organizations", entityId: id })
     revalidatePath("/admin/organizations")
   } catch (err) {
     adminRedirectOnError(`/admin/organizations/${id}/edit`, err)
@@ -63,7 +106,7 @@ export async function adminVerifyOrganization(formData: FormData) {
       .from("organizations")
       .update({ is_verified: true, trust_tier: "verified", verified_at: new Date().toISOString(), verified_by: ctx.userId })
       .eq("id", id)
-    void logAdminAction({
+    void logAdminActionObserved({
       actorId:    ctx.userId,
       actorEmail: ctx.userEmail,
       action:     "verify_organization",
@@ -99,7 +142,7 @@ export async function adminCreateRecruitment(formData: FormData) {
       await replaceExamStages(rec.id, JSON.parse(stagesJson))
     }
 
-    void logAdminAction({
+    void logAdminActionObserved({
       actorId:    ctx.userId,
       actorEmail: ctx.userEmail,
       action:     "create_recruitment",
@@ -134,7 +177,7 @@ export async function adminUpdateRecruitment(formData: FormData) {
       await replaceExamStages(id, JSON.parse(stagesJson))
     }
 
-    void logAdminAction({
+    void logAdminActionObserved({
       actorId:    ctx.userId,
       actorEmail: ctx.userEmail,
       action:     "update_recruitment",
@@ -156,7 +199,7 @@ export async function adminDeleteRecruitment(formData: FormData) {
   try {
     const ctx = await requireAdminRole("recruitments")
     await deleteRecruitment(id)
-    void logAdminAction({
+    void logAdminActionObserved({
       actorId:    ctx.userId,
       actorEmail: ctx.userEmail,
       action:     "delete_recruitment",
@@ -233,7 +276,7 @@ export async function adminSavePost(formData: FormData) {
       in_hand_estimate: (formData.get("in_hand_estimate") as string) || null,
     })
 
-    void logAdminAction({ actorId: ctx.userId, actorEmail: ctx.userEmail, action: postId ? "update_post" : "create_post", entityType: "posts", entityId: targetPostId ?? undefined })
+    void logAdminActionObserved({ actorId: ctx.userId, actorEmail: ctx.userEmail, action: postId ? "update_post" : "create_post", entityType: "posts", entityId: targetPostId ?? undefined })
     revalidatePath(`/admin/recruitments/${recruitmentId}`)
   } catch (err) {
     adminRedirectOnError(`/admin/recruitments/${recruitmentId}`, err)
@@ -247,7 +290,7 @@ export async function adminDeletePost(formData: FormData) {
   try {
     const ctx = await requireAdminRole("recruitments")
     await deletePost(postId)
-    void logAdminAction({ actorId: ctx.userId, actorEmail: ctx.userEmail, action: "delete_post", entityType: "posts", entityId: postId })
+    void logAdminActionObserved({ actorId: ctx.userId, actorEmail: ctx.userEmail, action: "delete_post", entityType: "posts", entityId: postId })
     revalidatePath(`/admin/recruitments/${recruitmentId}`)
   } catch (err) {
     adminRedirectOnError(`/admin/recruitments/${recruitmentId}`, err)
@@ -262,11 +305,13 @@ export async function adminSubmitForReview(formData: FormData) {
   try {
     const ctx = await requireAdminRole("recruitments")
     const supabase = await createClient()
-    await (supabase as any)
-      .from("recruitments")
+    const recruitments = supabase.from("recruitments") as unknown as {
+      update: (values: Record<string, unknown>) => { eq: (column: string, value: string) => Promise<unknown> }
+    }
+    await recruitments
       .update({ publish_status: "needs_review", updated_at: new Date().toISOString() })
       .eq("id", id)
-    void logAdminAction({
+    void logAdminActionObserved({
       actorId:    ctx.userId,
       actorEmail: ctx.userEmail,
       action:     "submit_for_review",
@@ -286,8 +331,10 @@ export async function adminPublishRecruitment(formData: FormData) {
   try {
     const ctx = await requireAdminRole("recruitments")
     const supabase = await createClient()
-    await (supabase as any)
-      .from("recruitments")
+    const recruitments = supabase.from("recruitments") as unknown as {
+      update: (values: Record<string, unknown>) => { eq: (column: string, value: string) => Promise<unknown> }
+    }
+    await recruitments
       .update({
         publish_status: "published",
         published_at:   new Date().toISOString(),
@@ -295,7 +342,7 @@ export async function adminPublishRecruitment(formData: FormData) {
         updated_at:     new Date().toISOString(),
       })
       .eq("id", id)
-    void logAdminAction({
+    void logAdminActionObserved({
       actorId:    ctx.userId,
       actorEmail: ctx.userEmail,
       action:     "publish_recruitment",
@@ -315,11 +362,13 @@ export async function adminWithdrawRecruitment(formData: FormData) {
   try {
     const ctx = await requireAdminRole("recruitments")
     const supabase = await createClient()
-    await (supabase as any)
-      .from("recruitments")
+    const recruitments = supabase.from("recruitments") as unknown as {
+      update: (values: Record<string, unknown>) => { eq: (column: string, value: string) => Promise<unknown> }
+    }
+    await recruitments
       .update({ publish_status: "withdrawn", updated_at: new Date().toISOString() })
       .eq("id", id)
-    void logAdminAction({
+    void logAdminActionObserved({
       actorId:    ctx.userId,
       actorEmail: ctx.userEmail,
       action:     "withdraw_recruitment",

@@ -11,14 +11,11 @@
 import { createClient } from "@/utils/supabase/server"
 import type {
   ForumCategory,
-  ForumPost,
   ForumPostSummary,
   ForumPostDetail,
-  ForumComment,
   ForumCommentWithAuthor,
   LeaderboardEntry,
   ForumFilters,
-  PostSortOrder,
 } from "@/types/forum"
 
 const PAGE_SIZE = 20

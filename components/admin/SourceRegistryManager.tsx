@@ -605,11 +605,13 @@ export function SourceRegistryManager({
   useEffect(() => {
     if (prefill && !prefillAppliedRef.current) {
       prefillAppliedRef.current = true
-      setEditSource(null)
-      setDrawerOpen(true)
+      const id = setTimeout(() => {
+        setEditSource(null)
+        setDrawerOpen(true)
+      }, 0)
+      return () => clearTimeout(id)
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [prefill])
 
   function showToast(msg: string, ok = true) {
     setToast({ msg, ok })

@@ -11,6 +11,18 @@ Legend:
 
 ## Sprint 8 trust-redesign progress (2026-05-01)
 
+- [x] Removed `/demo/*` prototype routes after decommissioning prototype surface from mainline; production routing now relies only on canonical public/dashboard/admin paths.
+- [x] Added auth integration tests covering callback redirect sanitization, first-login profile row bootstrap, sign-in redirect sanitization, and sign-out onboarding cookie cleanup invariants.
+- [x] Mission-control feed now reads canonical `last_eligibility_computed_at` plus official/source URLs from `user_exam_summary` to backfill real `lastComputedAt` and deterministic evidence references.
+- [x] Critical admin-action audit observability added: non-blocking audit writes now return success, and critical action audit failures emit error logs plus optional webhook alert via `ADMIN_ALERT_WEBHOOK_URL`.
+- [x] Mission-control cards now surface deterministic evidence references and `last computed` metadata placeholder for explicit explainability affordance.
+- [x] Admin unauthorized access now routes to explicit `/access-denied` experience instead of silent dashboard fallback redirect.
+- [x] Mission-control data contract expanded with deterministic status fallback (`eligible`/`conditional`/`ineligible`/`needs_profile_data`/`not_computed`) and structured explanation payload plumbing from summary view fields.
+- [x] Auth sign-out now clears onboarding session cookie in canonical auth action module to prevent stale onboarding state after logout.
+- [x] Route-truth hardening pass: root shell navigation now points to canonical surfaces (`/pricing`, `/forum`, `/marketplace`, `/dashboard`) and legacy prototype roots (`/today`, `/exams`, `/study`, `/profile`, `/community`) now redirect to auth intent or dashboard/forum destinations to avoid volatile AppContext-only UX in production.
+- [x] Auth action consolidation: `app/auth/actions.ts` now delegates to canonical `actions/auth.ts` to prevent signup/login drift across profile bootstrapping and redirect-safety behavior.
+- [x] Admin navigation visibility is now permission-aware using role bucket checks (`hasAdminPermission`) so admins only see sections aligned with their RBAC grants.
+
 - [x] Fixed Google OAuth sign-in entrypoint mismatch by adding canonical `/api/auth/google` route and retaining `/api/google` compatibility redirect to prevent broken login handoff from auth UI.
 
 - [x] Fixed eligibility alert upsert behavior in shared runner so `new_match` alerts refresh deterministically on recompute (no duplicate-ignore path that could preserve stale explanation/state).
@@ -749,3 +761,11 @@ Trust > Speed
 Control > Automation
 Determinism > Heuristics
 ```
+
+
+## Pending P1/P2 tasks
+
+- [ ] P1: Execute real environment rollout for `ADMIN_ALERT_WEBHOOK_URL` across dev/staging/prod.
+- [ ] P1: Run staging forced audit-failure drill and archive log/webhook artifacts.
+- [ ] P1: Regenerate `types/supabase.ts` from connected live schema and remove dynamic table bridges for `community_reports` / `forum_reports`.
+- [ ] P2: Optional warning-free lint baseline cleanup (unused vars, image optimization refactors, hook dependency audits).
