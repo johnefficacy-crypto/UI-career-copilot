@@ -13,7 +13,7 @@ export function TierBadgeInner() {
       </span>
       <select
         value={userTier}
-        onChange={e => setUserTier(e.target.value as any)}
+        onChange={e => setUserTier(e.target.value as "free" | "pro" | "elite")}
         title="Switch tier (demo)"
         style={{
           fontSize: '0.72rem', border: '1px solid #e5e7eb', borderRadius: 6,

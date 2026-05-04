@@ -16,17 +16,29 @@ type CommunityReportUpdateRow = {
   moderated_at: string | null
 }
 
+type DynamicQuery = {
+  select: (fields: string) => DynamicQuery
+  order: (column: string, opts: { ascending: boolean }) => DynamicQuery
+  limit: (limit: number) => Promise<{ data: unknown; error: { message: string } | null }>
+  update: (patch: Record<string, unknown>) => DynamicQuery
+  eq: (column: string, value: unknown) => DynamicQuery
+  single: () => Promise<{ data: unknown; error: { message: string } | null }>
+}
+
+function fromUnknownTable(supabase: unknown, table: string): DynamicQuery {
+  const fromFn = (supabase as { from: (name: string) => DynamicQuery }).from
+  return fromFn(table)
+}
+
 export async function getCommunityModerationQueue(limit = 100): Promise<CommunityReportRow[]> {
   const supabase = await createClient()
-  const db = supabase as any
-  const { data, error } = await db
-    .from("community_reports")
+  const { data, error } = await fromUnknownTable(supabase, "community_reports")
     .select("id, created_at, reason, details, status")
     .order("created_at", { ascending: false })
     .limit(limit)
 
   if (error) throw new Error(error.message)
-  return (data ?? []) as CommunityReportRow[]
+  return ((data ?? []) as unknown) as CommunityReportRow[]
 }
 
 export async function moderateCommunityReport(input: {
@@ -36,7 +48,6 @@ export async function moderateCommunityReport(input: {
   moderatedBy: string
 }): Promise<CommunityReportUpdateRow> {
   const supabase = await createClient()
-  const db = supabase as any
   const patch = {
     status: input.status,
     moderation_notes: input.moderationNotes ?? null,
@@ -44,13 +55,12 @@ export async function moderateCommunityReport(input: {
     moderated_at: new Date().toISOString(),
   }
 
-  const { data, error } = await db
-    .from("community_reports")
+  const { data, error } = await fromUnknownTable(supabase, "community_reports")
     .update(patch)
     .eq("id", input.reportId)
     .select("id, status, moderation_notes, moderated_by, moderated_at")
     .single()
 
   if (error) throw new Error(error.message)
-  return data as CommunityReportUpdateRow
+  return (data as unknown) as CommunityReportUpdateRow
 }

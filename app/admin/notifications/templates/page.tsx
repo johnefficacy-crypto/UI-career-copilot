@@ -21,7 +21,10 @@ async function saveTemplateAction(formData: FormData) {
       updated_by: ctx.userId,
       updated_at: new Date().toISOString(),
     }
-    await (supabase as any).from("notification_templates").update(patch).eq("id", id)
+    const templates = supabase.from("notification_templates") as unknown as {
+      update: (values: Record<string, unknown>) => { eq: (column: string, value: string) => Promise<unknown> }
+    }
+    await templates.update(patch).eq("id", id)
     void logAdminAction({
       actorId:    ctx.userId,
       actorEmail: ctx.userEmail,
