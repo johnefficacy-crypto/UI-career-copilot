@@ -1,137 +1,270 @@
-import Link from "next/link"
-import { LandingRecruitmentList } from "@/components/landing/LandingRecruitmentList"
-import { getLandingRecruitments } from "@/lib/db/landing"
+import React from 'react';
+import Link from 'next/link';
 
-const landingNav = [
-  { href: "/today", label: "Today" },
-  { href: "/exams", label: "Exams" },
-  { href: "/study", label: "Study OS" },
-  { href: "/community", label: "Community" },
-  { href: "/marketplace", label: "Mentors" },
-]
+// Landing page for Career Copilot. This page introduces the product to
+// potential users and summarises the key features of the platform.
+// The design emphasises clarity, concise messaging and clear calls to action.
+// It uses simple inline styles and existing CSS utility classes defined in
+// `globals.css` to maintain consistency with the rest of the app.
 
-const pillars = [
-  {
-    title: "Discover official recruitments",
-    body: "Verified notifications from trusted government sources with canonical apply links.",
-  },
-  {
-    title: "Match with deterministic eligibility",
-    body: "Know exactly where you qualify, why you qualify, and what profile data is missing.",
-  },
-  {
-    title: "Prepare with a daily execution system",
-    body: "Run your preparation with study tasks, focus sessions, mock tracking, and weekly reviews.",
-  },
-  {
-    title: "Act before deadlines",
-    body: "Stay on top of applications, reminders, and next actions from one mission-control dashboard.",
-  },
-]
-
-const trustMetrics = [
-  { label: "Official-source-first links", value: "100%" },
-  { label: "Deterministic eligibility core", value: "P0" },
-  { label: "Daily execution surfaces", value: "4" },
-]
-
-export default async function Home() {
-  const recruitments = await getLandingRecruitments()
-
+export default function LandingPage() {
   return (
-    <main className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-indigo-50/40 text-slate-900">
-      <section className="mx-auto grid w-full max-w-7xl grid-cols-1 gap-6 px-6 py-10 lg:grid-cols-[290px_1fr]">
-        <aside className="h-fit rounded-2xl border border-slate-200 bg-white/95 p-6 shadow-sm backdrop-blur">
-          <div className="rounded-xl border border-indigo-100 bg-indigo-50/80 p-3">
-            <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700">Career Copilot</p>
-            <h2 className="mt-1 text-lg font-semibold leading-tight">Exam preparation operating system</h2>
-          </div>
-          <p className="mt-4 text-sm text-slate-600">
-            Eligibility-first workflow for serious aspirants preparing for Indian government jobs.
+    <div>
+      {/* Hero section */}
+      <section
+        style={{
+          background: 'linear-gradient(135deg,#ede9fe,#f5f3ff)',
+          padding: '4rem 1.5rem',
+          borderBottom: '1px solid #e5e7eb',
+        }}
+      >
+        <div
+          style={{ maxWidth: '1040px', margin: '0 auto', textAlign: 'center' }}
+        >
+          <h1
+            style={{
+              fontSize: '2.6rem',
+              lineHeight: 1.15,
+              fontWeight: 700,
+              color: '#1f2937',
+              marginBottom: '1.2rem',
+            }}
+          >
+            Crack Exams Smarter&nbsp;— Not Harder
+          </h1>
+          <p
+            style={{
+              fontSize: '1.15rem',
+              color: '#4b5563',
+              marginBottom: '2rem',
+              maxWidth: 700,
+              marginLeft: 'auto',
+              marginRight: 'auto',
+            }}
+          >
+            Career Copilot unites your study plan, exam updates,
+            accountability partners and community into one powerful dashboard.
+            Plan your journey, stay on top of deadlines and learn from peers –
+            all in one place.
           </p>
-          <nav className="mt-5 flex flex-col gap-2" aria-label="Landing navigation">
-            {landingNav.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className="group rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:border-indigo-200 hover:bg-indigo-50"
-              >
-                <span className="inline-flex items-center gap-2">
-                  <span className="h-1.5 w-1.5 rounded-full bg-slate-300 transition group-hover:bg-indigo-500" aria-hidden />
-                  {item.label}
-                </span>
-              </Link>
-            ))}
-          </nav>
-        </aside>
-
-        <div className="space-y-6">
-          <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <div className="grid gap-6 p-8 lg:grid-cols-[1.2fr_0.8fr] lg:p-10">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700">Official-source-first platform</p>
-                <h1 className="mt-2 text-3xl font-semibold leading-tight md:text-4xl">
-                  One modern workspace for every government exam goal.
-                </h1>
-                <p className="mt-4 max-w-3xl text-base text-slate-600">
-                  Career Copilot gives you one trusted system to discover recruitments, check eligibility, plan preparation,
-                  and track execution from notification to application.
-                </p>
-                <div className="mt-6 flex flex-wrap gap-3">
-                  <Link
-                    href="/auth/signup"
-                    className="rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-700"
-                  >
-                    Start free
-                  </Link>
-                  <Link
-                    href="/auth/login"
-                    className="rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-                  >
-                    Sign in
-                  </Link>
-                </div>
-              </div>
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-5">
-                <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-700">Trust + control</h2>
-                <div className="mt-4 space-y-3">
-                  {trustMetrics.map((metric) => (
-                    <div key={metric.label} className="flex items-center justify-between rounded-lg bg-white px-3 py-2 shadow-sm">
-                      <span className="text-sm text-slate-600">{metric.label}</span>
-                      <span className="text-sm font-semibold text-indigo-700">{metric.value}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <section className="grid gap-4 md:grid-cols-2">
-            {pillars.map((pillar) => (
-              <article
-                key={pillar.title}
-                className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-indigo-200"
-              >
-                <h2 className="text-base font-semibold text-slate-900">{pillar.title}</h2>
-                <p className="mt-2 text-sm leading-relaxed text-slate-600">{pillar.body}</p>
-              </article>
-            ))}
-          </section>
-
-          <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <h2 className="text-xl font-semibold text-slate-900">Latest verified recruitments</h2>
-              <Link href="/exams" className="text-sm font-medium text-indigo-700 hover:text-indigo-800">
-                View all exams →
-              </Link>
-            </div>
-            <p className="mt-2 text-sm text-slate-600">User-facing listings prioritize official notifications and application links.</p>
-            <div className="mt-5">
-              <LandingRecruitmentList items={recruitments} />
-            </div>
-          </section>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'center',
+              gap: '1rem',
+              flexWrap: 'wrap',
+            }}
+          >
+          {/* Primary call to action leads into the app */}
+            <Link href="/today" className="btn btn-primary" style={{ fontSize: '1rem' }}>
+              Start For Free
+            </Link>
+            <a
+              href="#features"
+              className="btn btn-outline"
+              style={{ fontSize: '1rem' }}
+            >
+              Learn More
+            </a>
+          </div>
         </div>
       </section>
-    </main>
-  )
+
+      {/* Features section */}
+      <section id="features" className="page" style={{ paddingTop: '3rem', paddingBottom: '3rem' }}>
+        <h2
+          style={{
+            textAlign: 'center',
+            fontSize: '2rem',
+            fontWeight: 700,
+            marginBottom: '2.5rem',
+            color: '#1f2937',
+          }}
+        >
+          Everything You Need to Ace Your Exams
+        </h2>
+        <div className="grid-2" style={{ gap: '2rem' }}>
+          <div className="card" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+            <div style={{ fontSize: '2rem', marginBottom: '0.75rem' }}>📚</div>
+            <h3 style={{ fontSize: '1.25rem', fontWeight: 600, marginBottom: '0.4rem', color: '#1f2937' }}>Personalised Study Plans</h3>
+            <p style={{ color: '#6b7280', fontSize: '0.95rem' }}>
+              AI‑curated tasks, weekly goals and smart trade‑offs ensure you’re always
+              focused on what matters most. Generate a plan for multiple exams or
+              customise your own.
+            </p>
+          </div>
+          <div className="card" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+            <div style={{ fontSize: '2rem', marginBottom: '0.75rem' }}>📅</div>
+            <h3 style={{ fontSize: '1.25rem', fontWeight: 600, marginBottom: '0.4rem', color: '#1f2937' }}>Exam Deadlines & Applications</h3>
+            <p style={{ color: '#6b7280', fontSize: '0.95rem' }}>
+              Keep track of every notification, eligibility criteria and important
+              dates across UPSC, SSC, banking and more. Apply on time and never
+              miss a critical deadline again.
+            </p>
+          </div>
+        </div>
+        <div className="grid-2" style={{ gap: '2rem', marginTop: '2rem' }}>
+          <div className="card" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+            <div style={{ fontSize: '2rem', marginBottom: '0.75rem' }}>🤝</div>
+            <h3 style={{ fontSize: '1.25rem', fontWeight: 600, marginBottom: '0.4rem', color: '#1f2937' }}>Accountability Partners</h3>
+            <p style={{ color: '#6b7280', fontSize: '0.95rem' }}>
+              Partner with other aspirants to set commitments, check in weekly and
+              pay (or collect) small penalties when you miss tasks. Healthy
+              pressure and mutual support, without the spam.
+            </p>
+          </div>
+          <div className="card" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+            <div style={{ fontSize: '2rem', marginBottom: '0.75rem' }}>💬</div>
+            <h3 style={{ fontSize: '1.25rem', fontWeight: 600, marginBottom: '0.4rem', color: '#1f2937' }}>Community & Resources</h3>
+            <p style={{ color: '#6b7280', fontSize: '0.95rem' }}>
+              Share notes, strategies and PYQs with verified toppers and fellow
+              candidates. Discover curated books, PDFs and mock tests in our
+              marketplace to upgrade your prep.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* Pricing section */}
+      <section className="page" style={{ paddingTop: '3rem', paddingBottom: '3rem' }}>
+        <h2
+          style={{
+            textAlign: 'center',
+            fontSize: '2rem',
+            fontWeight: 700,
+            marginBottom: '2rem',
+            color: '#1f2937',
+          }}
+        >
+          Flexible Plans For Every Aspirant
+        </h2>
+        <div className="grid-3" style={{ gap: '2rem' }}>
+          {/* Free Tier */}
+          <div className="card" style={{ textAlign: 'center' }}>
+            <h3 style={{ fontSize: '1.4rem', fontWeight: 700, color: '#1f2937', marginBottom: '0.5rem' }}>Free</h3>
+            <p style={{ fontSize: '2rem', fontWeight: 700, color: '#4f46e5', marginBottom: '1rem' }}>₹0</p>
+            <ul style={{ listStyle: 'none', padding: 0, marginBottom: '1.5rem', textAlign: 'left' }}>
+              <li style={{ marginBottom: '0.5rem', fontSize: '0.9rem', color: '#374151' }}>✓ Basic study planner</li>
+              <li style={{ marginBottom: '0.5rem', fontSize: '0.9rem', color: '#374151' }}>✓ Exam deadline tracking</li>
+              <li style={{ marginBottom: '0.5rem', fontSize: '0.9rem', color: '#374151' }}>✓ Browse community posts</li>
+            </ul>
+            <Link href="/today" className="btn btn-primary" style={{ width: '100%' }}>Start Free</Link>
+          </div>
+          {/* Pro Tier */}
+          <div className="card" style={{ textAlign: 'center', borderColor: '#4f46e5' }}>
+            <h3 style={{ fontSize: '1.4rem', fontWeight: 700, color: '#1f2937', marginBottom: '0.5rem' }}>Pro</h3>
+            <p style={{ fontSize: '2rem', fontWeight: 700, color: '#4f46e5', marginBottom: '1rem' }}>₹199/mo</p>
+            <ul style={{ listStyle: 'none', padding: 0, marginBottom: '1.5rem', textAlign: 'left' }}>
+              <li style={{ marginBottom: '0.5rem', fontSize: '0.9rem', color: '#374151' }}>✓ Everything in Free</li>
+              <li style={{ marginBottom: '0.5rem', fontSize: '0.9rem', color: '#374151' }}>✓ Accountability partners</li>
+              <li style={{ marginBottom: '0.5rem', fontSize: '0.9rem', color: '#374151' }}>✓ Unlimited community posts</li>
+              <li style={{ marginBottom: '0.5rem', fontSize: '0.9rem', color: '#374151' }}>✓ Detailed analytics</li>
+            </ul>
+            <Link href="/today" className="btn btn-upgrade" style={{ width: '100%' }}>Upgrade</Link>
+          </div>
+          {/* Elite Tier */}
+          <div className="card" style={{ textAlign: 'center' }}>
+            <h3 style={{ fontSize: '1.4rem', fontWeight: 700, color: '#1f2937', marginBottom: '0.5rem' }}>Elite</h3>
+            <p style={{ fontSize: '2rem', fontWeight: 700, color: '#4f46e5', marginBottom: '1rem' }}>₹499/mo</p>
+            <ul style={{ listStyle: 'none', padding: 0, marginBottom: '1.5rem', textAlign: 'left' }}>
+              <li style={{ marginBottom: '0.5rem', fontSize: '0.9rem', color: '#374151' }}>✓ Everything in Pro</li>
+              <li style={{ marginBottom: '0.5rem', fontSize: '0.9rem', color: '#374151' }}>✓ 1:1 mentor sessions</li>
+              <li style={{ marginBottom: '0.5rem', fontSize: '0.9rem', color: '#374151' }}>✓ Premium study resources</li>
+              <li style={{ marginBottom: '0.5rem', fontSize: '0.9rem', color: '#374151' }}>✓ Early exam insights</li>
+            </ul>
+            <Link href="/today" className="btn btn-upgrade" style={{ width: '100%' }}>Go Elite</Link>
+          </div>
+        </div>
+      </section>
+
+      {/* Testimonials section */}
+      <section className="page" style={{ paddingTop: '3rem', paddingBottom: '3rem' }}>
+        <h2
+          style={{
+            textAlign: 'center',
+            fontSize: '2rem',
+            fontWeight: 700,
+            marginBottom: '2rem',
+            color: '#1f2937',
+          }}
+        >
+          Loved By Aspirants Nationwide
+        </h2>
+        <div className="grid-3" style={{ gap: '2rem' }}>
+          <div className="card" style={{ textAlign: 'left' }}>
+            <p style={{ fontStyle: 'italic', color: '#374151', marginBottom: '0.75rem' }}>
+              “Career Copilot keeps me focused every single day. I never miss a
+              deadline and I love checking in with my partner each week.”
+            </p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+              <div className="avatar">PS</div>
+              <div>
+                <div style={{ fontWeight: 600, color: '#1f2937' }}>Priya S.</div>
+                <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>UPSC CSE aspirant</div>
+              </div>
+            </div>
+          </div>
+          <div className="card" style={{ textAlign: 'left' }}>
+            <p style={{ fontStyle: 'italic', color: '#374151', marginBottom: '0.75rem' }}>
+              “The study plan generator saved me hours of planning. With the
+              community’s notes and tips, I finally cleared my SSC tier‑I!”
+            </p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+              <div className="avatar">AK</div>
+              <div>
+                <div style={{ fontWeight: 600, color: '#1f2937' }}>Arjun K.</div>
+                <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>SSC CGL candidate</div>
+              </div>
+            </div>
+          </div>
+          <div className="card" style={{ textAlign: 'left' }}>
+            <p style={{ fontStyle: 'italic', color: '#374151', marginBottom: '0.75rem' }}>
+              “I upgraded to Pro for the accountability partner feature and it’s
+              been a game changer. There’s nothing like a small penalty to keep
+              you honest!”
+            </p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+              <div className="avatar">MR</div>
+              <div>
+                <div style={{ fontWeight: 600, color: '#1f2937' }}>Meera R.</div>
+                <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>IBPS PO aspirant</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Final call to action */}
+      <section
+        style={{
+          background: 'linear-gradient(135deg,#ede9fe,#f5f3ff)',
+          padding: '3.5rem 1.5rem',
+          borderTop: '1px solid #e5e7eb',
+          textAlign: 'center',
+        }}
+      >
+        <div style={{ maxWidth: '700px', margin: '0 auto' }}>
+          <h2
+            style={{
+              fontSize: '2rem',
+              fontWeight: 700,
+              color: '#1f2937',
+              marginBottom: '1rem',
+            }}
+          >
+            Ready to Begin Your Journey?
+          </h2>
+          <p
+            style={{ fontSize: '1rem', color: '#4b5563', marginBottom: '2rem' }}
+          >
+            Join thousands of aspirants using Career Copilot to organise their
+            preparation, stay accountable and succeed. It’s free to get started.
+          </p>
+          <Link href="/today" className="btn btn-primary" style={{ fontSize: '1rem' }}>
+            Get Started
+          </Link>
+        </div>
+      </section>
+    </div>
+  );
 }
