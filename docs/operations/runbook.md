@@ -368,3 +368,17 @@ Use this checklist before enabling broader automation or community scale-up.
 - Keep `official_updates` channels admin-write only.
 - Enforce human-review moderation for AI-flagged content at launch.
 - Require mentor verification and copyright moderation before marketplace/resource expansion.
+
+
+## 11. Admin audit alerting drill (P0+)
+
+Configure `ADMIN_ALERT_WEBHOOK_URL` in each environment that runs admin actions.
+
+Forced drill (safe):
+1. Temporarily set invalid DB permission for `admin_audit_logs` write in staging, or point app to a staging role lacking insert rights.
+2. Execute a critical admin action (e.g. publish/withdraw recruitment).
+3. Verify:
+   - primary action completes,
+   - app logs `[audit-failure] ...`,
+   - webhook endpoint receives payload with `source=admin_action_audit`.
+4. Restore normal DB permissions and repeat once to confirm no false alerts.

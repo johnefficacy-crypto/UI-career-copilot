@@ -7,12 +7,18 @@ export type MissionControlStatus =
   | "needs_profile_data"
   | "not_computed"
 
+export type MissionControlEvidence = {
+  type: "rule" | "official_notification" | "source_pdf"
+  label: string
+  url: string | null
+}
+
 export type MissionControlExplanation = {
   whyMatch: string[]
   whyNotMatch: string[]
   missingProfileData: string[]
   failedRules: string[]
-  sourceEvidence: string[]
+  sourceEvidence: MissionControlEvidence[]
   lastComputedAt: string | null
 }
 
@@ -25,7 +31,7 @@ export type MissionControlFeedItem = {
   reasonCodes:      string[] | null
   explanation:      string | null
   explanationDetails?: MissionControlExplanation | null
-  sourceEvidenceRefs?: string[]
+  sourceEvidence?: MissionControlEvidence[]
   lastComputedAt?: string | null
   saved:            boolean
   applied:          boolean
@@ -114,7 +120,7 @@ export async function getMissionControlData(
             reasonCodes: (r.fail_reasons as string[] | null) ?? null,
             lastComputedAt: (r.last_eligibility_computed_at as string | null) ?? null,
           }),
-          sourceEvidenceRefs: deriveEvidenceRefs((r.fail_reasons as string[] | null) ?? null, (r.official_notification_url as string | null) ?? null, (r.source_pdf_url as string | null) ?? null),
+          sourceEvidence: deriveEvidence((r.fail_reasons as string[] | null) ?? null, (r.official_notification_url as string | null) ?? null, (r.source_pdf_url as string | null) ?? null),
           lastComputedAt: (r.last_eligibility_computed_at as string | null) ?? null,
           saved: r.is_tracked ?? false,
           applied: r.clicked_apply ?? false,
@@ -166,7 +172,7 @@ function buildExplanation(input: {
     whyNotMatch: input.status === "ineligible" ? reasons : [],
     missingProfileData: input.status === "needs_profile_data" ? reasons : [],
     failedRules: input.status === "ineligible" || input.status === "conditional" ? reasons : [],
-    sourceEvidence: [],
+    sourceEvidence: deriveEvidence(input.reasonCodes, null, null),
     lastComputedAt: input.lastComputedAt,
   }
 }
@@ -197,10 +203,10 @@ function formatExplanationText(status: MissionControlStatus, reasonCodes: string
 }
 
 
-function deriveEvidenceRefs(reasonCodes: string[] | null, officialNotificationUrl: string | null, sourcePdfUrl: string | null): string[] {
+function deriveEvidence(reasonCodes: string[] | null, officialNotificationUrl: string | null, sourcePdfUrl: string | null): MissionControlEvidence[] {
   const reasons = reasonCodes ?? []
-  const refs = reasons.map((code) => `rule:${code}`)
-  if (officialNotificationUrl) refs.push(`official:${officialNotificationUrl}`)
-  if (sourcePdfUrl) refs.push(`source_pdf:${sourcePdfUrl}`)
-  return refs
+  const evidence: MissionControlEvidence[] = reasons.map((code) => ({ type: "rule", label: code, url: null }))
+  if (officialNotificationUrl) evidence.push({ type: "official_notification", label: "Official notification", url: officialNotificationUrl })
+  if (sourcePdfUrl) evidence.push({ type: "source_pdf", label: "Source PDF", url: sourcePdfUrl })
+  return evidence
 }
