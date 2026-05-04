@@ -12,5 +12,6 @@ describe("root layout accessibility smoke", () => {
 
     expect(html).toContain('href="#main-content"')
     expect(html).toContain('<main id="main-content"')
+    expect(html).toContain('career-copilot-theme')
   })
 })
