@@ -54,6 +54,7 @@ Legend:
 - [x] Implemented UI-audit P0 shell hardening: root navigation moved from inline styles to tokenized classes and global focus-visible ring standardization (`app/layout.tsx`, `app/globals.css`).
 
 - [x] Added automated root-shell accessibility smoke coverage (skip-link + nav landmark + main landmark assertions) in Vitest (`lib/ui/__tests__/root-layout.a11y-smoke.test.tsx`).
+- [x] Added shared responsive UI baseline polish across global surfaces (control typography/inputs, media scaling, card overflow handling, and tighter mobile paddings) to reduce cross-screen layout regressions (`app/globals.css`).
 
 - [x] Published UI pattern map for P1 standardization (`docs/engineering/ui-pattern-map.md`) covering shell patterns, primitive usage, accessibility baseline, and migration policy.
 
