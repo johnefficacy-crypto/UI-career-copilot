@@ -1,55 +1,32 @@
 import React from "react";
-import Link from "next/link";
+import type { Metadata } from "next";
+import Script from "next/script";
 import { AppProvider } from "./context/AppContext";
-import { TierBadgeInner } from "./components/TierBadge";
+import { ThemeProvider } from "./components/ThemeProvider";
 import "./globals.css";
 
-export const metadata = {
-  title: "Career Copilot",
-  description: "Your unified career preparation dashboard",
+export const metadata: Metadata = {
+  title: "Career Copilot — AI Govt Exam Mission Control",
+  description:
+    "Track official government exam notifications, check personalized eligibility, plan preparation, and act on deadlines with Career Copilot.",
 };
 
-const ROOT_NAV_ITEMS = [
-  { href: "/dashboard", label: "Today" },
-  { href: "/dashboard/exams", label: "Exams" },
-  { href: "/dashboard/study", label: "Study" },
-  { href: "/dashboard/community", label: "Community" },
-  { href: "/marketplace", label: "Marketplace" },
-  { href: "/dashboard/profile", label: "Profile" },
-] as const;
+const themeScript = `(() => { try { const key = 'career-copilot-theme'; const saved = localStorage.getItem(key); const theme = saved === 'light' || saved === 'dark' ? saved : 'dark'; document.documentElement.dataset.theme = theme; document.documentElement.style.colorScheme = theme; } catch (_) { document.documentElement.dataset.theme = 'dark'; document.documentElement.style.colorScheme = 'dark'; } })();`;
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body>
+        <Script id="cc-theme-init" strategy="beforeInteractive">
+          {themeScript}
+        </Script>
         <AppProvider>
-          <a href="#main-content" className="cc-skip-link cc-focus-ring">
-            Skip to main content
-          </a>
-
-          <header className="root-shell-header">
-            <nav className="root-shell-nav" aria-label="Primary">
-              <Link href="/" className="root-shell-brand cc-focus-ring">
-                Career Copilot
-              </Link>
-
-              <ul className="root-shell-nav-list">
-                {ROOT_NAV_ITEMS.map(({ href, label }) => (
-                  <li key={href}>
-                    <Link href={href} className="root-shell-nav-link cc-focus-ring">
-                      {label}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-
-              <div className="root-shell-tier">
-                <TierBadgeInner />
-              </div>
-            </nav>
-          </header>
-
-          <main id="main-content">{children}</main>
+          <ThemeProvider>
+            <a href="#main-content" className="cc-skip-link cc-focus-ring">
+              Skip to main content
+            </a>
+            <main id="main-content">{children}</main>
+          </ThemeProvider>
         </AppProvider>
       </body>
     </html>
