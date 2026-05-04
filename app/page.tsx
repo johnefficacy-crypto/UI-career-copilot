@@ -1,4 +1,5 @@
 import Link from "next/link";
+import ThemeToggle from "./components/ThemeToggle";
 
 const EXAM_CHIPS = ["UPSC", "SSC", "IBPS", "SBI", "RBI", "SEBI", "NABARD", "Railways", "State PSC", "PSU"];
 
@@ -30,6 +31,7 @@ export default function LandingPage() {
             <a href="#eligibility" className="cc-nav-link">Eligibility</a>
             <a href="#pricing" className="cc-nav-link">Pricing</a>
             <Link href="/auth/login" className="cc-nav-link">Sign in</Link>
+            <ThemeToggle />
             <Link href="/auth/signup" className="cc-btn-primary">Get started</Link>
           </nav>
         </div>
