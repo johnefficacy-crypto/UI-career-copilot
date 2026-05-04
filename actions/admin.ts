@@ -305,8 +305,10 @@ export async function adminSubmitForReview(formData: FormData) {
   try {
     const ctx = await requireAdminRole("recruitments")
     const supabase = await createClient()
-    await (supabase as any)
-      .from("recruitments")
+    const recruitments = supabase.from("recruitments") as unknown as {
+      update: (values: Record<string, unknown>) => { eq: (column: string, value: string) => Promise<unknown> }
+    }
+    await recruitments
       .update({ publish_status: "needs_review", updated_at: new Date().toISOString() })
       .eq("id", id)
     void logAdminActionObserved({
@@ -329,8 +331,10 @@ export async function adminPublishRecruitment(formData: FormData) {
   try {
     const ctx = await requireAdminRole("recruitments")
     const supabase = await createClient()
-    await (supabase as any)
-      .from("recruitments")
+    const recruitments = supabase.from("recruitments") as unknown as {
+      update: (values: Record<string, unknown>) => { eq: (column: string, value: string) => Promise<unknown> }
+    }
+    await recruitments
       .update({
         publish_status: "published",
         published_at:   new Date().toISOString(),
@@ -358,8 +362,10 @@ export async function adminWithdrawRecruitment(formData: FormData) {
   try {
     const ctx = await requireAdminRole("recruitments")
     const supabase = await createClient()
-    await (supabase as any)
-      .from("recruitments")
+    const recruitments = supabase.from("recruitments") as unknown as {
+      update: (values: Record<string, unknown>) => { eq: (column: string, value: string) => Promise<unknown> }
+    }
+    await recruitments
       .update({ publish_status: "withdrawn", updated_at: new Date().toISOString() })
       .eq("id", id)
     void logAdminActionObserved({
