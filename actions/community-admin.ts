@@ -27,7 +27,8 @@ export async function updateForumReportAction(formData: FormData) {
 
   if (!reportId) return
 
-  const { data: before } = await fromUnknownTable(supabase, "forum_reports")
+  const { data: before } = await supabase
+    .from("forum_reports" as never)
     .select("id,status,severity,assigned_admin_id,action_notes,resolved_at,resolved_by")
     .eq("id", reportId)
     .maybeSingle()
@@ -44,7 +45,11 @@ export async function updateForumReportAction(formData: FormData) {
     patch.resolved_by = ctx.userId
   }
 
-  const { error } = await fromUnknownTable(supabase, "forum_reports").update(patch).eq("id", reportId).maybeSingle()
+  const { error } = await supabase
+    .from("forum_reports" as never)
+    .update(patch as never)
+    .eq("id", reportId)
+    .maybeSingle()
   if (error) throw new Error(error.message)
 
   await logAdminAction({

@@ -32,7 +32,8 @@ function fromUnknownTable(supabase: unknown, table: string): DynamicQuery {
 
 export async function getCommunityModerationQueue(limit = 100): Promise<CommunityReportRow[]> {
   const supabase = await createClient()
-  const { data, error } = await fromUnknownTable(supabase, "community_reports")
+  const { data, error } = await supabase
+    .from("community_reports" as never)
     .select("id, created_at, reason, details, status")
     .order("created_at", { ascending: false })
     .limit(limit)
@@ -55,8 +56,9 @@ export async function moderateCommunityReport(input: {
     moderated_at: new Date().toISOString(),
   }
 
-  const { data, error } = await fromUnknownTable(supabase, "community_reports")
-    .update(patch)
+  const { data, error } = await supabase
+    .from("community_reports" as never)
+    .update(patch as never)
     .eq("id", input.reportId)
     .select("id, status, moderation_notes, moderated_by, moderated_at")
     .single()

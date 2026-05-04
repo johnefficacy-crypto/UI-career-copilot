@@ -761,3 +761,11 @@ Trust > Speed
 Control > Automation
 Determinism > Heuristics
 ```
+
+
+## Pending P1/P2 tasks
+
+- [ ] P1: Execute real environment rollout for `ADMIN_ALERT_WEBHOOK_URL` across dev/staging/prod.
+- [ ] P1: Run staging forced audit-failure drill and archive log/webhook artifacts.
+- [ ] P1: Regenerate `types/supabase.ts` from connected live schema and remove dynamic table bridges for `community_reports` / `forum_reports`.
+- [ ] P2: Optional warning-free lint baseline cleanup (unused vars, image optimization refactors, hook dependency audits).

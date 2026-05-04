@@ -47,7 +47,8 @@ export async function listForumReports(filters?: {
   await requireAdminRole("community")
   const supabase = await createClient()
 
-  let q = fromUnknownTable(supabase, "forum_reports")
+  let q = supabase
+    .from("forum_reports" as never)
     .select(`
       id, target_type, post_id, comment_id, reason, details,
       severity, status, assigned_admin_id, action_notes,

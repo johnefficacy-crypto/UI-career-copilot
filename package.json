@@ -9,7 +9,9 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test": "vitest",
-    "check:functions": "find supabase/functions -name \"*.ts\" -print0 | xargs -0 -n1 deno check"
+    "check:functions": "find supabase/functions -name \"*.ts\" -print0 | xargs -0 -n1 deno check",
+    "supabase:types:gen": "npx supabase gen types typescript --linked --schema public > types/supabase.ts",
+    "ops:audit-drill": "bash scripts/ops/audit-drill.sh"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.88.0",
