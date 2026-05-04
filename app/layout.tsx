@@ -1,5 +1,6 @@
 import React from "react";
 import type { Metadata } from "next";
+import Script from "next/script";
 import { AppProvider } from "./context/AppContext";
 import { ThemeProvider } from "./components/ThemeProvider";
 import "./globals.css";
@@ -16,7 +17,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" suppressHydrationWarning>
       <body>
-        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+        <Script id="cc-theme-init" strategy="beforeInteractive">
+          {themeScript}
+        </Script>
         <AppProvider>
           <ThemeProvider>
             <a href="#main-content" className="cc-skip-link cc-focus-ring">

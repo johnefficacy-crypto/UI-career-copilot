@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useContext, useMemo, useState } from 'react';
 
 export type Theme = 'light' | 'dark';
 const THEME_KEY = 'career-copilot-theme';
@@ -13,30 +13,39 @@ type ThemeContextValue = {
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
-function resolveTheme(): Theme {
-  if (typeof window === 'undefined') return 'dark';
-  const saved = window.localStorage.getItem(THEME_KEY);
-  return saved === 'light' || saved === 'dark' ? saved : 'dark';
+function resolveInitialTheme(): Theme {
+  if (typeof document === 'undefined') return 'dark';
+  const domTheme = document.documentElement.dataset.theme;
+  if (domTheme === 'light' || domTheme === 'dark') return domTheme;
+  return 'dark';
 }
 
 function applyTheme(theme: Theme) {
   document.documentElement.dataset.theme = theme;
   document.documentElement.style.colorScheme = theme;
+  window.localStorage.setItem(THEME_KEY, theme);
 }
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>(resolveTheme);
+  const [theme, setThemeState] = useState<Theme>(resolveInitialTheme);
 
-  useEffect(() => {
-    applyTheme(theme);
-    window.localStorage.setItem(THEME_KEY, theme);
-  }, [theme]);
-
-  const value = useMemo(() => ({
-    theme,
-    setTheme: setThemeState,
-    toggleTheme: () => setThemeState((prev) => (prev === 'dark' ? 'light' : 'dark')),
-  }), [theme]);
+  const value = useMemo(
+    () => ({
+      theme,
+      setTheme: (next: Theme) => {
+        setThemeState(next);
+        applyTheme(next);
+      },
+      toggleTheme: () => {
+        setThemeState((prev) => {
+          const next = prev === 'dark' ? 'light' : 'dark';
+          applyTheme(next);
+          return next;
+        });
+      },
+    }),
+    [theme],
+  );
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }
